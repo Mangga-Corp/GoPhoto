@@ -40,7 +40,7 @@ final class CameraViewModel {
     
     // for the guide frame
     private(set) var target: FramingTarget = .ruleOfThirdsLeft   // later: from AI preferences
-    private(set) var personFrame: CGRect?
+    private(set) var personOutline: CGImage?
     private(set) var isAligned = false
     
     var isLevel: Bool { tiltDegrees == 0}
@@ -94,19 +94,21 @@ final class CameraViewModel {
     
     // listens to person detection until the View's .task is cancelled
     func observePerson() async {
-        for await rect in cameraService.personDetections() {
-            personFrame = rect
+        for await detection in cameraService.personDetections() {
+            // Drawing: skip nil → nil writes (nobody in view)
+            let newOutline = detection?.outline
+            if newOutline != nil || personOutline != nil {
+                personOutline = newOutline
+            }
 
-            // Hysteresis: easier to STAY green than to BECOME green → no flicker
+            // Alignment: still uses the box centre (stable + cheap)
             let tolerance: CGFloat = isAligned ? 0.09 : 0.06
-            let aligned = rect.map { target.isAligned(with: $0, tolerance: tolerance) } ?? false
-
+            let aligned = detection.map { target.isAligned(with: $0.box, tolerance: tolerance) } ?? false
             if aligned != isAligned {
                 isAligned = aligned
             }
         }
-        // Stream ended (camera view left the screen) → reset
-        personFrame = nil
+        personOutline = nil
         isAligned = false
     }
 
