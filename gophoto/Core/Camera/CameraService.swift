@@ -55,7 +55,7 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func start() async
     func stop() async
     func capturePhoto() async throws -> CapturedPhoto
-    func personDetections() -> AsyncStream<PersonDetection?>     // CHANGED type
+    func personDetections() -> AsyncStream<PersonDetection?>
 }
 
 // MARK: - Real implementation
@@ -210,7 +210,6 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        
         guard let continuation = personContinuation else { return }
 
         frameCount += 1

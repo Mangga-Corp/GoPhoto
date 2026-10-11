@@ -22,13 +22,7 @@ struct GuideFramesOverlay: View {
             ZStack {
                 
                 let targetRect = scaled(target, to: geo.size)
-                // Target: a person-shaped silhouette where you SHOULD be
-//                Image(systemName: "figure.stand")  // placeholder until the designer's asset exists
-//                    .resizable()
-//                    .scaledToFit()
-//                    .foregroundStyle(isAligned ? Color.green.opacity(0.55) : Color.white.opacity(0.35))
-//                    .frame(width: targetRect.width, height: targetRect.height)
-//                    .position(x: targetRect.midX, y: targetRect.midY)
+                // Target: where you SHOULD be (rectangle for now; silhouette later)
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(isAligned ? Color.green : Color.white.opacity(0.9),
                             style: StrokeStyle(lineWidth: 2, dash: isAligned ? [] : [10, 6]))
