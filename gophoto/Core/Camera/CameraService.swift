@@ -16,6 +16,15 @@
 import AVFoundation
 import UIKit
 
+// MARK: - Model
+
+/// A photo straight from iPhone Camera
+nonisolated struct CapturedPhoto: Sendable {
+    let data: Data      // Original file-data (HEIC/ JPEG + metadata) -> For saving to phone
+    let image: UIImage  // Decoded image -> for showing on screen (view -> iPhone screen)
+}
+
+
 // MARK: - Errors
 
 nonisolated enum CameraError: LocalizedError {
@@ -44,7 +53,7 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func configure() async throws
     func start() async
     func stop() async
-    func capturePhoto() async throws -> UIImage
+    func capturePhoto() async throws -> CapturedPhoto
 }
 
 // MARK: - Real implementation
@@ -56,7 +65,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "gophoto.camera.session")
     private var isConfigured = false
-    private var photoContinuation: CheckedContinuation<UIImage, Error>?
+    private var photoContinuation: CheckedContinuation<CapturedPhoto, Error>?
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> Bool {
@@ -101,7 +110,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     }
 
     // 4. Take a photo. The delegate callback below finishes this.
-    func capturePhoto() async throws -> UIImage {
+    func capturePhoto() async throws -> CapturedPhoto {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async {
                 guard self.photoContinuation == nil else {
@@ -148,11 +157,11 @@ nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishProcessingPhoto photo: AVCapturePhoto,
                      error: Error?) {
-        let result: Result<UIImage, Error>
+        let result: Result<CapturedPhoto, Error>
         if let error {
             result = .failure(error)
         } else if let data = photo.fileDataRepresentation(), let image = UIImage(data: data) {
-            result = .success(image)
+            result = .success(CapturedPhoto(data: data, image: image))
         } else {
             result = .failure(CameraError.captureFailed)
         }

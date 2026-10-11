@@ -20,13 +20,20 @@ enum CameraState: Equatable {
     case failed(String)
 }
 
+enum SaveState: Equatable {
+    case idle
+    case saving
+    case saved
+}
+
 @Observable
 final class CameraViewModel {
 
     // MARK: State the View reads
     private(set) var state: CameraState = .idle
-    private(set) var capturedImage: UIImage?
+    private(set) var capturedPhoto: CapturedPhoto?
     private(set) var isCapturing = false
+    private(set) var saveState: SaveState = .idle
     private(set) var errorMessage: String?
 
     private(set) var tiltDegrees: Int?
@@ -43,11 +50,14 @@ final class CameraViewModel {
     // MARK: Dependency (injected, like swiftshop's repositories)
     @ObservationIgnored private let cameraService: CameraServiceProtocol
     @ObservationIgnored private let motionService: MotionServiceProtocol
+    @ObservationIgnored private let photoLibraryService: PhotoLibraryServiceProtocol
 
     init(cameraService: CameraServiceProtocol = CameraService(),
-         motionService: MotionServiceProtocol = MotionService()) {
+         motionService: MotionServiceProtocol = MotionService(),
+         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService()){
         self.cameraService = cameraService
         self.motionService = motionService
+        self.photoLibraryService = photoLibraryService
     }
 
     // MARK: Intents (things the View asks for)
@@ -87,13 +97,32 @@ final class CameraViewModel {
         defer { isCapturing = false }
 
         do {
-            capturedImage = try await cameraService.capturePhoto()
+            capturedPhoto = try await cameraService.capturePhoto()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    func savePhoto() async {
+        guard let photo = capturedPhoto, saveState == .idle else { return }
+        saveState = .saving
+        
+        do {
+            try await photoLibraryService.save(imageData: photo.data)
+            saveState = .saved
+            
+            // Let the user see: "Saved ✓" briefly, then return to the camera
+            try? await Task.sleep(for: .seconds(1))
+            capturedPhoto = nil
+            saveState = .idle
+        } catch {
+            saveState = .idle
+            errorMessage = error.localizedDescription
+        }
+    }
+    
     func retake() {
-        capturedImage = nil
+        guard saveState == .idle else { return }
+        capturedPhoto = nil
     }
 }

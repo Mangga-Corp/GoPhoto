@@ -26,8 +26,8 @@ struct CameraView: View {
                 ProgressView().tint(.white)
 
             case .running:
-                if let image = viewModel.capturedImage {
-                    photoReview(image)
+                if let photo = viewModel.capturedPhoto {
+                    photoReview(photo.image)
                 } else {
                     liveCamera
                 }
@@ -93,10 +93,35 @@ struct CameraView: View {
             .scaledToFit()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
-                Button("Retake") { viewModel.retake() }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.bottom, 40)
+                reviewButtons.padding(.bottom, 40)
             }
+    }
+    
+    private var reviewButtons: some View {
+        HStack(spacing: 16) {
+            Button("Retake") { viewModel.retake() }
+                .buttonStyle(.bordered)
+                .tint(.white)
+
+            Button {
+                Task { await viewModel.savePhoto() }
+            } label: {
+                Group {
+                    switch viewModel.saveState {
+                    case .idle:   Label("Save", systemImage: "square.and.arrow.down")
+                    case .saving: ProgressView()
+                    case .saved:  Label("Saved", systemImage: "checkmark")
+                    }
+                }
+                .frame(minWidth: 90)   // keeps the button from jumping in size
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .controlSize(.large)
+        .disabled(viewModel.saveState != .idle)
+        .sensoryFeedback(.success, trigger: viewModel.saveState) { _, newState in
+            newState == .saved
+        }
     }
 
     private var permissionDenied: some View {
