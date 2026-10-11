@@ -56,8 +56,20 @@ struct CameraView: View {
     private var liveCamera: some View {
         CameraPreviewView(session: viewModel.session)
             .ignoresSafeArea()
+            .overlay(alignment: .top) {
+                if let degrees = viewModel.tiltDegrees {
+                    TiltIndicatorView(degrees: degrees, isLevel: viewModel.isLevel)
+                        .padding(.top, 12)
+                }
+            }
             .overlay(alignment: .bottom) {
                 shutterButton.padding(.bottom, 40)
+            }
+            .task {
+                await viewModel.observeTilt()
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) {
+                _, isNowLevel in isNowLevel
             }
     }
 

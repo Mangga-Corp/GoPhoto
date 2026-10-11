@@ -29,6 +29,10 @@ final class CameraViewModel {
     private(set) var isCapturing = false
     private(set) var errorMessage: String?
 
+    private(set) var tiltDegrees: Int?
+    
+    var isLevel: Bool { tiltDegrees == 0}
+    
     var isShowingError: Bool {
         get { errorMessage != nil }
         set { if !newValue { errorMessage = nil } }
@@ -38,9 +42,12 @@ final class CameraViewModel {
 
     // MARK: Dependency (injected, like swiftshop's repositories)
     @ObservationIgnored private let cameraService: CameraServiceProtocol
+    @ObservationIgnored private let motionService: MotionServiceProtocol
 
-    init(cameraService: CameraServiceProtocol = CameraService()) {
+    init(cameraService: CameraServiceProtocol = CameraService(),
+         motionService: MotionServiceProtocol = MotionService()) {
         self.cameraService = cameraService
+        self.motionService = motionService
     }
 
     // MARK: Intents (things the View asks for)
@@ -56,6 +63,17 @@ final class CameraViewModel {
             state = .running
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+    
+    func observeTilt() async {
+        for await tilt in motionService.tiltUpdates() {
+            let newValue: Int? = abs(tilt.pitch) > 75 ?
+                nil : Int(abs(tilt.roll).rounded())
+            
+            if newValue != tiltDegrees {
+                tiltDegrees = newValue
+            }
         }
     }
 
