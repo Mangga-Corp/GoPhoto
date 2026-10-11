@@ -57,7 +57,7 @@ struct CameraView: View {
         CameraPreviewView(session: viewModel.session)
             .overlay {
                 GuideFramesOverlay(target: viewModel.target.rect,
-                                   person: viewModel.personFrame,
+                                   personOutline: viewModel.personOutline,
                                    isAligned: viewModel.isAligned)
             }
             .aspectRatio(3.0 / 4.0, contentMode: .fit)          // show the FULL photo (no cropping)

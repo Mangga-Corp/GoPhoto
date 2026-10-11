@@ -55,7 +55,7 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func start() async
     func stop() async
     func capturePhoto() async throws -> CapturedPhoto
-    func personDetections() -> AsyncStream<CGRect?>
+    func personDetections() -> AsyncStream<PersonDetection?>     // CHANGED type
 }
 
 // MARK: - Real implementation
@@ -73,7 +73,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "gophoto.camera.video")
     private let personDetector = PersonDetector()
-    private var personContinuation: AsyncStream<CGRect?>.Continuation?
+    private var personContinuation: AsyncStream<PersonDetection?>.Continuation?
+    private var frameCount = 0                                                      
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> Bool {
@@ -138,7 +139,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     }
     
     // Stream of "where is the person" (nil = nobody). Detection only runs while someone listens.
-    func personDetections() -> AsyncStream<CGRect?> {
+    func personDetections() -> AsyncStream<PersonDetection?> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             videoQueue.async { self.personContinuation = continuation }
 
@@ -209,9 +210,13 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let continuation = personContinuation,
+        
+        guard let continuation = personContinuation else { return }
+
+        frameCount += 1
+        guard frameCount.isMultiple(of: 2),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        continuation.yield(personDetector.detectPerson(in: pixelBuffer))
+        continuation.yield(personDetector.detect(in: pixelBuffer))           
     }
 }

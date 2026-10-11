@@ -10,36 +10,41 @@
 //
 //  Draws the target frame and the person frame. Plain values in, no ViewModel.
 //
-
 import SwiftUI
 
 struct GuideFramesOverlay: View {
-    let target: CGRect     // normalized 0...1
-    let person: CGRect?    // normalized 0...1, nil = nobody detected
+    let target: CGRect          // normalized 0...1
+    let personOutline: CGImage? // ring image covering the whole frame; nil = nobody
     let isAligned: Bool
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Target: where you SHOULD be
+                
                 let targetRect = scaled(target, to: geo.size)
+                // Target: a person-shaped silhouette where you SHOULD be
+//                Image(systemName: "figure.stand")  // placeholder until the designer's asset exists
+//                    .resizable()
+//                    .scaledToFit()
+//                    .foregroundStyle(isAligned ? Color.green.opacity(0.55) : Color.white.opacity(0.35))
+//                    .frame(width: targetRect.width, height: targetRect.height)
+//                    .position(x: targetRect.midX, y: targetRect.midY)
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(isAligned ? Color.green : Color.white.opacity(0.9),
                             style: StrokeStyle(lineWidth: 2, dash: isAligned ? [] : [10, 6]))
                     .frame(width: targetRect.width, height: targetRect.height)
                     .position(x: targetRect.midX, y: targetRect.midY)
 
-                // Person: where you ARE
-                if let person {
-                    let personRect = scaled(person, to: geo.size)
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(isAligned ? Color.green : Color.red, lineWidth: 3)
-                        .frame(width: personRect.width, height: personRect.height)
-                        .position(x: personRect.midX, y: personRect.midY)
+                // Person: an outline around where you ARE
+                if let personOutline {
+                    (isAligned ? Color.green : Color.red)
+                        .mask {
+                            Image(decorative: personOutline, scale: 1)
+                                .resizable()            // stretch to the full frame, like the photo
+                        }
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: person)
         .animation(.snappy, value: isAligned)
         .allowsHitTesting(false)   // never block taps on the camera
     }
@@ -56,7 +61,7 @@ struct GuideFramesOverlay: View {
 #Preview {
     GuideFramesOverlay(
         target: FramingTarget.ruleOfThirdsLeft.rect,
-        person: CGRect(x: 0.5, y: 0.25, width: 0.3, height: 0.55),
+        personOutline: nil,
         isAligned: false
     )
     .aspectRatio(3.0 / 4.0, contentMode: .fit)
