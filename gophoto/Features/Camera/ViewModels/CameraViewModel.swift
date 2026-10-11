@@ -38,6 +38,11 @@ final class CameraViewModel {
 
     private(set) var tiltDegrees: Int?
     
+    // for the guide frame
+    private(set) var target: FramingTarget = .ruleOfThirdsLeft   // later: from AI preferences
+    private(set) var personFrame: CGRect?
+    private(set) var isAligned = false
+    
     var isLevel: Bool { tiltDegrees == 0}
     
     var isShowingError: Bool {
@@ -85,6 +90,24 @@ final class CameraViewModel {
                 tiltDegrees = newValue
             }
         }
+    }
+    
+    // listens to person detection until the View's .task is cancelled
+    func observePerson() async {
+        for await rect in cameraService.personDetections() {
+            personFrame = rect
+
+            // Hysteresis: easier to STAY green than to BECOME green → no flicker
+            let tolerance: CGFloat = isAligned ? 0.09 : 0.06
+            let aligned = rect.map { target.isAligned(with: $0, tolerance: tolerance) } ?? false
+
+            if aligned != isAligned {
+                isAligned = aligned
+            }
+        }
+        // Stream ended (camera view left the screen) → reset
+        personFrame = nil
+        isAligned = false
     }
 
     func stopCamera() async {

@@ -55,7 +55,13 @@ struct CameraView: View {
 
     private var liveCamera: some View {
         CameraPreviewView(session: viewModel.session)
-            .ignoresSafeArea()
+            .overlay {
+                GuideFramesOverlay(target: viewModel.target.rect,
+                                   person: viewModel.personFrame,
+                                   isAligned: viewModel.isAligned)
+            }
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)          // show the FULL photo (no cropping)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .top) {
                 if let degrees = viewModel.tiltDegrees {
                     TiltIndicatorView(degrees: degrees, isLevel: viewModel.isLevel)
@@ -65,11 +71,13 @@ struct CameraView: View {
             .overlay(alignment: .bottom) {
                 shutterButton.padding(.bottom, 40)
             }
-            .task {
-                await viewModel.observeTilt()
+            .task { await viewModel.observeTilt() }
+            .task { await viewModel.observePerson() }
+            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
+                isNowLevel
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) {
-                _, isNowLevel in isNowLevel
+            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isAligned) { _, isNowAligned in
+                isNowAligned                                    //tap only when it BECOMES aligned
             }
     }
 

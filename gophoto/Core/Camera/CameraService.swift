@@ -15,6 +15,7 @@
 
 import AVFoundation
 import UIKit
+import CoreMedia
 
 // MARK: - Model
 
@@ -54,6 +55,7 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func start() async
     func stop() async
     func capturePhoto() async throws -> CapturedPhoto
+    func personDetections() -> AsyncStream<CGRect?>
 }
 
 // MARK: - Real implementation
@@ -66,6 +68,12 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let sessionQueue = DispatchQueue(label: "gophoto.camera.session")
     private var isConfigured = false
     private var photoContinuation: CheckedContinuation<CapturedPhoto, Error>?
+    
+    // for the apple vision framework
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let videoQueue = DispatchQueue(label: "gophoto.camera.video")
+    private let personDetector = PersonDetector()
+    private var personContinuation: AsyncStream<CGRect?>.Continuation?
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> Bool {
@@ -128,6 +136,17 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             }
         }
     }
+    
+    // Stream of "where is the person" (nil = nobody). Detection only runs while someone listens.
+    func personDetections() -> AsyncStream<CGRect?> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            videoQueue.async { self.personContinuation = continuation }
+
+            continuation.onTermination = { _ in
+                self.videoQueue.async { self.personContinuation = nil }
+            }
+        }
+    }
 
     private func configureSession() throws {
         guard !isConfigured else { return }
@@ -146,6 +165,17 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
 
         guard session.canAddOutput(photoOutput) else { throw CameraError.cannotAddOutput }
         session.addOutput(photoOutput)
+        
+        // live video frames → person detection
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
+        guard session.canAddOutput(videoOutput) else { throw CameraError.cannotAddOutput }
+        session.addOutput(videoOutput)
+
+        if let connection = videoOutput.connection(with: .video),
+           connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90   // upright frames, same as the photo
+        }
 
         isConfigured = true
     }
@@ -170,5 +200,18 @@ nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
             self.photoContinuation?.resume(with: result)
             self.photoContinuation = nil
         }
+    }
+}
+
+// MARK: - Video frame delegate (called ~30x/sec on videoQueue)
+
+nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard let continuation = personContinuation,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        continuation.yield(personDetector.detectPerson(in: pixelBuffer))
     }
 }
