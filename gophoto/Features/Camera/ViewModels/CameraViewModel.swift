@@ -36,15 +36,15 @@ final class CameraViewModel {
     private(set) var saveState: SaveState = .idle
     private(set) var errorMessage: String?
 
-    private(set) var tiltDegrees: Int?
-    
+    private(set) var horizon: HorizonState = .hidden
+
     // for the guide frame
-    private(set) var target: FramingTarget = .ruleOfThirdsLeft   // later: from AI preferences
+    private(set) var target: FramingTarget = .center   // later: from AI preferences
     private(set) var personOutline: CGImage?
     private(set) var isAligned = false
     
-    var isLevel: Bool { tiltDegrees == 0}
-    
+    var isLevel: Bool { horizon == .level }
+
     var isShowingError: Bool {
         get { errorMessage != nil }
         set { if !newValue { errorMessage = nil } }
@@ -83,15 +83,14 @@ final class CameraViewModel {
     
     func observeTilt() async {
         for await tilt in motionService.tiltUpdates() {
-            let newValue: Int? = abs(tilt.pitch) > 75 ?
-                nil : Int(abs(tilt.roll).rounded())
-            
-            if newValue != tiltDegrees {
-                tiltDegrees = newValue
+            let next = HorizonState.next(roll: tilt.roll, pitch: tilt.pitch, current: horizon)
+            if next != horizon {
+                horizon = next
             }
         }
+        horizon = .hidden
     }
-    
+
     // listens to person detection until the View's .task is cancelled
     func observePerson() async {
         for await detection in cameraService.personDetections() {
