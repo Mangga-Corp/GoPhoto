@@ -61,10 +61,17 @@ struct CameraView: View {
                 .overlay {
                     GuideFramesOverlay(target: viewModel.target.rect,
                                        personOutline: viewModel.personOutline,
-                                       isAligned: viewModel.isAligned)
+                                       isAligned: viewModel.isReady)          // green = ready
                 }
                 .overlay {
-                    HorizonLevelView(state: viewModel.horizon)   // centred, like the Camera app
+                    HorizonLevelView(state: viewModel.horizon)
+                }
+                .overlay {
+                    DirectionArrowOverlay(instruction: viewModel.instruction)
+                }
+                .overlay(alignment: .top) {
+                    InstructionPill(instruction: viewModel.instruction)
+                        .padding(.top, 12)
                 }
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .layoutPriority(1)
@@ -77,8 +84,8 @@ struct CameraView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
             isNowLevel
         }
-        .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isAligned) { _, isNowAligned in
-            isNowAligned
+        .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isReady) { _, isNowReady in
+            isNowReady
         }
     }
 
