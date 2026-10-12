@@ -252,13 +252,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CHXNU723U8;
+				DEVELOPMENT_TEAM = XYK8Q2G6R7;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto needs access to your photos so you can choose pictures for your preferences.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -293,13 +294,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CHXNU723U8;
+				DEVELOPMENT_TEAM = XYK8Q2G6R7;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto needs access to your photos so you can choose pictures for your preferences.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
