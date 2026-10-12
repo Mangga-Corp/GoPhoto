@@ -32,4 +32,7 @@ extension FramingTarget {
     static let ruleOfThirdsLeft = FramingTarget(
         rect: CGRect(x: 0.18, y: 0.20, width: 0.30, height: 0.60)
     )
+    static let center = FramingTarget(
+        rect: CGRect(x: 0.35, y: 0.20, width: 0.30, height: 0.60)
+    )
 }

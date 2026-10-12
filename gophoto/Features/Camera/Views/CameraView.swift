@@ -51,34 +51,40 @@ struct CameraView: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Layout (like the Camera app: slim top bar, 4:3 image, big bottom area)
 
     private var liveCamera: some View {
-        CameraPreviewView(session: viewModel.session)
-            .overlay {
-                GuideFramesOverlay(target: viewModel.target.rect,
-                                   personOutline: viewModel.personOutline,
-                                   isAligned: viewModel.isAligned)
-            }
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)          // show the FULL photo (no cropping)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .top) {
-                if let degrees = viewModel.tiltDegrees {
-                    TiltIndicatorView(degrees: degrees, isLevel: viewModel.isLevel)
-                        .padding(.top, 12)
+        VStack(spacing: 0) {
+            topBar
+
+            CameraPreviewView(session: viewModel.session)
+                .overlay {
+                    GuideFramesOverlay(target: viewModel.target.rect,
+                                       personOutline: viewModel.personOutline,
+                                       isAligned: viewModel.isAligned)
                 }
-            }
-            .overlay(alignment: .bottom) {
-                shutterButton.padding(.bottom, 40)
-            }
-            .task { await viewModel.observeTilt() }
-            .task { await viewModel.observePerson() }
-            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
-                isNowLevel
-            }
-            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isAligned) { _, isNowAligned in
-                isNowAligned                                    //tap only when it BECOMES aligned
-            }
+                .overlay {
+                    HorizonLevelView(state: viewModel.horizon)   // centred, like the Camera app
+                }
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                .layoutPriority(1)
+
+            shutterButton
+                .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
+        }
+        .task { await viewModel.observeTilt() }
+        .task { await viewModel.observePerson() }
+        .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
+            isNowLevel
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isAligned) { _, isNowAligned in
+            isNowAligned
+        }
+    }
+
+    /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
+    private var topBar: some View {
+        Color.clear.frame(height: 44)
     }
 
     private var shutterButton: some View {
@@ -95,16 +101,21 @@ struct CameraView: View {
         .accessibilityLabel("Take photo")
     }
 
+    /// Same layout as the live camera, so the photo appears exactly where you framed it.
     private func photoReview(_ image: UIImage) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .bottom) {
-                reviewButtons.padding(.bottom, 40)
-            }
+        VStack(spacing: 0) {
+            topBar
+
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .layoutPriority(1)
+
+            reviewButtons
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
-    
+
     private var reviewButtons: some View {
         HStack(spacing: 16) {
             Button("Retake") { viewModel.retake() }
@@ -121,7 +132,7 @@ struct CameraView: View {
                     case .saved:  Label("Saved", systemImage: "checkmark")
                     }
                 }
-                .frame(minWidth: 90)   // keeps the button from jumping in size
+                .frame(minWidth: 90)
             }
             .buttonStyle(.borderedProminent)
         }
