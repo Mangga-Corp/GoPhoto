@@ -8,29 +8,23 @@
 import UIKit
 
 final class AIPreferencesViewController: UIViewController {
-    /// Hook this to your existing camera screen.
-    var onCameraTapped: (() -> Void)?
+    /// Called when the back button (top-left) is tapped.
+    var onBack: (() -> Void)?
 
     private let viewModel: ChoosePhotosViewModel
+
     private let titleLabel = UILabel.make("AI Preferences", style: .title3)
-    private let countLabel = UILabel.make("", style: .footnote)
+    private let subtitleLabel = UILabel.make("", style: .footnote)
     private let emptyLabel = UILabel.make("You haven’t input any photo", style: .subheadline)
     private let editButton = PillButton(title: "Edit")
     private let addButton = CircleButton(title: "+", accessibilityLabel: "Add photos")
-    
-    private let cameraButton: UIButton = {
-        let b = UIButton(type: .custom)
-        b.setImage(UIImage(named: "camera_icon"), for: .normal)
-        b.imageView?.contentMode = .scaleAspectFit
-        b.accessibilityLabel = "Camera"
-        return b
-    }()
-    
-    private lazy var cameraStack: UIStackView = {
-        let label = UILabel.make("Camera", style: .caption2)
-        let s = UIStackView(arrangedSubviews: [label, cameraButton])
-        s.axis = .vertical; s.spacing = 4; s.alignment = .leading
-        return s
+    private let backButton: UIButton = {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: "chevron.left")
+        configuration.baseForegroundColor = Theme.text
+        let button = UIButton(configuration: configuration)
+        button.accessibilityLabel = "Back"
+        return button
     }()
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
@@ -58,22 +52,26 @@ final class AIPreferencesViewController: UIViewController {
 
         viewModel.onItemsChange = { [weak self] in self?.renderItems() }
         viewModel.onEditingChange = { [weak self] in self?.renderEditing() }
+        backButton.addAction(UIAction { [weak self] _ in self?.onBack?() }, for: .touchUpInside)
         editButton.addAction(UIAction { [weak self] _ in self?.viewModel.toggleEditing() }, for: .touchUpInside)
         addButton.addAction(UIAction { [weak self] _ in self?.addTapped() }, for: .touchUpInside)
-        cameraButton.addAction(UIAction { [weak self] _ in self?.onCameraTapped?() }, for: .touchUpInside)
 
-        [collectionView, titleLabel, countLabel, editButton, emptyLabel, addButton, cameraStack].forEach {
+        [collectionView, titleLabel, subtitleLabel, backButton, editButton, emptyLabel, addButton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false; view.addSubview($0)
         }
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 24),
             titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            backButton.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 8),
+            backButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            backButton.widthAnchor.constraint(equalToConstant: 44),
+            backButton.heightAnchor.constraint(equalToConstant: 44),
             editButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
             editButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-            countLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
-            countLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            collectionView.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 16),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            subtitleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            collectionView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -82,29 +80,17 @@ final class AIPreferencesViewController: UIViewController {
             addButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
             addButton.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -24),
             addButton.widthAnchor.constraint(equalToConstant: 52),
-            addButton.heightAnchor.constraint(equalToConstant: 52),
-            cameraStack.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24),
-            cameraStack.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -24),
-            cameraButton.widthAnchor.constraint(equalToConstant: 64),
-            cameraButton.heightAnchor.constraint(equalToConstant: 64)
+            addButton.heightAnchor.constraint(equalToConstant: 52)
         ])
         renderItems()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        if viewModel.shouldPresentPermissionOnLaunch() { requestAccessThenPick() }
     }
 
     // MARK: - Render
 
     private func renderItems() {
-        let has = viewModel.hasItems
-        emptyLabel.isHidden = has
-        collectionView.isHidden = !has
-        countLabel.isHidden = !has
-        cameraStack.isHidden = !has
-        countLabel.text = viewModel.countText
+        emptyLabel.isHidden = viewModel.hasItems
+        collectionView.isHidden = !viewModel.hasItems
+        subtitleLabel.text = viewModel.subtitleText
         collectionView.reloadData()
     }
 

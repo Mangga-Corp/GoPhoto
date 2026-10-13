@@ -6,13 +6,7 @@ struct MyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ChoosePhotosFlowView(onCameraTapped: {
-                showCamera = true
-            })
-            .ignoresSafeArea()
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraView()
-            }
+            ContentView()
         }
     }
 }

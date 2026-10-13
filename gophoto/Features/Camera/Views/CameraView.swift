@@ -49,10 +49,22 @@ struct CameraView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        .overlay(alignment: .topTrailing){
+            if isLiveCamera {
+                AIPreferencesButton()
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+            }
+        }
     }
 
     // MARK: - Subviews
-
+    
+    private var isLiveCamera: Bool {
+        if case .running = viewModel.state { return viewModel.capturedPhoto == nil }
+        return false
+    }
+    
     private var liveCamera: some View {
         CameraPreviewView(session: viewModel.session)
             .overlay {

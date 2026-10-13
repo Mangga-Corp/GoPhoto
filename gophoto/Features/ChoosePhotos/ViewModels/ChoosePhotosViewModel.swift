@@ -15,25 +15,24 @@ final class ChoosePhotosViewModel {
     // Bindings, set by the view
     var onItemsChange: (() -> Void)?
     var onEditingChange: (() -> Void)?
+    /// Called after every add/remove so the owner can store the photos.
+    var onPhotosChange: (([PhotoItem]) -> Void)?
 
     private let service: ChoosePhotosService
-    private(set) var items: [PhotoItem] = []
+    private let preferenceName: String
+    private(set) var items: [PhotoItem]
     private(set) var isEditing = false { didSet { onEditingChange?() } }
-    private var didCheckPermission = false
 
-    init(service: ChoosePhotosService) { self.service = service }
+    init(service: ChoosePhotosService, preferenceName: String, items: [PhotoItem]) {
+        self.service = service
+        self.preferenceName = preferenceName
+        self.items = items
+    }
 
     var hasItems: Bool { !items.isEmpty }
-    var countText: String { "\(items.count)/\(Self.maxPhotos)" }
+    var subtitleText: String { hasItems ? "\(preferenceName) · \(items.count)/\(Self.maxPhotos)" : preferenceName }
     var editButtonTitle: String { isEditing ? "Done" : "Edit" }
     var limitMessage: String { "You can add up to \(Self.maxPhotos) photos." }
-
-    /// True only once (first appearance) and only if the system prompt hasn't been answered yet.
-    func shouldPresentPermissionOnLaunch() -> Bool {
-        guard !didCheckPermission else { return false }
-        didCheckPermission = true
-        return service.access == .notDetermined
-    }
 
     func addTapped() -> AddDestination {
         guard items.count < Self.maxPhotos else { return .limitReached }
@@ -56,6 +55,7 @@ final class ChoosePhotosViewModel {
         guard !newItems.isEmpty else { return }
         items += newItems.prefix(Self.maxPhotos - items.count)
         onItemsChange?()
+        onPhotosChange?(items)
     }
 
     func toggleEditing() {
@@ -68,5 +68,6 @@ final class ChoosePhotosViewModel {
         items.remove(at: index)
         if items.isEmpty { isEditing = false }
         onItemsChange?()
+        onPhotosChange?(items)
     }
 }
