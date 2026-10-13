@@ -16,7 +16,10 @@ import UIKit
 struct CameraView: View {
     @State private var viewModel = CameraViewModel()
     @Environment(\.openURL) private var openURL
-
+    
+    @State private var isShowingGallery = false
+    @Namespace private var galleryZoom
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -49,6 +52,22 @@ struct CameraView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        .fullScreenCover(isPresented: $isShowingGallery) {
+            NavigationStack {
+                GalleryView(viewModel: GalleryViewModel())
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                isShowingGallery = false
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                            }
+                            .accessibilityLabel("Back")
+                        }
+                    }
+            }
+            .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
+        }
     }
 
     // MARK: - Layout (like the Camera app: slim top bar, 4:3 image, big bottom area)
@@ -71,6 +90,11 @@ struct CameraView: View {
 
             shutterButton
                 .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
+                .overlay(alignment: .leading){
+                    GalleryShortcutButton {isShowingGallery = true}
+                        .matchedTransitionSource(id: "gallery", in: galleryZoom)
+                        .padding(.leading, 24)
+                }
         }
         .task { await viewModel.observeTilt() }
         .task { await viewModel.observePerson() }

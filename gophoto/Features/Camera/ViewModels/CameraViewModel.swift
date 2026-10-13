@@ -56,13 +56,16 @@ final class CameraViewModel {
     @ObservationIgnored private let cameraService: CameraServiceProtocol
     @ObservationIgnored private let motionService: MotionServiceProtocol
     @ObservationIgnored private let photoLibraryService: PhotoLibraryServiceProtocol
+    @ObservationIgnored private let galleryStore: GalleryStoreProtocol
 
     init(cameraService: CameraServiceProtocol = CameraService(),
          motionService: MotionServiceProtocol = MotionService(),
-         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService()){
+         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService(),
+         galleryStore: GalleryStoreProtocol? = nil){
         self.cameraService = cameraService
         self.motionService = motionService
         self.photoLibraryService = photoLibraryService
+        self.galleryStore = galleryStore ?? GalleryStore()
     }
 
     // MARK: Intents (things the View asks for)
@@ -132,7 +135,10 @@ final class CameraViewModel {
         saveState = .saving
         
         do {
-            try await photoLibraryService.save(imageData: photo.data)
+            let assetID = try await photoLibraryService.save(imageData: photo.data)
+            if let assetID {
+                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+            }
             saveState = .saved
             
             // Let the user see: "Saved ✓" briefly, then return to the camera
