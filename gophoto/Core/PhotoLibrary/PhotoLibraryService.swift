@@ -32,28 +32,31 @@ nonisolated enum PhotoLibraryError: LocalizedError {
 // MARK: - Protocol
 
 nonisolated protocol PhotoLibraryServiceProtocol: AnyObject {
-    func save(imageData: Data) async throws
+    func save(imageData: Data) async throws -> String?
 }
 
 // MARK: - Real implementation
 
 nonisolated final class PhotoLibraryService: PhotoLibraryServiceProtocol, @unchecked Sendable {
 
-    func save(imageData: Data) async throws {
+    func save(imageData: Data) async throws -> String? {
         // Shows the iOS popup the first time; afterwards it returns the saved answer instantly
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized else {
             throw PhotoLibraryError.permissionDenied
         }
-
+        nonisolated(unsafe) var assetID: String?
+        
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 // Save the ORIGINAL file (keeps full quality + metadata)
                 let request = PHAssetCreationRequest.forAsset()
                 request.addResource(with: .photo, data: imageData, options: nil)
+                assetID = request.placeholderForCreatedAsset?.localIdentifier
             }
         } catch {
             throw PhotoLibraryError.saveFailed
         }
+        return assetID
     }
 }
