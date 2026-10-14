@@ -30,7 +30,8 @@ struct GalleryView: View {
             .navigationDestination(for: GalleryPhoto.self){photo in
                 PhotoPagerView(photos: photos,
                                startID: photo.assetID,
-                               loadImage: viewModel.fullImage)
+                               loadImage: viewModel.fullImage,
+                               loadThumbnail: viewModel.thumbnail)
                 .navigationTransition(.zoom(sourceID: photo.assetID, in: photoZoom))
             }
     }

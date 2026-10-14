@@ -12,16 +12,18 @@ struct PhotoPagerView: View {
     
     let photos: [GalleryPhoto]
     let loadImage: (String, CGSize) async -> UIImage?
-
+    let loadThumbnail: (String,CGSize) async -> UIImage?
     /// assetID of the image currently on screen
     @State private var currentID: String
 
     /// - Parameter startID: assetID of the photo that was tapped in the grid
     init(photos: [GalleryPhoto],
          startID: String,
-         loadImage: @escaping (String, CGSize) async -> UIImage?) {
+         loadImage: @escaping (String, CGSize) async -> UIImage?,
+    loadThumbnail: @escaping (String, CGSize) async -> UIImage?) {
         self.photos = photos
         self.loadImage = loadImage
+        self.loadThumbnail = loadThumbnail
         _currentID = State(initialValue: startID)
     }
 
@@ -37,6 +39,11 @@ struct PhotoPagerView: View {
         .tabViewStyle(.page(indexDisplayMode: .never))   // swipe pages, no dots (like Photos)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom){
+            PhotoStripView(photos: photos,
+                           currentID: $currentID,
+                           loadThumbnail: loadThumbnail,).background(.bar)
+        }
     }
 
     /// Date + time of the photo on screen, shown in the nav bar like the Photos app
@@ -63,7 +70,8 @@ extension GalleryPhoto {
     NavigationStack {
         PhotoPagerView(photos: GalleryPhoto.previewSamples(5),
                        startID: "asset-2",
-                       loadImage: MockImageLoader().fullImage)
+                       loadImage: MockImageLoader().fullImage,
+                       loadThumbnail: MockImageLoader().thumbnail)
     }
 }
 #endif // DEBUG
