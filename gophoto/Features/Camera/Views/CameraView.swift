@@ -124,7 +124,12 @@ struct CameraView: View {
 
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
     private var topBar: some View {
-        Color.clear.frame(height: 44)
+        HStack {
+            Spacer()
+            AIPreferencesButton()
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+        }
     }
 
     private var shutterButton: some View {
