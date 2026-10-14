@@ -35,4 +35,7 @@ final class GalleryViewModel {
     func thumbnail(for assetID: String, targetSize: CGSize) async -> UIImage? {
         await imageLoader.thumbnail(for: assetID, targetSize: targetSize)
     }
+    func fullImage(for assetID: String, targetSize: CGSize ) async -> UIImage? {
+        await imageLoader.fullImage(for: assetID, targetSize: targetSize)
+    }
 }

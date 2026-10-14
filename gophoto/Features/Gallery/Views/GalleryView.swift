@@ -19,13 +19,20 @@ struct GalleryView: View {
 
     /// Open setting page for this app
     @Environment(\.openURL) private var openURL
-
+    @Namespace private var photoZoom
+    
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
         content
             .navigationTitle("Gallery")
             .task { await viewModel.onAppear() }
+            .navigationDestination(for: GalleryPhoto.self){photo in
+                PhotoPagerView(photos: photos,
+                               startID: photo.assetID,
+                               loadImage: viewModel.fullImage)
+                .navigationTransition(.zoom(sourceID: photo.assetID, in: photoZoom))
+            }
     }
 
     @ViewBuilder
@@ -62,11 +69,14 @@ struct GalleryView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 2) {
                         ForEach(photos) { photo in
-                            GalleryThumbnailView(
-                                assetID: photo.assetID,
-                                createdAt: photo.createdAt,
-                                loadThumbnail: viewModel.thumbnail
-                            )
+                            NavigationLink(value: photo){
+                                GalleryThumbnailView(
+                                    assetID: photo.assetID,
+                                    createdAt: photo.createdAt,
+                                    loadThumbnail: viewModel.thumbnail
+                                )
+                            }.buttonStyle(.plain)
+                                .matchedTransitionSource(id: photo.assetID, in: photoZoom)
                         }
                     }
                 }
