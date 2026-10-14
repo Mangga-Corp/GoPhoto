@@ -41,8 +41,12 @@ final class CameraViewModel {
     // for the guide frame
     private(set) var target: FramingTarget = .center   // later: from AI preferences
     private(set) var personOutline: CGImage?
-    private(set) var isAligned = false
-    
+    private(set) var instruction: GuideInstruction = .findPerson
+    var isReady: Bool { instruction == .holdStill }      // "green"
+
+    @ObservationIgnored private var personBox: CGRect?   // logic only, never drawn
+    @ObservationIgnored private var roll: Double = 0     // logic only, never drawn
+
     var isLevel: Bool { horizon == .level }
 
     var isShowingError: Bool {
@@ -86,10 +90,13 @@ final class CameraViewModel {
     
     func observeTilt() async {
         for await tilt in motionService.tiltUpdates() {
+            roll = tilt.roll
+
             let next = HorizonState.next(roll: tilt.roll, pitch: tilt.pitch, current: horizon)
             if next != horizon {
                 horizon = next
             }
+            updateInstruction()
         }
         horizon = .hidden
     }
@@ -103,15 +110,22 @@ final class CameraViewModel {
                 personOutline = newOutline
             }
 
-            // Alignment: still uses the box centre (stable + cheap)
-            let tolerance: CGFloat = isAligned ? 0.09 : 0.06
-            let aligned = detection.map { target.isAligned(with: $0.box, tolerance: tolerance) } ?? false
-            if aligned != isAligned {
-                isAligned = aligned
-            }
+            // Logic
+            personBox = detection?.box
+            updateInstruction()
         }
         personOutline = nil
-        isAligned = false
+        personBox = nil
+        instruction = .findPerson
+    }
+
+    private func updateInstruction() {
+        let next = GuideInstruction.next(offset: personBox.map(target.offset(of:)),
+                                         roll: roll,
+                                         current: instruction)
+        if next != instruction {
+            instruction = next
+        }
     }
 
     func stopCamera() async {
