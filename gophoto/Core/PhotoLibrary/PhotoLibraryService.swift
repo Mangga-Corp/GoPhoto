@@ -41,8 +41,8 @@ nonisolated final class PhotoLibraryService: PhotoLibraryServiceProtocol, @unche
 
     func save(imageData: Data) async throws -> String? {
         // Shows the iOS popup the first time; afterwards it returns the saved answer instantly
-        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        guard status == .authorized else {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
             throw PhotoLibraryError.permissionDenied
         }
         nonisolated(unsafe) var assetID: String?

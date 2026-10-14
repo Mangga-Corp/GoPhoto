@@ -4,7 +4,6 @@
 //
 //  Created by Brian Juniarta Darmadi on 10/10/26.
 //
-
 //
 //  CameraView.swift
 //  gophoto
@@ -18,6 +17,7 @@ struct CameraView: View {
     @Environment(\.openURL) private var openURL
     
     @State private var isShowingGallery = false
+    @State private var isFlashing = false
     @Namespace private var galleryZoom
     
     var body: some View {
@@ -29,11 +29,7 @@ struct CameraView: View {
                 ProgressView().tint(.white)
 
             case .running:
-                if let photo = viewModel.capturedPhoto {
-                    photoReview(photo.image)
-                } else {
-                    liveCamera
-                }
+                liveCamera
 
             case .permissionDenied:
                 permissionDenied
@@ -92,6 +88,11 @@ struct CameraView: View {
                     InstructionPill(instruction: viewModel.instruction)
                         .padding(.top, 12)
                 }
+                .overlay {
+                    Color.black
+                        .opacity(isFlashing ? 1 : 0)
+                        .allowsHitTesting(false)
+                }
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .layoutPriority(1)
 
@@ -111,6 +112,14 @@ struct CameraView: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isReady) { _, isNowReady in
             isNowReady
         }
+        .onChange(of: viewModel.captureCount) {
+            Task {
+                isFlashing = true
+                try? await Task.sleep(for: .milliseconds(60))
+                withAnimation(.easeOut(duration: 0.2)) { isFlashing = false }
+            }
+        }
+        .sensoryFeedback(.impact(flexibility: .rigid, intensity: 1.0), trigger: viewModel.captureCount)
     }
 
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
@@ -130,48 +139,6 @@ struct CameraView: View {
         .disabled(viewModel.isCapturing)
         .opacity(viewModel.isCapturing ? 0.5 : 1)
         .accessibilityLabel("Take photo")
-    }
-
-    /// Same layout as the live camera, so the photo appears exactly where you framed it.
-    private func photoReview(_ image: UIImage) -> some View {
-        VStack(spacing: 0) {
-            topBar
-
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .layoutPriority(1)
-
-            reviewButtons
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var reviewButtons: some View {
-        HStack(spacing: 16) {
-            Button("Retake") { viewModel.retake() }
-                .buttonStyle(.bordered)
-                .tint(.white)
-
-            Button {
-                Task { await viewModel.savePhoto() }
-            } label: {
-                Group {
-                    switch viewModel.saveState {
-                    case .idle:   Label("Save", systemImage: "square.and.arrow.down")
-                    case .saving: ProgressView()
-                    case .saved:  Label("Saved", systemImage: "checkmark")
-                    }
-                }
-                .frame(minWidth: 90)
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .controlSize(.large)
-        .disabled(viewModel.saveState != .idle)
-        .sensoryFeedback(.success, trigger: viewModel.saveState) { _, newState in
-            newState == .saved
-        }
     }
 
     private var permissionDenied: some View {
