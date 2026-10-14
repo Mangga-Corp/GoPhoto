@@ -15,7 +15,8 @@ import UIKit
 struct CameraView: View {
     @State private var viewModel = CameraViewModel()
     @Environment(\.openURL) private var openURL
-    
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var isShowingGallery = false
     @State private var isFlashing = false
     @Namespace private var galleryZoom
@@ -34,14 +35,26 @@ struct CameraView: View {
             case .permissionDenied:
                 permissionDenied
 
+            case .restricted:
+                ContentUnavailableView("Camera Not Available",
+                                       systemImage: "lock",
+                                       description: Text("Camera access is restricted on this iPhone (for example by Screen Time), so GoPhoto can't use it."))
+                .foregroundStyle(.white)
+
             case .failed(let message):
                 ContentUnavailableView("Camera Unavailable",
                                        systemImage: "exclamationmark.triangle",
                                        description: Text(message))
                     .foregroundStyle(.white)
             }
+
         }
         .task { await viewModel.startCamera() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.recheckPermission() }
+            }
+        }
         .onDisappear { Task { await viewModel.stopCamera() } }
         .alert("Something went wrong", isPresented: $viewModel.isShowingError) {
             Button("OK", role: .cancel) {}
@@ -150,7 +163,7 @@ struct CameraView: View {
         ContentUnavailableView {
             Label("Camera Access Needed", systemImage: "camera")
         } description: {
-            Text("GoPhoto needs your camera to guide photos. Turn it on in Settings.")
+            Text("GoPhoto needs your camera to guide photos. Tap Open Settings, then turn on Camera.")
         } actions: {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
