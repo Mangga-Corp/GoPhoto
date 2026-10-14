@@ -20,23 +20,15 @@ enum CameraState: Equatable {
     case failed(String)
 }
 
-enum SaveState: Equatable {
-    case idle
-    case saving
-    case saved
-}
-
 @Observable
 final class CameraViewModel {
 
     // MARK: State the View reads
     private(set) var state: CameraState = .idle
-    private(set) var capturedPhoto: CapturedPhoto?
     private(set) var isCapturing = false
-    private(set) var saveState: SaveState = .idle
     private(set) var errorMessage: String?
-
     private(set) var horizon: HorizonState = .hidden
+    private(set) var captureCount = 0
 
     // for the guide frame
     private(set) var target: FramingTarget = .center   // later: from AI preferences
@@ -135,38 +127,24 @@ final class CameraViewModel {
     func takePhoto() async {
         guard state == .running, !isCapturing else { return }
         isCapturing = true
-        defer { isCapturing = false }
 
+        let photo: CapturedPhoto
         do {
-            capturedPhoto = try await cameraService.capturePhoto()
+            photo = try await cameraService.capturePhoto()
         } catch {
+            isCapturing = false
             errorMessage = error.localizedDescription
+            return
         }
-    }
+        isCapturing = false
+        captureCount += 1
 
-    func savePhoto() async {
-        guard let photo = capturedPhoto, saveState == .idle else { return }
-        saveState = .saving
-        
         do {
-            let assetID = try await photoLibraryService.save(imageData: photo.data)
-            if let assetID {
+            if let assetID = try await photoLibraryService.save(imageData: photo.data) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
             }
-            saveState = .saved
-            
-            // Let the user see: "Saved ✓" briefly, then return to the camera
-            try? await Task.sleep(for: .seconds(1))
-            capturedPhoto = nil
-            saveState = .idle
         } catch {
-            saveState = .idle
             errorMessage = error.localizedDescription
         }
-    }
-    
-    func retake() {
-        guard saveState == .idle else { return }
-        capturedPhoto = nil
     }
 }

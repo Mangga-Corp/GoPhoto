@@ -10,9 +10,22 @@
 		000000000000000000000120 /* gophoto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = gophoto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D31644A8307F88BC00DBBFBC /* Exceptions for "gophoto" folder in "gophoto" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 000000000000000100000000 /* gophoto */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* gophoto */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D31644A8307F88BC00DBBFBC /* Exceptions for "gophoto" folder in "gophoto" target */,
+			);
 			path = gophoto;
 			sourceTree = "<group>";
 		};
@@ -257,8 +270,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -298,8 +313,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
