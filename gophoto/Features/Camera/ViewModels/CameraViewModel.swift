@@ -18,6 +18,7 @@ enum CameraState: Equatable {
     case running
     case permissionDenied
     case failed(String)
+    case restricted
 }
 
 @Observable
@@ -67,10 +68,12 @@ final class CameraViewModel {
     // MARK: Intents (things the View asks for)
 
     func startCamera() async {
-        guard await cameraService.requestPermission() else {
-            state = .permissionDenied
-            return
+        switch await cameraService.requestPermission() {
+        case .granted: break
+        case .denied:   state = .permissionDenied; return
+        case .restricted: state = .restricted; return
         }
+
         do {
             try await cameraService.configure()
             await cameraService.start()
@@ -79,7 +82,12 @@ final class CameraViewModel {
             state = .failed(error.localizedDescription)
         }
     }
-    
+
+    func recheckPermission() async {
+        guard state == .permissionDenied || state == .restricted else { return }
+        await startCamera()
+    }
+
     func observeTilt() async {
         for await tilt in motionService.tiltUpdates() {
             roll = tilt.roll
