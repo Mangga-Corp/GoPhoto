@@ -18,11 +18,15 @@ final class GalleryViewModel {
     private let authorization: PhotoAuthorizationProtocol
 
     private let imageLoader: ImageLoaderProtocol
-
+    
+    private let gallerySync: GallerySync
+    
     init(authorization: PhotoAuthorizationProtocol = PhotoAuthorization(),
-         imageLoader: ImageLoaderProtocol = ImageLoader()) {
+         imageLoader: ImageLoaderProtocol = ImageLoader(),
+         gallerySync: GallerySync? = nil ) {
         self.authorization = authorization
         self.imageLoader = imageLoader
+        self.gallerySync = gallerySync ?? GallerySync()
     }
 
     func onAppear() async {
@@ -30,7 +34,13 @@ final class GalleryViewModel {
         if access == .notDetermined {
             access = await authorization.requestAccess()
         }
+        removeDeletedPhotos()
     }
+    
+    func removeDeletedPhotos() {
+           guard access == .allowed else { return }
+           gallerySync.removeDeletedPhotos()
+       }
 
     func thumbnail(for assetID: String, targetSize: CGSize) async -> UIImage? {
         await imageLoader.thumbnail(for: assetID, targetSize: targetSize)

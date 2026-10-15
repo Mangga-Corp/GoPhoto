@@ -19,6 +19,7 @@ struct GalleryView: View {
 
     /// Open setting page for this app
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var photoZoom
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
@@ -27,6 +28,9 @@ struct GalleryView: View {
         content
             .navigationTitle("Gallery")
             .task { await viewModel.onAppear() }
+            .onChange(of: scenePhase,){_, phase in if phase == .active {viewModel.removeDeletedPhotos()
+                }
+            }
             .navigationDestination(for: GalleryPhoto.self){photo in
                 PhotoPagerView(photos: photos,
                                startID: photo.assetID,
