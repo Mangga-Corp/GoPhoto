@@ -13,6 +13,7 @@ protocol GalleryStoreProtocol: AnyObject {
     ///   - assetID: localIdentifier returned by PhotoLibraryService.save
     ///   - presetID: active preset, nil until presets exist
     func addCaptured(assetID: String, presetID: UUID?)
+    func remove(assetIDs: [String])
 }
 
 final class GalleryStore: GalleryStoreProtocol {
@@ -28,6 +29,16 @@ final class GalleryStore: GalleryStoreProtocol {
         context.insert(GalleryPhoto(assetID: assetID, presetID: presetID))
         try? context.save()
     }
+    func remove(assetIDs: [String]){
+        let descriptor = FetchDescriptor<GalleryPhoto>(
+            predicate: #Predicate { assetIDs.contains($0.assetID)}
+        )
+        guard let photos = try? context.fetch(descriptor) else {return}
+        for photo in photos{
+            context.delete(photo)
+        }
+        try? context.save()
+    }
 }
 
 // MARK: - Mock (Previews & tests only)
@@ -36,9 +47,12 @@ final class GalleryStore: GalleryStoreProtocol {
 final class MockGalleryStore: GalleryStoreProtocol {
     /// IDs passed in, so tests can check what was recorded
     private(set) var addedIDs: [String] = []
-
+    private(set) var removedIDs: [String] = []
     func addCaptured(assetID: String, presetID: UUID?) {
         addedIDs.append(assetID)
+    }
+    func remove(assetIDs: [String]) {
+        removedIDs += assetIDs
     }
 }
 #endif // DEBUG

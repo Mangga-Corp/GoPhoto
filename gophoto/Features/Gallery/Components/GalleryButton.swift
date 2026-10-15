@@ -18,7 +18,8 @@ struct GalleryShortcutButton: View {
     @State private var loader = ImageLoader()
     @State private var image: UIImage?
     @Environment(\.displayScale) private var displayScale
-
+    @Environment(\.scenePhase) private var scenePhase
+    
     private let size: CGFloat = 52
 
     static var newestPhoto: FetchDescriptor<GalleryPhoto> {
@@ -55,6 +56,9 @@ struct GalleryShortcutButton: View {
             }
             let pixels = size * displayScale
             image = await loader.thumbnail(for: assetID, targetSize: CGSize(width: pixels, height: pixels))
+        }
+        .task(id: scenePhase){
+            if scenePhase == .active{GallerySync().removeDeletedPhotos()}
         }
     }
 }

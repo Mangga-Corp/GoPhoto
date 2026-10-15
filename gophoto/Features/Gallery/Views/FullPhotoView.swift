@@ -19,16 +19,17 @@ struct FullPhotoView: View {
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
     @State private var isMissing = false
+    @State private var isSharp = false
 
     var body: some View {
         // GeometryReader gives the page size, so we ask Photos for a screen-sized image
         GeometryReader { proxy in
             ZStack {
                 if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()          // whole photo visible, no crop
-                } else if isMissing {
+                    // Pinch / double-tap to zoom, pan while zoomed
+                    ZoomableImageView(image: image) {
+                        loadSharperImage(screenSize: proxy.size)
+                    }                } else if isMissing {
                     ContentUnavailableView(
                         "Photo Not Available",
                         systemImage: "photo.badge.exclamationmark",
@@ -49,6 +50,20 @@ struct FullPhotoView: View {
         }
         .accessibilityElement()
         .accessibilityLabel(Text("Photo, \(createdAt.formatted(date: .abbreviated, time: .shortened))"))
+   
+    }
+    /// First zoom → fetch a bigger version once, so the photo stays sharp.
+    /// Photos never returns more than the original size, so 3× screen is safe.
+    private func loadSharperImage(screenSize: CGSize) {
+        guard !isSharp else { return }
+        isSharp = true   // set first: zoom fires many times while pinching
+        let pixels = CGSize(width: screenSize.width * displayScale * 3,
+                            height: screenSize.height * displayScale * 3)
+        Task {
+            if let sharp = await loadImage(assetID, pixels) {
+                image = sharp
+            }
+        }
     }
 }
 
