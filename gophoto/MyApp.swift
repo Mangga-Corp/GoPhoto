@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct MyApp: App {
@@ -19,5 +20,7 @@ struct MyApp: App {
             }
             .animation(.easeInOut(duration: 0.4), value: hasCompletedOnboarding)
         }
+        // Local Database for app, currently used for saving properties inside Core/Gallery/GalleryPhotos
+        .modelContainer(AppDatabase.container)
     }
 }
