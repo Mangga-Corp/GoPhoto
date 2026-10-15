@@ -21,12 +21,19 @@ final class GalleryViewModel {
     
     private let gallerySync: GallerySync
     
+    private let photoDeleter: PhotoDeleterProtocol
+    private let galleryStore: GalleryStoreProtocol
+    var deleteErrorMessage: String?
     init(authorization: PhotoAuthorizationProtocol = PhotoAuthorization(),
          imageLoader: ImageLoaderProtocol = ImageLoader(),
-         gallerySync: GallerySync? = nil ) {
+         gallerySync: GallerySync? = nil,
+         photoDeleter: PhotoDeleterProtocol = PhotoDeleter(),
+         galleryStore: GalleryStoreProtocol? = nil) {
         self.authorization = authorization
         self.imageLoader = imageLoader
         self.gallerySync = gallerySync ?? GallerySync()
+        self.photoDeleter = photoDeleter
+        self.galleryStore = galleryStore ?? GalleryStore()
     }
 
     func onAppear() async {
@@ -47,5 +54,20 @@ final class GalleryViewModel {
     }
     func fullImage(for assetID: String, targetSize: CGSize ) async -> UIImage? {
         await imageLoader.fullImage(for: assetID, targetSize: targetSize)
+    }
+    func delete(assetID: String) async -> Bool {
+        do {
+            // 1. iOS asks "Allow GoPhoto to delete this photo?"
+            try await photoDeleter.delete(assetIDs: [assetID])
+            // 2. Only after Photos confirms, remove our record.
+            galleryStore.remove(assetIDs: [assetID])
+            return true
+        } catch let error where error.isUserCancelled {
+            // User tapped "Don't Allow": not an error, stay quiet.
+            return false
+        } catch {
+            deleteErrorMessage = "Couldn't delete this photo. Please try again."
+            return false
+        }
     }
 }

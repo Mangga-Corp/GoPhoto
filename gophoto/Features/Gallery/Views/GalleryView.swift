@@ -13,41 +13,48 @@ import SwiftData
 
 struct GalleryView: View {
     @State var viewModel: GalleryViewModel
-
+    
     @Query(sort: \GalleryPhoto.createdAt, order: .reverse)
     private var photos: [GalleryPhoto]
-
+    
     /// Open setting page for this app
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var photoZoom
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
-
+    
     var body: some View {
         content
             .navigationTitle("Gallery")
             .task { await viewModel.onAppear() }
             .onChange(of: scenePhase,){_, phase in if phase == .active {viewModel.removeDeletedPhotos()
-                }
             }
-            .navigationDestination(for: GalleryPhoto.self){photo in
+            }
+            .navigationDestination(for: GalleryPhoto.self) { photo in
                 PhotoPagerView(photos: photos,
                                startID: photo.assetID,
                                loadImage: viewModel.fullImage,
-                               loadThumbnail: viewModel.thumbnail)
+                               loadThumbnail: viewModel.thumbnail,
+                               onDelete: viewModel.delete)
                 .navigationTransition(.zoom(sourceID: photo.assetID, in: photoZoom))
+                // Alert lives on the pager (the screen on top), not on the grid
+                .alert("Couldn't Delete", isPresented: isShowingDeleteError) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text(viewModel.deleteErrorMessage ?? "")
+                }
             }
     }
-
+    
     @ViewBuilder
     private var content: some View {
         switch viewModel.access {
-
+            
         case .notDetermined:
             ProgressView()
-
-        // User said no (or access is restricted): explain + offer a way to fix it
+            
+            // User said no (or access is restricted): explain + offer a way to fix it
         case .denied:
             ContentUnavailableView {
                 Label("No Access to Photos", systemImage: "photo.badge.exclamationmark")
@@ -60,8 +67,8 @@ struct GalleryView: View {
                     }
                 }
             }
-
-        // Allowed (full or limited)
+            
+            // Allowed (full or limited)
         case .allowed:
             if photos.isEmpty {
                 ContentUnavailableView(
@@ -87,6 +94,12 @@ struct GalleryView: View {
                 }
             }
         }
+    }
+    private var isShowingDeleteError: Binding<Bool> {
+        Binding(
+            get: { viewModel.deleteErrorMessage != nil },
+            set: { if !$0 { viewModel.deleteErrorMessage = nil } }
+        )
     }
 }
 
