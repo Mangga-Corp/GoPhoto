@@ -55,19 +55,23 @@ final class GalleryViewModel {
     func fullImage(for assetID: String, targetSize: CGSize ) async -> UIImage? {
         await imageLoader.fullImage(for: assetID, targetSize: targetSize)
     }
-    func delete(assetID: String) async -> Bool {
+
+    func delete(assetIDs: [String]) async -> Bool {
+        guard !assetIDs.isEmpty else { return false }
         do {
-            // 1. iOS asks "Allow GoPhoto to delete this photo?"
-            try await photoDeleter.delete(assetIDs: [assetID])
-            // 2. Only after Photos confirms, remove our record.
-            galleryStore.remove(assetIDs: [assetID])
+            try await photoDeleter.delete(assetIDs: assetIDs)
+            galleryStore.remove(assetIDs: assetIDs)
             return true
         } catch let error where error.isUserCancelled {
-            // User tapped "Don't Allow": not an error, stay quiet.
             return false
         } catch {
-            deleteErrorMessage = "Couldn't delete this photo. Please try again."
+            deleteErrorMessage = assetIDs.count == 1
+                ? "Couldn't delete this photo. Please try again."
+                : "Couldn't delete these photos. Please try again."
             return false
         }
     }
-}
+
+    func delete(assetID: String) async -> Bool {
+        await delete(assetIDs: [assetID])
+    }}
