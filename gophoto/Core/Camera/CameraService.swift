@@ -25,6 +25,12 @@ nonisolated struct CapturedPhoto: Sendable {
     let image: UIImage  // Decoded image -> for showing on screen (view -> iPhone screen)
 }
 
+/// Result of asking for camera access.
+nonisolated enum CameraPermission: Sendable {
+    case granted
+    case denied       // user said no -> can fix in Settings
+    case restricted   // blocked by Screen Time / device management → user can't fix it
+}
 
 // MARK: - Errors
 
@@ -50,7 +56,7 @@ nonisolated enum CameraError: LocalizedError {
 
 nonisolated protocol CameraServiceProtocol: AnyObject {
     var session: AVCaptureSession { get }
-    func requestPermission() async -> Bool
+    func requestPermission() async -> CameraPermission
     func configure() async throws
     func start() async
     func stop() async
@@ -77,11 +83,12 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private var frameCount = 0                                                      
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
-    func requestPermission() async -> Bool {
+    func requestPermission() async -> CameraPermission {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:    return true
-        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .video)
-        default:             return false   // .denied or .restricted
+        case .authorized:    return .granted
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .video) ? .granted : .denied
+        case .restricted:    return .restricted
+        default:             return .denied
         }
     }
 

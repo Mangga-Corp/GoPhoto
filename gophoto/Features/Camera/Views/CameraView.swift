@@ -4,7 +4,6 @@
 //
 //  Created by Brian Juniarta Darmadi on 10/10/26.
 //
-
 //
 //  CameraView.swift
 //  gophoto
@@ -16,7 +15,12 @@ import UIKit
 struct CameraView: View {
     @State private var viewModel = CameraViewModel()
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
+    @State private var isShowingGallery = false
+    @State private var isFlashing = false
+    @Namespace private var galleryZoom
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -26,14 +30,16 @@ struct CameraView: View {
                 ProgressView().tint(.white)
 
             case .running:
-                if let photo = viewModel.capturedPhoto {
-                    photoReview(photo.image)
-                } else {
-                    liveCamera
-                }
+                liveCamera
 
             case .permissionDenied:
                 permissionDenied
+
+            case .restricted:
+                ContentUnavailableView("Camera Not Available",
+                                       systemImage: "lock",
+                                       description: Text("Camera access is restricted on this iPhone (for example by Screen Time), so GoPhoto can't use it."))
+                .foregroundStyle(.white)
 
             case .failed(let message):
                 ContentUnavailableView("Camera Unavailable",
@@ -41,56 +47,102 @@ struct CameraView: View {
                                        description: Text(message))
                     .foregroundStyle(.white)
             }
+
         }
         .task { await viewModel.startCamera() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.recheckPermission() }
+            }
+        }
         .onDisappear { Task { await viewModel.stopCamera() } }
         .alert("Something went wrong", isPresented: $viewModel.isShowingError) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
-        .overlay(alignment: .topTrailing){
-            if isLiveCamera {
-                AIPreferencesButton()
-                    .padding(.top, 8)
-                    .padding(.trailing, 16)
+        .fullScreenCover(isPresented: $isShowingGallery) {
+            NavigationStack {
+                GalleryView(viewModel: GalleryViewModel())
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                isShowingGallery = false
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                            }
+                            .accessibilityLabel("Back")
+                        }
+                    }
             }
+            .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
         }
     }
 
-    // MARK: - Subviews
-    
-    private var isLiveCamera: Bool {
-        if case .running = viewModel.state { return viewModel.capturedPhoto == nil }
-        return false
-    }
-    
+    // MARK: - Layout (like the Camera app: slim top bar, 4:3 image, big bottom area)
+
     private var liveCamera: some View {
-        CameraPreviewView(session: viewModel.session)
-            .overlay {
-                GuideFramesOverlay(target: viewModel.target.rect,
-                                   personOutline: viewModel.personOutline,
-                                   isAligned: viewModel.isAligned)
-            }
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)          // show the FULL photo (no cropping)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .top) {
-                if let degrees = viewModel.tiltDegrees {
-                    TiltIndicatorView(degrees: degrees, isLevel: viewModel.isLevel)
+        VStack(spacing: 0) {
+            topBar
+
+            CameraPreviewView(session: viewModel.session)
+                .overlay {
+                    GuideFramesOverlay(target: viewModel.target.rect,
+                                       personOutline: viewModel.personOutline,
+                                       isAligned: viewModel.isReady)          // green = ready
+                }
+                .overlay {
+                    HorizonLevelView(state: viewModel.horizon)
+                }
+                .overlay {
+                    DirectionArrowOverlay(instruction: viewModel.instruction)
+                }
+                .overlay(alignment: .top) {
+                    InstructionPill(instruction: viewModel.instruction)
                         .padding(.top, 12)
                 }
+                .overlay {
+                    Color.black
+                        .opacity(isFlashing ? 1 : 0)
+                        .allowsHitTesting(false)
+                }
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                .layoutPriority(1)
+
+            shutterButton
+                .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
+                .overlay(alignment: .leading){
+                    GalleryShortcutButton {isShowingGallery = true}
+                        .matchedTransitionSource(id: "gallery", in: galleryZoom)
+                        .padding(.leading, 24)
+                }
+        }
+        .task { await viewModel.observeTilt() }
+        .task { await viewModel.observePerson() }
+        .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
+            isNowLevel
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isReady) { _, isNowReady in
+            isNowReady
+        }
+        .onChange(of: viewModel.captureCount) {
+            Task {
+                isFlashing = true
+                try? await Task.sleep(for: .milliseconds(60))
+                withAnimation(.easeOut(duration: 0.2)) { isFlashing = false }
             }
-            .overlay(alignment: .bottom) {
-                shutterButton.padding(.bottom, 40)
-            }
-            .task { await viewModel.observeTilt() }
-            .task { await viewModel.observePerson() }
-            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
-                isNowLevel
-            }
-            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.isAligned) { _, isNowAligned in
-                isNowAligned                                    //tap only when it BECOMES aligned
-            }
+        }
+        .sensoryFeedback(.impact(flexibility: .rigid, intensity: 1.0), trigger: viewModel.captureCount)
+    }
+
+    /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
+    private var topBar: some View {
+        HStack {
+            Spacer()
+            AIPreferencesButton()
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+        }
     }
 
     private var shutterButton: some View {
@@ -107,48 +159,11 @@ struct CameraView: View {
         .accessibilityLabel("Take photo")
     }
 
-    private func photoReview(_ image: UIImage) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .bottom) {
-                reviewButtons.padding(.bottom, 40)
-            }
-    }
-    
-    private var reviewButtons: some View {
-        HStack(spacing: 16) {
-            Button("Retake") { viewModel.retake() }
-                .buttonStyle(.bordered)
-                .tint(.white)
-
-            Button {
-                Task { await viewModel.savePhoto() }
-            } label: {
-                Group {
-                    switch viewModel.saveState {
-                    case .idle:   Label("Save", systemImage: "square.and.arrow.down")
-                    case .saving: ProgressView()
-                    case .saved:  Label("Saved", systemImage: "checkmark")
-                    }
-                }
-                .frame(minWidth: 90)   // keeps the button from jumping in size
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .controlSize(.large)
-        .disabled(viewModel.saveState != .idle)
-        .sensoryFeedback(.success, trigger: viewModel.saveState) { _, newState in
-            newState == .saved
-        }
-    }
-
     private var permissionDenied: some View {
         ContentUnavailableView {
             Label("Camera Access Needed", systemImage: "camera")
         } description: {
-            Text("GoPhoto needs your camera to guide photos. Turn it on in Settings.")
+            Text("GoPhoto needs your camera to guide photos. Tap Open Settings, then turn on Camera.")
         } actions: {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {

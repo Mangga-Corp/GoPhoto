@@ -18,12 +18,7 @@ enum CameraState: Equatable {
     case running
     case permissionDenied
     case failed(String)
-}
-
-enum SaveState: Equatable {
-    case idle
-    case saving
-    case saved
+    case restricted
 }
 
 @Observable
@@ -31,20 +26,22 @@ final class CameraViewModel {
 
     // MARK: State the View reads
     private(set) var state: CameraState = .idle
-    private(set) var capturedPhoto: CapturedPhoto?
     private(set) var isCapturing = false
-    private(set) var saveState: SaveState = .idle
     private(set) var errorMessage: String?
+    private(set) var horizon: HorizonState = .hidden
+    private(set) var captureCount = 0
 
-    private(set) var tiltDegrees: Int?
-    
     // for the guide frame
-    private(set) var target: FramingTarget = .ruleOfThirdsLeft   // later: from AI preferences
+    private(set) var target: FramingTarget = .center   // later: from AI preferences
     private(set) var personOutline: CGImage?
-    private(set) var isAligned = false
-    
-    var isLevel: Bool { tiltDegrees == 0}
-    
+    private(set) var instruction: GuideInstruction = .findPerson
+    var isReady: Bool { instruction == .holdStill }      // "green"
+
+    @ObservationIgnored private var personBox: CGRect?   // logic only, never drawn
+    @ObservationIgnored private var roll: Double = 0     // logic only, never drawn
+
+    var isLevel: Bool { horizon == .level }
+
     var isShowingError: Bool {
         get { errorMessage != nil }
         set { if !newValue { errorMessage = nil } }
@@ -56,22 +53,27 @@ final class CameraViewModel {
     @ObservationIgnored private let cameraService: CameraServiceProtocol
     @ObservationIgnored private let motionService: MotionServiceProtocol
     @ObservationIgnored private let photoLibraryService: PhotoLibraryServiceProtocol
+    @ObservationIgnored private let galleryStore: GalleryStoreProtocol
 
     init(cameraService: CameraServiceProtocol = CameraService(),
          motionService: MotionServiceProtocol = MotionService(),
-         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService()){
+         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService(),
+         galleryStore: GalleryStoreProtocol? = nil){
         self.cameraService = cameraService
         self.motionService = motionService
         self.photoLibraryService = photoLibraryService
+        self.galleryStore = galleryStore ?? GalleryStore()
     }
 
     // MARK: Intents (things the View asks for)
 
     func startCamera() async {
-        guard await cameraService.requestPermission() else {
-            state = .permissionDenied
-            return
+        switch await cameraService.requestPermission() {
+        case .granted: break
+        case .denied:   state = .permissionDenied; return
+        case .restricted: state = .restricted; return
         }
+
         do {
             try await cameraService.configure()
             await cameraService.start()
@@ -80,18 +82,25 @@ final class CameraViewModel {
             state = .failed(error.localizedDescription)
         }
     }
-    
+
+    func recheckPermission() async {
+        guard state == .permissionDenied || state == .restricted else { return }
+        await startCamera()
+    }
+
     func observeTilt() async {
         for await tilt in motionService.tiltUpdates() {
-            let newValue: Int? = abs(tilt.pitch) > 75 ?
-                nil : Int(abs(tilt.roll).rounded())
-            
-            if newValue != tiltDegrees {
-                tiltDegrees = newValue
+            roll = tilt.roll
+
+            let next = HorizonState.next(roll: tilt.roll, pitch: tilt.pitch, current: horizon)
+            if next != horizon {
+                horizon = next
             }
+            updateInstruction()
         }
+        horizon = .hidden
     }
-    
+
     // listens to person detection until the View's .task is cancelled
     func observePerson() async {
         for await detection in cameraService.personDetections() {
@@ -101,15 +110,22 @@ final class CameraViewModel {
                 personOutline = newOutline
             }
 
-            // Alignment: still uses the box centre (stable + cheap)
-            let tolerance: CGFloat = isAligned ? 0.09 : 0.06
-            let aligned = detection.map { target.isAligned(with: $0.box, tolerance: tolerance) } ?? false
-            if aligned != isAligned {
-                isAligned = aligned
-            }
+            // Logic
+            personBox = detection?.box
+            updateInstruction()
         }
         personOutline = nil
-        isAligned = false
+        personBox = nil
+        instruction = .findPerson
+    }
+
+    private func updateInstruction() {
+        let next = GuideInstruction.next(offset: personBox.map(target.offset(of:)),
+                                         roll: roll,
+                                         current: instruction)
+        if next != instruction {
+            instruction = next
+        }
     }
 
     func stopCamera() async {
@@ -119,35 +135,24 @@ final class CameraViewModel {
     func takePhoto() async {
         guard state == .running, !isCapturing else { return }
         isCapturing = true
-        defer { isCapturing = false }
+
+        let photo: CapturedPhoto
+        do {
+            photo = try await cameraService.capturePhoto()
+        } catch {
+            isCapturing = false
+            errorMessage = error.localizedDescription
+            return
+        }
+        isCapturing = false
+        captureCount += 1
 
         do {
-            capturedPhoto = try await cameraService.capturePhoto()
+            if let assetID = try await photoLibraryService.save(imageData: photo.data) {
+                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    func savePhoto() async {
-        guard let photo = capturedPhoto, saveState == .idle else { return }
-        saveState = .saving
-        
-        do {
-            try await photoLibraryService.save(imageData: photo.data)
-            saveState = .saved
-            
-            // Let the user see: "Saved ✓" briefly, then return to the camera
-            try? await Task.sleep(for: .seconds(1))
-            capturedPhoto = nil
-            saveState = .idle
-        } catch {
-            saveState = .idle
-            errorMessage = error.localizedDescription
-        }
-    }
-    
-    func retake() {
-        guard saveState == .idle else { return }
-        capturedPhoto = nil
     }
 }
