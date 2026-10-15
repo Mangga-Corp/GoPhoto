@@ -33,6 +33,25 @@ final class PreferencesViewModel {
         preferences.append(Preference(name: trimmed))
         return nil
     }
+    
+    /// Returns an error message, or nil when renamed.
+    func rename(id: UUID, to name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Enter a name." }
+        guard !preferences.contains(where: { $0.id != id && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+            return "That preference already exists."
+        }
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return nil }
+        preferences[index].name = trimmed
+        return nil
+    }
+    
+    /// Creates the first preference from the photos picked during onboarding and selects it.
+    func addFirstPreference(name: String, photos: [PhotoItem]) {
+        let preference = Preference(name: name, photos: photos)
+        preferences.append(preference)
+        selectedID = preference.id
+    }
 
     func updatePhotos(_ photos: [PhotoItem], for id: UUID) {
         guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }

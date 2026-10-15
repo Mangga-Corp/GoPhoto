@@ -14,7 +14,7 @@ final class PreferencesPopoverViewController: UIViewController {
     private let viewModel: PreferencesViewModel
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let addButton = PillButton(title: "Add")
-    private let maxTableHeight: CGFloat = 360
+    private let maxTableHeight: CGFloat = 320
 
     init(viewModel: PreferencesViewModel) {
         self.viewModel = viewModel
@@ -51,20 +51,28 @@ final class PreferencesPopoverViewController: UIViewController {
         super.viewDidLayoutSubviews()
         updateSize()
     }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        tableView.flashScrollIndicators()
+    }
 
     /// Fits the popover to its content (list + Add button), scrolling only when the list is long.
     private func updateSize() {
         let content = tableView.contentSize.height
-        tableView.isScrollEnabled = content > maxTableHeight
         let height = min(content, maxTableHeight) + 8 + 44 + 12
         guard abs(preferredContentSize.height - height) > 0.5 else { return }
         preferredContentSize = CGSize(width: 300, height: height)
     }
 
-    private func refresh() {
+    private func refresh(scrollTo row: Int? = nil) {
         tableView.reloadData()
         tableView.layoutIfNeeded()
         updateSize()
+        guard let row else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.scrollToRow(at: IndexPath(row: row, section: 0), at: .none, animated: true)
+        }
     }
 
     private func addTapped() {
@@ -80,7 +88,7 @@ final class PreferencesPopoverViewController: UIViewController {
             if let error = self.viewModel.add(name: alert?.textFields?.first?.text ?? "") {
                 self.showError(error)
             } else {
-                self.refresh()
+                self.refresh(scrollTo: self.viewModel.preferences.count - 1)
             }
         })
         present(alert, animated: true)
@@ -107,6 +115,6 @@ extension PreferencesPopoverViewController: UITableViewDataSource, UITableViewDe
 
     func tableView(_ tv: UITableView, didSelectRowAt ip: IndexPath) {
         viewModel.select(at: ip.row)
-        refresh()
+        refresh(scrollTo: ip.row)
     }
 }

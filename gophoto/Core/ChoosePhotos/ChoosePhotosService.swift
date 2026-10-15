@@ -11,9 +11,9 @@ import UIKit
 final class ChoosePhotosService {
     private let imageManager = PHCachingImageManager()
 
-    var access: PhotoAccess { Self.map(PHPhotoLibrary.authorizationStatus(for: .readWrite)) }
+    var access: ChoosePhotosAccess { Self.map(PHPhotoLibrary.authorizationStatus(for: .readWrite)) }
 
-    func requestAccess(completion: @escaping (PhotoAccess) -> Void) {
+    func requestAccess(completion: @escaping (ChoosePhotosAccess) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             DispatchQueue.main.async { completion(Self.map(status)) }
         }
@@ -63,7 +63,7 @@ final class ChoosePhotosService {
         }
     }
 
-    private static func map(_ status: PHAuthorizationStatus) -> PhotoAccess {
+    private static func map(_ status: PHAuthorizationStatus) -> ChoosePhotosAccess {
         switch status {
         case .authorized: return .authorized
         case .limited: return .limited

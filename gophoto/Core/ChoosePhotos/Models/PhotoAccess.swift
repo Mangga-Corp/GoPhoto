@@ -5,7 +5,7 @@
 //  Created by Sebastian Darren on 13/10/26.
 //
 
-enum PhotoAccess {
+enum ChoosePhotosAccess {
     case notDetermined, authorized, limited, denied
 
     var canBrowse: Bool { self == .authorized || self == .limited }
