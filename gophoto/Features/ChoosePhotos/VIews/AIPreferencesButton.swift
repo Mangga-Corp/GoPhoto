@@ -92,6 +92,7 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             guard let presenter, let preference = viewModel.preference(id: id) else { return }
             let editorViewModel = ChoosePhotosViewModel(service: service, preferenceName: preference.name, items: preference.photos)
             editorViewModel.onPhotosChange = { [weak self] photos in self?.viewModel.updatePhotos(photos, for: id) }
+            editorViewModel.onRename = {[weak self] name in self?.viewModel.rename(id: id, to:name)}
             let editor = AIPreferencesViewController(viewModel: editorViewModel)
             editor.modalPresentationStyle = .fullScreen
             editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }

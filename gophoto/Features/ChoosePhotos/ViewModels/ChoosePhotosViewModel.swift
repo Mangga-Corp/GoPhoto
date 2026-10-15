@@ -19,18 +19,35 @@ final class ChoosePhotosViewModel {
     var onPhotosChange: (([PhotoItem]) -> Void)?
 
     private let service: ChoosePhotosService
-    private let preferenceName: String
+    private (set) var title: String
+    var onRename: ((String) -> String?)?
     private(set) var items: [PhotoItem]
     private(set) var isEditing = false { didSet { onEditingChange?() } }
 
-    init(service: ChoosePhotosService, preferenceName: String, items: [PhotoItem]) {
+    enum Mode { case onboarding, editor }
+
+    let mode: Mode
+    private var didRequestAccessOnAppear = false
+
+    init(service: ChoosePhotosService, preferenceName: String, items: [PhotoItem], mode: Mode = .editor) {
         self.service = service
-        self.preferenceName = preferenceName
+        self.title = preferenceName
         self.items = items
+        self.mode = mode
+    }
+
+    var isOnboarding: Bool { mode == .onboarding }
+    var canRename: Bool { mode == .editor }
+
+    /// Onboarding only: true once, and only if the system prompt hasn't been answered yet.
+    func shouldRequestAccessOnAppear() -> Bool {
+        guard isOnboarding, !didRequestAccessOnAppear else { return false }
+        didRequestAccessOnAppear = true
+        return service.access == .notDetermined
     }
 
     var hasItems: Bool { !items.isEmpty }
-    var subtitleText: String { hasItems ? "\(preferenceName) · \(items.count)/\(Self.maxPhotos)" : preferenceName }
+    var subtitleText: String { hasItems ? "\(items.count)/\(Self.maxPhotos)" : "" }
     var editButtonTitle: String { isEditing ? "Done" : "Edit" }
     var limitMessage: String { "You can add up to \(Self.maxPhotos) photos." }
 
@@ -56,6 +73,15 @@ final class ChoosePhotosViewModel {
         items += newItems.prefix(Self.maxPhotos - items.count)
         onItemsChange?()
         onPhotosChange?(items)
+    }
+    
+    /// Returns an error message, or nil when renamed.
+    func rename(to newName: String) -> String? {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != title else { return nil }
+        if let error = onRename?(trimmed) { return error }
+        title = trimmed
+        return nil
     }
 
     func toggleEditing() {
