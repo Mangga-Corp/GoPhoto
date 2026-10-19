@@ -1,26 +1,19 @@
 import SwiftUI
-import SwiftData
 
 @main
 struct MyApp: App {
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var hasPreferences = PreferencesViewModel.shared.hasPreferences
 
-    init() {
-            UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-        }
-    
     var body: some Scene {
         WindowGroup {
             Group {
-                if hasCompletedOnboarding {
+                if hasPreferences {
                     CameraView()
                 } else {
-                    OnboardingFlowView(onFinish: { hasCompletedOnboarding = true })
+                    OnboardingFlowView(onFinish: { hasPreferences = true })
                 }
             }
-            .animation(.easeInOut(duration: 0.4), value: hasCompletedOnboarding)
+            .animation(.easeInOut(duration: 0.4), value: hasPreferences)
         }
-        // Local Database for app, currently used for saving properties inside Core/Gallery/GalleryPhotos
-        .modelContainer(AppDatabase.container)
     }
 }
