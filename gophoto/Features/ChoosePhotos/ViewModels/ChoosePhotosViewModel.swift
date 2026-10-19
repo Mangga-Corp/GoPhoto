@@ -45,12 +45,19 @@ final class ChoosePhotosViewModel {
         didRequestAccessOnAppear = true
         return service.access == .notDetermined
     }
+    
+    var namePromptTitle: String { "Name your preference" }
+    var namePromptMessage: String { "Give this preference a name before we analyze your photos." }
 
     var hasItems: Bool { !items.isEmpty }
     var subtitleText: String { hasItems ? "\(items.count)/\(Self.maxPhotos)" : "" }
     var editButtonTitle: String { isEditing ? "Done" : "Edit" }
     var limitMessage: String { "You can add up to \(Self.maxPhotos) photos." }
-
+    
+    func isValid(name: String) -> Bool {
+           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+       }
+    
     func addTapped() -> AddDestination {
         guard items.count < Self.maxPhotos else { return .limitReached }
         switch service.access {

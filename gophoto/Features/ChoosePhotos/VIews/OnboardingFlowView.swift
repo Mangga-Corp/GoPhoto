@@ -18,8 +18,8 @@ struct OnboardingFlowView: View {
                 AnalyzingScreen(photos: pickedPhotos, onFinish: onFinish)
                     .transition(.opacity)
             } else {
-                PreferencesScreen { photos in
-                    PreferencesViewModel.shared.addFirstPreference(name: "My Preference", photos: photos)
+                PreferencesScreen { photos, name in
+                    PreferencesViewModel.shared.addFirstPreference(name: name, photos: photos)
                     withAnimation(.easeInOut(duration: 0.4)) { pickedPhotos = photos }
                 }
                 .transition(.opacity)
@@ -30,7 +30,7 @@ struct OnboardingFlowView: View {
 }
 
 private struct PreferencesScreen: UIViewControllerRepresentable {
-    var onPhotosPicked: ([PhotoItem]) -> Void
+    var onPhotosPicked: ([PhotoItem], String) -> Void
 
     func makeUIViewController(context: Context) -> AIPreferencesViewController {
         let viewModel = ChoosePhotosViewModel(service: ChoosePhotosService(),

@@ -4,7 +4,7 @@ final class AIPreferencesViewController: UIViewController {
     /// Called when the back button (top-left) is tapped.
     var onBack: (() -> Void)?
     /// Onboarding: called after the picker closes with the newly added photos.
-    var onPhotosAdded: (([PhotoItem]) -> Void)?
+    var onPhotosAdded: (([PhotoItem], String) -> Void)?
 
     private let viewModel: ChoosePhotosViewModel
 
@@ -157,10 +157,32 @@ final class AIPreferencesViewController: UIViewController {
             guard let self else { return }
             self.viewModel.append(newItems)
             self.dismiss(animated: true) {
-                if !newItems.isEmpty { self.onPhotosAdded?(newItems) }
+                guard !newItems.isEmpty, self.viewModel.isOnboarding else { return }
+                self.askPreferenceName { name in self.onPhotosAdded?(newItems, name) }
             }
         }
         present(vc, animated: true)
+    }
+    
+    private func askPreferenceName(completion: @escaping (String) -> Void) {
+        let alert = UIAlertController(title: viewModel.namePromptTitle,
+                                      message: viewModel.namePromptMessage, preferredStyle: .alert)
+        let confirm = UIAlertAction(title: "Continue", style: .default) { [weak alert] _ in
+            let name = alert?.textFields?.first?.text ?? ""
+            completion(name.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        confirm.isEnabled = false
+        alert.addTextField { [weak self, weak confirm] textField in
+            textField.placeholder = "Name"
+            textField.autocapitalizationType = .words
+            textField.addAction(UIAction { action in
+                let text = (action.sender as? UITextField)?.text ?? ""
+                confirm?.isEnabled = self?.viewModel.isValid(name: text) ?? false
+            }, for: .editingChanged)
+        }
+        alert.addAction(confirm)
+        alert.preferredAction = confirm
+        present(alert, animated: true)
     }
 
     private func showAlert(message: String) {
