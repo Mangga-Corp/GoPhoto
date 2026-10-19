@@ -12,9 +12,8 @@ final class SelectPhotoViewController: UIViewController {
     var onDone: (([PhotoItem]) -> Void)?
 
     private let viewModel: SelectPhotoViewModel
-    private let closeButton = CircleButton(title: "X", accessibilityLabel: "Close")
-    private let doneButton = PillButton(title: "Done")
-    private let spinner = UIActivityIndicatorView(style: .large)
+    private let closeButton = CircleButton(symbol: "xmark", accessibilityLabel: "Close")
+    private let doneButton = PillButton(title: "Done", prominent: true)
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
         item.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
@@ -41,15 +40,13 @@ final class SelectPhotoViewController: UIViewController {
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
-        spinner.color = Theme.text
-
         viewModel.onLoadingChange = { [weak self] on in self?.setLoading(on) }
         viewModel.onError = { [weak self] message in self?.showError(message) }
         viewModel.onFinish = { [weak self] items in self?.onDone?(items) }
         closeButton.addAction(UIAction { [weak self] _ in self?.onCancel?() }, for: .touchUpInside)
         doneButton.addAction(UIAction { [weak self] _ in self?.doneTapped() }, for: .touchUpInside)
 
-        [collectionView, closeButton, title, doneButton, spinner].forEach {
+        [collectionView, closeButton, title, doneButton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false; view.addSubview($0)
         }
         let safe = view.safeAreaLayoutGuide
@@ -66,8 +63,6 @@ final class SelectPhotoViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
     }
 
@@ -76,7 +71,7 @@ final class SelectPhotoViewController: UIViewController {
     }
 
     private func setLoading(_ on: Bool) {
-        on ? spinner.startAnimating() : spinner.stopAnimating()
+        doneButton.setLoading(on)
         view.isUserInteractionEnabled = !on
     }
 
