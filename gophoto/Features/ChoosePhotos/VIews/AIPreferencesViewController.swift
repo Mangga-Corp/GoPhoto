@@ -1,14 +1,21 @@
+//
+//  AIPreferencesViewController.swift
+//  gophoto
+//
+//  Created by Sebastian Darren on 13/10/26.
+//
+
 import UIKit
 
 final class AIPreferencesViewController: UIViewController {
     /// Called when the back button (top-left) is tapped.
     var onBack: (() -> Void)?
-    /// Onboarding: called after the picker closes with the newly added photos.
+    /// Onboarding: called after the picker closes and the user has named the preference.
     var onPhotosAdded: (([PhotoItem], String) -> Void)?
 
     private let viewModel: ChoosePhotosViewModel
 
-    /// Title = preference name. Tap to rename.
+    /// Title = preference name. Tap to rename (shows the selection count while selecting).
     private let titleField: UITextField = {
         let field = UITextField()
         field.font = .preferredFont(forTextStyle: .title3)
@@ -30,16 +37,10 @@ final class AIPreferencesViewController: UIViewController {
     }()
     private let subtitleLabel = UILabel.make("", style: .footnote)
     private let emptyLabel = UILabel.make("You haven’t input any photo", style: .subheadline)
-    private let editButton = PillButton(title: "Edit")
-    private let addButton = CircleButton(title: "+", accessibilityLabel: "Add photos")
-    private let backButton: UIButton = {
-        var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: "chevron.left")
-        configuration.baseForegroundColor = Theme.text
-        let button = UIButton(configuration: configuration)
-        button.accessibilityLabel = "Back"
-        return button
-    }()
+    private let selectButton = PillButton(title: "Select")
+    private let addButton = CircleButton(symbol: "plus", accessibilityLabel: "Add photos")
+    private let trashButton = CircleButton(symbol: "trash", accessibilityLabel: "Delete", tint: .systemRed)
+    private let backButton = CircleButton(symbol: "chevron.left", accessibilityLabel: "Back")
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
         item.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
@@ -64,24 +65,21 @@ final class AIPreferencesViewController: UIViewController {
         collectionView.delegate = self
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
         titleField.delegate = self
-        titleField.text = viewModel.title
-        backButton.isHidden = viewModel.isOnboarding
-        editButton.isHidden = viewModel.isOnboarding
-        titleField.isUserInteractionEnabled = viewModel.canRename
-        titleField.rightViewMode = viewModel.canRename ? .unlessEditing : .never
+        selectButton.isHidden = viewModel.isOnboarding
 
         viewModel.onItemsChange = { [weak self] in self?.renderItems() }
-        viewModel.onEditingChange = { [weak self] in self?.renderEditing() }
-        backButton.addAction(UIAction { [weak self] _ in self?.onBack?() }, for: .touchUpInside)
-        editButton.addAction(UIAction { [weak self] _ in self?.viewModel.toggleEditing() }, for: .touchUpInside)
+        viewModel.onSelectionChange = { [weak self] in self?.renderSelection() }
+        backButton.addAction(UIAction { [weak self] _ in self?.backTapped() }, for: .touchUpInside)
+        selectButton.addAction(UIAction { [weak self] _ in self?.viewModel.toggleSelecting() }, for: .touchUpInside)
         addButton.addAction(UIAction { [weak self] _ in self?.addTapped() }, for: .touchUpInside)
+        trashButton.addAction(UIAction { [weak self] _ in self?.confirmDelete() }, for: .touchUpInside)
 
         // Tap outside the title field to finish renaming (does not block taps on photos).
         let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tap.cancelsTouchesInView = false
         view.addGestureRecognizer(tap)
 
-        [collectionView, titleField, subtitleLabel, backButton, editButton, emptyLabel, addButton].forEach {
+        [collectionView, titleField, subtitleLabel, backButton, selectButton, emptyLabel, addButton, trashButton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false; view.addSubview($0)
         }
         let safe = view.safeAreaLayoutGuide
@@ -89,13 +87,13 @@ final class AIPreferencesViewController: UIViewController {
             titleField.topAnchor.constraint(equalTo: safe.topAnchor, constant: 24),
             titleField.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             titleField.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
-            titleField.trailingAnchor.constraint(lessThanOrEqualTo: editButton.leadingAnchor, constant: -8),
+            titleField.trailingAnchor.constraint(lessThanOrEqualTo: selectButton.leadingAnchor, constant: -8),
             backButton.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 8),
             backButton.centerYAnchor.constraint(equalTo: titleField.centerYAnchor),
             backButton.widthAnchor.constraint(equalToConstant: 44),
             backButton.heightAnchor.constraint(equalToConstant: 44),
-            editButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
-            editButton.centerYAnchor.constraint(equalTo: titleField.centerYAnchor),
+            selectButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
+            selectButton.centerYAnchor.constraint(equalTo: titleField.centerYAnchor),
             subtitleLabel.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 4),
             subtitleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             collectionView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
@@ -107,16 +105,22 @@ final class AIPreferencesViewController: UIViewController {
             addButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
             addButton.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -24),
             addButton.widthAnchor.constraint(equalToConstant: 52),
-            addButton.heightAnchor.constraint(equalToConstant: 52)
+            addButton.heightAnchor.constraint(equalToConstant: 52),
+            trashButton.trailingAnchor.constraint(equalTo: addButton.trailingAnchor),
+            trashButton.centerYAnchor.constraint(equalTo: addButton.centerYAnchor),
+            trashButton.widthAnchor.constraint(equalToConstant: 52),
+            trashButton.heightAnchor.constraint(equalToConstant: 52)
         ])
         renderItems()
+        renderSelection()
     }
 
-    @objc private func dismissKeyboard() { view.endEditing(true) }
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if viewModel.shouldRequestAccessOnAppear() { viewModel.requestAccess { _ in } }
     }
+
+    @objc private func dismissKeyboard() { view.endEditing(true) }
 
     // MARK: - Render
 
@@ -128,12 +132,30 @@ final class AIPreferencesViewController: UIViewController {
         collectionView.reloadData()
     }
 
-    private func renderEditing() {
-        editButton.updateTitle(viewModel.editButtonTitle)
-        collectionView.visibleCells.compactMap { $0 as? PhotoCell }.forEach { $0.removeMode = viewModel.isEditing }
+    /// Select mode like Photos: title shows the count, Back and + are replaced by Cancel and the trash.
+    private func renderSelection() {
+        let selecting = viewModel.isSelecting
+        let canRename = viewModel.canRename && !selecting
+        selectButton.updateTitle(viewModel.selectButtonTitle)
+        titleField.text = viewModel.displayTitle
+        titleField.isUserInteractionEnabled = canRename
+        titleField.rightViewMode = canRename ? .unlessEditing : .never
+        backButton.isHidden = viewModel.isOnboarding || selecting
+        addButton.isHidden = selecting
+        trashButton.isHidden = !selecting
+        trashButton.isEnabled = viewModel.canTapDelete
+        collectionView.reloadData()
     }
 
     // MARK: - Navigation
+
+    private func backTapped() {
+        if let message = viewModel.minimumPhotosMessage {
+            showAlert(message: message)
+            return
+        }
+        onBack?()
+    }
 
     private func addTapped() {
         switch viewModel.addTapped() {
@@ -158,12 +180,16 @@ final class AIPreferencesViewController: UIViewController {
             self.viewModel.append(newItems)
             self.dismiss(animated: true) {
                 guard !newItems.isEmpty, self.viewModel.isOnboarding else { return }
-                self.askPreferenceName { name in self.onPhotosAdded?(newItems, name) }
+                if let message = self.viewModel.minimumPhotosMessage {
+                    self.showAlert(message: message)
+                    return
+                }
+                self.askPreferenceName { name in self.onPhotosAdded?(self.viewModel.items, name) }
             }
         }
         present(vc, animated: true)
     }
-    
+
     private func askPreferenceName(completion: @escaping (String) -> Void) {
         let alert = UIAlertController(title: viewModel.namePromptTitle,
                                       message: viewModel.namePromptMessage, preferredStyle: .alert)
@@ -183,6 +209,18 @@ final class AIPreferencesViewController: UIViewController {
         alert.addAction(confirm)
         alert.preferredAction = confirm
         present(alert, animated: true)
+    }
+
+    /// Confirmation like the Photos app: an action sheet with a destructive button and Cancel.
+    private func confirmDelete() {
+        let sheet = UIAlertController(title: nil, message: viewModel.deleteConfirmMessage, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: viewModel.deleteConfirmTitle, style: .destructive) { [weak self] _ in
+            self?.viewModel.deleteChecked()
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = trashButton
+        sheet.popoverPresentationController?.sourceRect = trashButton.bounds
+        present(sheet, animated: true)
     }
 
     private func showAlert(message: String) {
@@ -210,7 +248,7 @@ extension AIPreferencesViewController: UITextFieldDelegate {
 
     func textFieldDidEndEditing(_ textField: UITextField) {
         if let error = viewModel.rename(to: textField.text ?? "") { showAlert(message: error) }
-        textField.text = viewModel.title   // shows the accepted name, or restores the old one on error
+        textField.text = viewModel.displayTitle   // shows the accepted name, or restores the old one on error
     }
 }
 
@@ -221,12 +259,13 @@ extension AIPreferencesViewController: UICollectionViewDataSource, UICollectionV
         guard let cell = cv.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseID, for: ip) as? PhotoCell
         else { return UICollectionViewCell() }
         cell.imageView.image = viewModel.items[ip.item].image
-        cell.removeMode = viewModel.isEditing
+        cell.selectMode = viewModel.isSelecting
+        cell.isChecked = viewModel.isChecked(at: ip.item)
         return cell
     }
 
     func collectionView(_ cv: UICollectionView, didSelectItemAt ip: IndexPath) {
-        guard viewModel.isEditing else { return }
-        viewModel.remove(at: ip.item)
+        cv.deselectItem(at: ip, animated: false)   // we track "checked" ourselves
+        viewModel.toggleChecked(at: ip.item)
     }
 }

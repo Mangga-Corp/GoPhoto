@@ -8,13 +8,13 @@
 import UIKit
 
 final class PreferencesPopoverViewController: UIViewController {
-    /// Called with the preference id when its Edit button is tapped.
+    /// Called with the preference id when its Edit button is tapped, or after a new preference is created.
     var onEdit: ((UUID) -> Void)?
 
     private let viewModel: PreferencesViewModel
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let addButton = PillButton(title: "Add")
-    private let maxTableHeight: CGFloat = 220
+    private let maxTableHeight: CGFloat = 320
     private var contentSizeObservation: NSKeyValueObservation?
 
     init(viewModel: PreferencesViewModel) {
@@ -48,7 +48,7 @@ final class PreferencesPopoverViewController: UIViewController {
             addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             addButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12)
         ])
-        
+
         // Re-fit the popover whenever the list's real height becomes known.
         contentSizeObservation = tableView.observe(\.contentSize) { [weak self] _, _ in
             DispatchQueue.main.async { self?.updateSize() }
@@ -59,7 +59,7 @@ final class PreferencesPopoverViewController: UIViewController {
         super.viewDidLayoutSubviews()
         updateSize()
     }
-    
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         tableView.flashScrollIndicators()
@@ -90,24 +90,20 @@ final class PreferencesPopoverViewController: UIViewController {
             $0.autocapitalizationType = .words
             $0.returnKeyType = .done
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
+        let add = UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
             guard let self else { return }
             if let error = self.viewModel.add(name: alert?.textFields?.first?.text ?? "") {
                 self.showError(error)
-            } else {
-                self.refresh(scrollTo: self.viewModel.preferences.count - 1)
+            } else if let id = self.viewModel.preferences.last?.id {
+                self.onEdit?(id)
             }
-        })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(add)
+        alert.preferredAction = add
         present(alert, animated: true)
     }
 
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
     private func confirmDelete(_ preference: Preference, completion: @escaping (Bool) -> Void) {
         let alert = UIAlertController(title: "Delete “\(preference.name)”?",
                                       message: "Its photos will be removed. This can’t be undone.",
@@ -119,6 +115,12 @@ final class PreferencesPopoverViewController: UIViewController {
             self.refresh()
             completion(deleted)
         })
+        present(alert, animated: true)
+    }
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
 }
@@ -139,7 +141,7 @@ extension PreferencesPopoverViewController: UITableViewDataSource, UITableViewDe
         viewModel.select(at: ip.row)
         refresh(scrollTo: ip.row)
     }
-    
+
     func tableView(_ tv: UITableView, trailingSwipeActionsConfigurationForRowAt ip: IndexPath) -> UISwipeActionsConfiguration? {
         let preference = viewModel.preferences[ip.row]
         let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
