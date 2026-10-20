@@ -12,7 +12,9 @@ final class ChoosePhotosViewModel {
     static let minPhotos = 3
 
     enum AddDestination { case limitReached, permission, picker, settings }
-    enum Mode { case onboarding, editor }
+    enum Mode { case onboarding, create, editor }
+
+    enum BackAction { case leave, confirmDiscard, needMorePhotos(String)}
 
     // Bindings, set by the view
     var onItemsChange: (() -> Void)?
@@ -21,6 +23,7 @@ final class ChoosePhotosViewModel {
     var onPhotosChange: (([PhotoItem]) -> Void)?
     /// Set by the owner; returns an error message, or nil when the new name is accepted.
     var onRename: ((String) -> String?)?
+    var validateNewName: ((String) -> String?)?
 
     let mode: Mode
     private let service: ChoosePhotosService
@@ -39,6 +42,17 @@ final class ChoosePhotosViewModel {
 
     var isOnboarding: Bool { mode == .onboarding }
     var canRename: Bool { mode == .editor }
+    var asksNameAfterPicking: Bool {mode != .editor}
+    var showsBackButton: Bool { mode != .onboarding}
+    var showsSelectButton: Bool { mode != .onboarding}
+
+    func backAction() -> BackAction {
+        switch mode {
+        case .onboarding: return .leave
+        case .create: return hasItems ? .confirmDiscard : .leave
+        case .editor: return minimumPhotosMessage.map { .needMorePhotos($0)} ?? .leave
+        }
+    }
     var hasItems: Bool { !items.isEmpty }
     var subtitleText: String { hasItems ? "\(items.count)/\(Self.maxPhotos)" : "" }
     var limitMessage: String { "You can add up to \(Self.maxPhotos) photos." }
@@ -54,8 +68,14 @@ final class ChoosePhotosViewModel {
     var namePromptTitle: String { "Name your preference" }
     var namePromptMessage: String { "Give this preference a name before we analyze your photos." }
 
+    func nameError(for name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Enter a name."}
+        return validateNewName?(trimmed)
+    }
+
     func isValid(name: String) -> Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        nameError(for: name) == nil
     }
 
     // MARK: - Select mode (like the Photos app)
