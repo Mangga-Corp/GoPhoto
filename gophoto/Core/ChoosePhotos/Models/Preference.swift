@@ -8,7 +8,13 @@
 import Foundation
 
 struct Preference {
-    let id = UUID()
+    let id: UUID
     var name: String
-    var photos: [PhotoItem] = []
+    var photos: [PhotoItem]
+
+    init(id: UUID = UUID(), name: String, photos: [PhotoItem] = []) {
+        self.id = id
+        self.name = name
+        self.photos = photos
+    }
 }

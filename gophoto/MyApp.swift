@@ -3,12 +3,19 @@ import SwiftData
 
 @main
 struct MyApp: App {
+    @State private var hasPreferences = PreferencesViewModel.shared.hasPreferences
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if hasPreferences {
+                    CameraView()
+                } else {
+                    OnboardingFlowView(onFinish: { hasPreferences = true })
+                }
+            }
+            .animation(.easeInOut(duration: 0.4), value: hasPreferences)
         }
-        // Local Database for app, currently used for saving properties inside Core/Gallery/GalleryPhotos
         .modelContainer(AppDatabase.container)
     }
 }
