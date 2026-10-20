@@ -13,6 +13,7 @@ enum Theme {
     static let stroke = dyn(0xCFC8BE, 0x514D49)
     static let text = dyn(0x3F3A36, 0xECE7E0)
     static let accent = dyn(0x9DB5A6, 0x6F8A7A)
+    static let onAccent = dyn(0x25302A, 0x0E1511) 
 
     private static func dyn(_ light: UInt32, _ dark: UInt32) -> UIColor {
         UIColor { $0.userInterfaceStyle == .dark ? color(dark) : color(light) }
