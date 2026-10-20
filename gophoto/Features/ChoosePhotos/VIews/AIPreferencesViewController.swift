@@ -65,7 +65,7 @@ final class AIPreferencesViewController: UIViewController {
         collectionView.delegate = self
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
         titleField.delegate = self
-        selectButton.isHidden = viewModel.isOnboarding
+        selectButton.isHidden = !viewModel.showsSelectButton
 
         viewModel.onItemsChange = { [weak self] in self?.renderItems() }
         viewModel.onSelectionChange = { [weak self] in self?.renderSelection() }
@@ -140,7 +140,7 @@ final class AIPreferencesViewController: UIViewController {
         titleField.text = viewModel.displayTitle
         titleField.isUserInteractionEnabled = canRename
         titleField.rightViewMode = canRename ? .unlessEditing : .never
-        backButton.isHidden = viewModel.isOnboarding || selecting
+        backButton.isHidden = !viewModel.showsBackButton || selecting
         addButton.isHidden = selecting
         trashButton.isHidden = !selecting
         trashButton.isEnabled = viewModel.canTapDelete
@@ -149,12 +149,29 @@ final class AIPreferencesViewController: UIViewController {
 
     // MARK: - Navigation
 
+//    private func backTapped() {
+//        if let message = viewModel.minimumPhotosMessage {
+//            showAlert(message: message)
+//            return
+//        }
+//        onBack?()
+//    }
     private func backTapped() {
-        if let message = viewModel.minimumPhotosMessage {
+        switch viewModel.backAction() {
+        case .leave:
+            onBack?()
+        case .confirmDiscard:
+            confirmDiscard()
+        case .needMorePhotos(let message):
             showAlert(message: message)
-            return
         }
-        onBack?()
+    }
+
+    private func confirmDiscard() {
+        let alert = UIAlertController(title: "Discard this preference?", message: "The photos you picked won't be saved.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Keep Editing", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in self?.onBack?() })
+        present(alert, animated: true)
     }
 
     private func addTapped() {
@@ -179,7 +196,7 @@ final class AIPreferencesViewController: UIViewController {
             guard let self else { return }
             self.viewModel.append(newItems)
             self.dismiss(animated: true) {
-                guard !newItems.isEmpty, self.viewModel.isOnboarding else { return }
+                guard !newItems.isEmpty, self.viewModel.asksNameAfterPicking else { return }
                 if let message = self.viewModel.minimumPhotosMessage {
                     self.showAlert(message: message)
                     return
@@ -198,12 +215,15 @@ final class AIPreferencesViewController: UIViewController {
             completion(name.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         confirm.isEnabled = false
-        alert.addTextField { [weak self, weak confirm] textField in
+        alert.addTextField { [weak self, weak confirm, weak alert] textField in
             textField.placeholder = "Name"
             textField.autocapitalizationType = .words
-            textField.addAction(UIAction { action in
+            textField.addAction(UIAction { [weak alert] action in
+                guard let self else { return }
                 let text = (action.sender as? UITextField)?.text ?? ""
-                confirm?.isEnabled = self?.viewModel.isValid(name: text) ?? false
+                let error = self.viewModel.nameError(for: text)
+                confirm?.isEnabled = error == nil
+                alert?.message = (error == nil || text.isEmpty) ? self.viewModel.namePromptMessage : error
             }, for: .editingChanged)
         }
         alert.addAction(confirm)
