@@ -8,8 +8,9 @@
 import UIKit
 
 final class PreferencesPopoverViewController: UIViewController {
-    /// Called with the preference id when its Edit button is tapped, or after a new preference is created.
+    /// Called with the preference id when its Edit button is tapped.
     var onEdit: ((UUID) -> Void)?
+    var onAdd: (() -> Void)?
 
     private let viewModel: PreferencesViewModel
     private let tableView = UITableView(frame: .zero, style: .plain)
@@ -84,24 +85,7 @@ final class PreferencesPopoverViewController: UIViewController {
     }
 
     private func addTapped() {
-        let alert = UIAlertController(title: "New Preference", message: nil, preferredStyle: .alert)
-        alert.addTextField {
-            $0.placeholder = "Name"
-            $0.autocapitalizationType = .words
-            $0.returnKeyType = .done
-        }
-        let add = UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
-            guard let self else { return }
-            if let error = self.viewModel.add(name: alert?.textFields?.first?.text ?? "") {
-                self.showError(error)
-            } else if let id = self.viewModel.preferences.last?.id {
-                self.onEdit?(id)
-            }
-        }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(add)
-        alert.preferredAction = add
-        present(alert, animated: true)
+        onAdd?()
     }
 
     private func confirmDelete(_ preference: Preference, completion: @escaping (Bool) -> Void) {

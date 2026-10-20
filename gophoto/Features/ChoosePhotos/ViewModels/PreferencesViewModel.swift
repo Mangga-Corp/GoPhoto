@@ -37,14 +37,33 @@ final class PreferencesViewModel {
         persist()
     }
 
-    /// Returns an error message, or nil when added.
-    func add(name: String) -> String? {
+//    /// Returns an error message, or nil when added.
+//    func add(name: String) -> String? {
+//        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+//        guard !trimmed.isEmpty else { return "Enter a name." }
+//        guard !preferences.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
+//            return "That preference already exists."
+//        }
+//        preferences.append(Preference(name: trimmed))
+//        persist()
+//        return nil
+//    }
+
+    func nameError(for name: String) -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "Enter a name." }
+        guard !trimmed.isEmpty else { return "Enter a name."}
         guard !preferences.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) else {
-            return "That preference already exists."
+            return "That preference already exist."
         }
-        preferences.append(Preference(name: trimmed))
+        return nil
+    }
+
+    @discardableResult
+    func add(name: String, photos: [PhotoItem]) -> String? {
+        if let error = nameError(for: name) { return error }
+        let preference = Preference(name: name.trimmingCharacters(in: .whitespacesAndNewlines), photos: photos)
+        preferences.append(preference)
+        selectedID = preference.id
         persist()
         return nil
     }

@@ -75,6 +75,9 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             popover.onEdit = { [weak self, weak presenter] id in
                 presenter?.dismiss(animated: true) { self?.showEditor(for: id, from: presenter) }
             }
+            popover.onAdd = { [weak self, weak presenter] in
+                presenter?.dismiss(animated: true) { self?.showCreator(from: presenter)}
+            }
             if let controller = popover.popoverPresentationController {
                 controller.sourceView = button
                 controller.sourceRect = button.bounds
@@ -93,6 +96,26 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             editor.modalPresentationStyle = .fullScreen
             editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }
             presenter.present(editor, animated: true)
+        }
+
+        private func showCreator(from presenter: UIViewController?) {
+            guard let presenter else { return }
+            let creatorViewModel = ChoosePhotosViewModel(service: service, preferenceName: "New Preference", items: [], mode: .create)
+            creatorViewModel.validateNewName = { [weak self] name in self?.viewModel.nameError(for: name)}
+
+            let creator = AIPreferencesViewController(viewModel: creatorViewModel)
+            creator.modalPresentationStyle = .fullScreen
+            creator.onBack = { [weak creator] in creator?.dismiss(animated: true)}
+
+            creator.onPhotosAdded = { [weak self, weak creator, weak presenter] photos, name in
+                guard let self, self.viewModel.add(name: name, photos: photos) == nil else { return }
+                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(), photos: photos)
+                analyzing.modalPresentationStyle = .fullScreen
+                analyzing.onFinish = { presenter?.dismiss(animated: true)}
+                creator?.present(analyzing, animated: true)
+            }
+            presenter.present(creator, animated: true)
+
         }
 
         // Keep it a popover on iPhone (no automatic sheet).
