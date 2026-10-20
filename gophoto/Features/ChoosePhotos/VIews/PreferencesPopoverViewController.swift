@@ -8,18 +8,21 @@
 import UIKit
 
 final class PreferencesPopoverViewController: UIViewController {
-    /// Called with the preference id when its Edit button is tapped.
+    /// Called with the preference id when its Edit button is tapped, or after a new preference is created.
     var onEdit: ((UUID) -> Void)?
 
     private let viewModel: PreferencesViewModel
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let addButton = PillButton(title: "Add")
-    private let maxTableHeight: CGFloat = 360
+    private let maxTableHeight: CGFloat = 320
+    private var contentSizeObservation: NSKeyValueObservation?
 
     init(viewModel: PreferencesViewModel) {
         self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
-        preferredContentSize = CGSize(width: 300, height: CGFloat(viewModel.preferences.count) * 56 + 64)
+        let rows = CGFloat(viewModel.preferences.count)
+        let selectedExtra: CGFloat = viewModel.selectedID == nil ? 0 : 56
+        preferredContentSize = CGSize(width: 300, height: rows * 56 + selectedExtra + 64)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -45,6 +48,11 @@ final class PreferencesPopoverViewController: UIViewController {
             addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             addButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12)
         ])
+
+        // Re-fit the popover whenever the list's real height becomes known.
+        contentSizeObservation = tableView.observe(\.contentSize) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.updateSize() }
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -52,19 +60,27 @@ final class PreferencesPopoverViewController: UIViewController {
         updateSize()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        tableView.flashScrollIndicators()
+    }
+
     /// Fits the popover to its content (list + Add button), scrolling only when the list is long.
     private func updateSize() {
         let content = tableView.contentSize.height
-        tableView.isScrollEnabled = content > maxTableHeight
         let height = min(content, maxTableHeight) + 8 + 44 + 12
         guard abs(preferredContentSize.height - height) > 0.5 else { return }
         preferredContentSize = CGSize(width: 300, height: height)
     }
 
-    private func refresh() {
+    private func refresh(scrollTo row: Int? = nil) {
         tableView.reloadData()
         tableView.layoutIfNeeded()
         updateSize()
+        guard let row else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.scrollToRow(at: IndexPath(row: row, section: 0), at: .none, animated: true)
+        }
     }
 
     private func addTapped() {
@@ -74,14 +90,30 @@ final class PreferencesPopoverViewController: UIViewController {
             $0.autocapitalizationType = .words
             $0.returnKeyType = .done
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
+        let add = UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
             guard let self else { return }
             if let error = self.viewModel.add(name: alert?.textFields?.first?.text ?? "") {
                 self.showError(error)
-            } else {
-                self.refresh()
+            } else if let id = self.viewModel.preferences.last?.id {
+                self.onEdit?(id)
             }
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(add)
+        alert.preferredAction = add
+        present(alert, animated: true)
+    }
+
+    private func confirmDelete(_ preference: Preference, completion: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(title: "Delete “\(preference.name)”?",
+                                      message: "Its photos will be removed. This can’t be undone.",
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completion(false) })
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            guard let self else { return completion(false) }
+            let deleted = self.viewModel.delete(id: preference.id)
+            self.refresh()
+            completion(deleted)
         })
         present(alert, animated: true)
     }
@@ -107,6 +139,23 @@ extension PreferencesPopoverViewController: UITableViewDataSource, UITableViewDe
 
     func tableView(_ tv: UITableView, didSelectRowAt ip: IndexPath) {
         viewModel.select(at: ip.row)
-        refresh()
+        refresh(scrollTo: ip.row)
+    }
+
+    func tableView(_ tv: UITableView, trailingSwipeActionsConfigurationForRowAt ip: IndexPath) -> UISwipeActionsConfiguration? {
+        let preference = viewModel.preferences[ip.row]
+        let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
+            guard let self else { return done(false) }
+            if self.viewModel.canDelete {
+                self.confirmDelete(preference, completion: done)
+            } else {
+                self.showError(self.viewModel.cannotDeleteMessage)
+                done(false)
+            }
+        }
+        delete.image = UIImage(systemName: "trash")
+        let configuration = UISwipeActionsConfiguration(actions: [delete])
+        configuration.performsFirstActionWithFullSwipe = false
+        return configuration
     }
 }

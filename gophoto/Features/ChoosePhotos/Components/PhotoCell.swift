@@ -14,8 +14,10 @@ final class PhotoCell: UICollectionViewCell {
     var assetID: String?
     var cancelLoad: (() -> Void)?
 
-    /// Grid screen in edit mode: shows an "x" badge, tap removes the photo.
-    var removeMode = false { didSet { refresh() } }
+    /// Editor "Select" mode: every photo shows a circle (like Photos); `isChecked` fills it.
+    var selectMode = false { didSet { refresh() } }
+    var isChecked = false { didSet { refresh() } }
+    /// Used by the photo picker (system multi-selection).
     override var isSelected: Bool { didSet { refresh() } }
 
     override init(frame: CGRect) {
@@ -24,7 +26,6 @@ final class PhotoCell: UICollectionViewCell {
         contentView.clipsToBounds = true
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        badge.tintColor = Theme.accent
         badge.backgroundColor = Theme.surface
         badge.layer.cornerRadius = 11
         [imageView, badge].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; contentView.addSubview($0) }
@@ -52,9 +53,10 @@ final class PhotoCell: UICollectionViewCell {
     }
 
     private func refresh() {
-        let picked = isSelected && !removeMode
-        badge.isHidden = !(picked || removeMode)
-        badge.image = UIImage(systemName: removeMode ? "xmark.circle.fill" : "checkmark.circle.fill")
+        let picked = selectMode ? isChecked : isSelected
+        badge.isHidden = !(selectMode || isSelected)
+        badge.image = UIImage(systemName: picked ? "checkmark.circle.fill" : "circle")
+        badge.tintColor = picked ? Theme.accent : Theme.text.withAlphaComponent(0.5)
         contentView.layer.borderWidth = picked ? 3 : 1
         contentView.layer.borderColor = (picked ? Theme.accent : Theme.stroke).cgColor
         accessibilityTraits = picked ? [.button, .selected] : .button
