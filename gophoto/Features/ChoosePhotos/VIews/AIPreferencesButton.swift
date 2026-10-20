@@ -17,30 +17,27 @@ struct AIPreferencesButton: View {
     }
 }
 
-/// Compact pill (same look as PillButton, smaller). Visible size is small, tap area stays 44 x 44.
 private final class CompactPillButton: UIButton {
     init(title: String) {
         super.init(frame: .zero)
-        var c = UIButton.Configuration.plain()
-        c.title = title
-        c.baseForegroundColor = Theme.text
-        c.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
-        c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
-            var a = $0; a.font = UIFont.preferredFont(forTextStyle: .footnote); return a
+        var configuration: UIButton.Configuration
+        if #available(iOS 26, *) {
+            configuration = .glass()
+        } else {
+            configuration = .gray()
         }
-        configuration = c
-        backgroundColor = Theme.surface
-        layer.borderWidth = 1
+        configuration.title = title
+        configuration.cornerStyle = .capsule
+        configuration.buttonSize = .small
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var attributes = $0
+            attributes.font = UIFont.preferredFont(forTextStyle: .footnote)
+            return attributes
+        }
+        self.configuration = configuration
+        overrideUserInterfaceStyle = .dark
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        layer.cornerRadius = bounds.height / 2
-        layer.borderColor = Theme.stroke.cgColor
-    }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         let dx = min(0, (bounds.width - 44) / 2)
@@ -48,7 +45,6 @@ private final class CompactPillButton: UIButton {
         return bounds.insetBy(dx: dx, dy: dy).contains(point)
     }
 }
-
 private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
     var viewModel: PreferencesViewModel
 
@@ -92,6 +88,7 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             guard let presenter, let preference = viewModel.preference(id: id) else { return }
             let editorViewModel = ChoosePhotosViewModel(service: service, preferenceName: preference.name, items: preference.photos)
             editorViewModel.onPhotosChange = { [weak self] photos in self?.viewModel.updatePhotos(photos, for: id) }
+            editorViewModel.onRename = {[weak self] name in self?.viewModel.rename(id: id, to:name)}
             let editor = AIPreferencesViewController(viewModel: editorViewModel)
             editor.modalPresentationStyle = .fullScreen
             editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }
