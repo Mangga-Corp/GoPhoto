@@ -10,7 +10,25 @@ import UIKit
 /// Saves preferences (names + photos) in the app's Application Support folder.
 final class PreferencesStorage {
     private struct Snapshot: Codable {
-        struct Entry: Codable { let id: UUID; let name: String; let photoIDs: [UUID] }
+        struct Entry: Codable {
+            let id: UUID
+            let name: String
+            let photoIDs: [UUID]
+            var analysis: PresetAnalysis?
+
+            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?) {
+                self.id = id; self.name = name; self.photoIDs = photoIDs; self.analysis = analysis
+            }
+
+            /// An unreadable analysis is dropped (the preset is analysed again), the preset is kept.
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                id = try c.decode(UUID.self, forKey: .id)
+                name = try c.decode(String.self, forKey: .name)
+                photoIDs = try c.decode([UUID].self, forKey: .photoIDs)
+                analysis = try? c.decodeIfPresent(PresetAnalysis.self, forKey: .analysis)
+            }
+        }
         var entries: [Entry]
         var selectedID: UUID?
     }
@@ -37,7 +55,7 @@ final class PreferencesStorage {
                 guard let image = UIImage(contentsOfFile: photoURL(id).path) else { return nil }
                 return PhotoItem(id: id, image: image)
             }
-            return Preference(id: entry.id, name: entry.name, photos: photos)
+            return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
         }
         return (preferences, snapshot.selectedID)
     }
@@ -58,7 +76,7 @@ final class PreferencesStorage {
                 try? fileManager.removeItem(at: photosURL.appendingPathComponent(file))
             }
             let snapshot = Snapshot(
-                entries: preferences.map { .init(id: $0.id, name: $0.name, photoIDs: $0.photos.map(\.id)) },
+                entries: preferences.map { .init(id: $0.id, name: $0.name, photoIDs: $0.photos.map(\.id), analysis: $0.analysis) },
                 selectedID: selectedID)
             if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: indexURL, options: .atomic) }
         }

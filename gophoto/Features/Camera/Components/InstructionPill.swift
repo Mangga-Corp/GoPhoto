@@ -36,6 +36,8 @@ struct InstructionPill: View {
         case .moveRight:   "Move right"
         case .moveHigher:  "Move higher"
         case .moveLower:   "Move lower"
+        case .tiltUp:      "Tilt the phone up"
+        case .tiltDown:    "Tilt the phone down"
         case .straighten:  "Straighten the phone"
         case .holdStill:   "Hold still"
         }
@@ -50,6 +52,8 @@ struct InstructionPill: View {
         case .moveRight:   "arrow.right"
         case .moveHigher:  "arrow.up"
         case .moveLower:   "arrow.down"
+        case .tiltUp:      "arrow.up.circle"
+        case .tiltDown:    "arrow.down.circle"
         case .straighten:  "level"
         case .holdStill:   "checkmark"
         }
