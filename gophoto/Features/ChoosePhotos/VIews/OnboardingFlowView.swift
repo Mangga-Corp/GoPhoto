@@ -47,7 +47,8 @@ private struct AnalyzingScreen: UIViewControllerRepresentable {
     var onFinish: () -> Void
 
     func makeUIViewController(context: Context) -> AnalyzingViewController {
-        let vc = AnalyzingViewController(viewModel: AnalyzingViewModel(), photos: photos)
+        let vc = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: PreferencesViewModel.shared.selectedID),
+                                         photos: photos)
         vc.onFinish = onFinish
         return vc
     }

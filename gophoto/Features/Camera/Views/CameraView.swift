@@ -19,6 +19,8 @@ struct CameraView: View {
 
     @State private var isShowingGallery = false
     @State private var isFlashing = false
+    @AppStorage("showGuideDebug") private var isShowingDebug = false
+    @State private var isShowingAnalysis = false
     @Namespace private var galleryZoom
     
     var body: some View {
@@ -61,6 +63,9 @@ struct CameraView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        .sheet(isPresented: $isShowingAnalysis) {
+            AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
+        }
         .fullScreenCover(isPresented: $isShowingGallery) {
             NavigationStack {
                 GalleryView(viewModel: GalleryViewModel())
@@ -101,6 +106,12 @@ struct CameraView: View {
                     InstructionPill(instruction: viewModel.instruction)
                         .padding(.top, 12)
                 }
+                .overlay(alignment: .bottomLeading) {
+                    if isShowingDebug {
+                        GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
+                            .padding(8)
+                    }
+                }
                 .overlay {
                     Color.black
                         .opacity(isFlashing ? 1 : 0)
@@ -138,6 +149,16 @@ struct CameraView: View {
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
     private var topBar: some View {
         HStack {
+            Button {
+                isShowingDebug.toggle()
+            } label: {
+                Image(systemName: isShowingDebug ? "ladybug.fill" : "ladybug")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isShowingDebug ? .yellow : .white)
+                    .frame(width: 44, height: 44)
+            }
+            .padding(.leading, 8)
+            .accessibilityLabel(isShowingDebug ? "Hide guide debug values" : "Show guide debug values")
             Spacer()
             AIPreferencesButton()
                 .padding(.horizontal, 16)

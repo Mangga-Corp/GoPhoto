@@ -109,7 +109,8 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
 
             creator.onPhotosAdded = { [weak self, weak creator, weak presenter] photos, name in
                 guard let self, self.viewModel.add(name: name, photos: photos) == nil else { return }
-                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(), photos: photos)
+                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: self.viewModel.selectedID),
+                                                        photos: photos)
                 analyzing.modalPresentationStyle = .fullScreen
                 analyzing.onFinish = { presenter?.dismiss(animated: true)}
                 creator?.present(analyzing, animated: true)
