@@ -72,6 +72,80 @@ final class CameraViewModel {
     private(set) var barTiltError: Double?     // pitch minus target, + = tilted down too much
     @ObservationIgnored private var smoothing: [String: Double] = [:]
 
+    // MARK: Still-phone snapshot
+    //
+    // Vision boxes jitter and the motion sensor lags the camera while the phone moves, so the
+    // camera-height and distance numbers jumped around. They are now measured only while the
+    // phone is still: the median of the still frames is the reference ("snapshot"), and while
+    // the phone moves that reference is frozen. Tilt and level stay live (sensor only).
+
+    /// The phone has not turned more than `stillTolerance` degrees for `stillWindow` seconds.
+    private(set) var isPhoneStill = false
+    /// Still frames behind the current snapshot (debug).
+    private(set) var snapshotFrames = 0
+    @ObservationIgnored private var motionSamples: [(t: TimeInterval, pitch: Double, roll: Double)] = []
+    @ObservationIgnored private var stillFrames: [(person: CGRect, face: CGRect?, pitch: Double)] = []
+    @ObservationIgnored private var snapshot: (person: CGRect, face: CGRect?, pitch: Double)?
+    private static let stillWindow: TimeInterval = 0.3
+    private static let stillTolerance = 1.0
+    private static let snapshotSize = 8
+
+    private func recordMotion(pitch: Double, roll: Double) {
+        let now = ProcessInfo.processInfo.systemUptime
+        motionSamples.append((now, pitch, roll))
+        motionSamples.removeAll { now - $0.t > Self.stillWindow + 0.1 }
+        let span = (motionSamples.last?.t ?? now) - (motionSamples.first?.t ?? now)
+        let pitches = motionSamples.map { $0.pitch }, rolls = motionSamples.map { $0.roll }
+        let steady = (pitches.max() ?? 0) - (pitches.min() ?? 0) < Self.stillTolerance
+            && (rolls.max() ?? 0) - (rolls.min() ?? 0) < Self.stillTolerance
+        let still = span >= Self.stillWindow && steady
+        if still != isPhoneStill { isPhoneStill = still }
+        if !still { stillFrames.removeAll() }      // moving: keep the last snapshot frozen
+    }
+
+    private func recordDetection() {
+        guard let box = personBox else {
+            stillFrames.removeAll()
+            snapshot = nil
+            snapshotFrames = 0
+            return
+        }
+        guard isPhoneStill else { return }
+        stillFrames.append((box, face, pitch))
+        if stillFrames.count > Self.snapshotSize { stillFrames.removeFirst(stillFrames.count - Self.snapshotSize) }
+        let faces = stillFrames.compactMap { $0.face }
+        // A face only counts when it was found in at least half of the still frames.
+        let medianFace: CGRect? = faces.count * 2 >= stillFrames.count ? Self.medianRect(faces) : nil
+        snapshot = (person: Self.medianRect(stillFrames.map { $0.person }),
+                    face: medianFace,
+                    pitch: Self.median(stillFrames.map { $0.pitch }))
+        snapshotFrames = stillFrames.count
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        let v = values.sorted()
+        guard !v.isEmpty else { return 0 }
+        return v.count % 2 == 0 ? (v[v.count / 2 - 1] + v[v.count / 2]) / 2 : v[v.count / 2]
+    }
+
+    private static func medianRect(_ rects: [CGRect]) -> CGRect {
+        CGRect(x: median(rects.map { Double($0.minX) }), y: median(rects.map { Double($0.minY) }),
+               width: median(rects.map { Double($0.width) }), height: median(rects.map { Double($0.height) }))
+    }
+
+    /// Mode C height step: where the eyes are now and where they must be in the frame for the
+    /// preset's camera height at the CURRENT tilt (both live, so the rings follow the phone).
+    /// The eyes sit on the target ring exactly when camera-vs-eyes equals the target.
+    var heightRings: (eye: CGPoint, targetY: CGFloat)? {
+        guard let face, let vfov = verticalFOV, vfov > 0,
+              let target = evaluation.eyeElevationTarget else { return nil }
+        let focal = 0.5 / tan(vfov * .pi / 360)
+        let eye = CGPoint(x: face.midX, y: face.minY + face.height * GuideFlow.eyeFraction)
+        // camera vs eyes = pitch − eyeAboveAxis  →  eyeAboveAxis = pitch − target
+        let eyeAboveAxis = (pitch - target) * .pi / 180
+        return (eye, CGFloat(0.5 - focal * tan(eyeAboveAxis)))
+    }
+
     /// Mode E: the photographer holds the phone at the shown body height and taps Done.
     func confirmPhoneHeight() {
         progress.heightConfirmed = true
@@ -154,6 +228,7 @@ final class CameraViewModel {
         for await tilt in motionService.tiltUpdates() {
             roll = tilt.roll
             pitch = tilt.pitch
+            recordMotion(pitch: tilt.pitch, roll: tilt.roll)
 
             let next = HorizonState.next(roll: tilt.roll, pitch: tilt.pitch, current: horizon)
             if next != horizon {
@@ -172,6 +247,7 @@ final class CameraViewModel {
             face = detection?.face
             if let fov = detection?.verticalFOV { verticalFOV = fov }
             if let mp = detection?.photoMegapixels { photoMegapixels = mp }
+            recordDetection()
             updateInstruction()
         }
         personBox = nil
@@ -206,9 +282,12 @@ final class CameraViewModel {
             let plain = GuideEvaluation(instruction: next)
             if plain != evaluation { evaluation = plain }
 
-        case .heightFirst, .heightFirstCrop, .tiltFirst, .currentSteps, .currentStepsHeight, .fixedRules, .wideCrop:
-            let live = GuideLive(person: personBox, face: face, verticalFOV: verticalFOV, roll: roll, pitch: pitch,
-                                 photoMegapixels: photoMegapixels)
+        case .heightFirst, .heightFirstOld, .heightFirstCrop, .tiltFirst, .tiltFirstOld, .currentSteps, .currentStepsHeight, .fixedRules, .wideCrop:
+            // Distance, camera height and position from the still-phone snapshot; tilt and level live.
+            let snap = personBox == nil || !guideMode.usesSnapshot ? nil : snapshot
+            let live = GuideLive(person: snap?.person ?? personBox, face: snap.map { $0.face } ?? face,
+                                 verticalFOV: verticalFOV, roll: roll, pitch: pitch,
+                                 photoMegapixels: photoMegapixels, measurePitch: snap?.pitch)
             let (result, nextProgress) = GuideFlow.evaluate(
                 mode: guideMode, live: live, analysis: analysis, target: target, targetPitch: targetPitch,
                 progress: progress, latch: latchSteps, now: ProcessInfo.processInfo.systemUptime)

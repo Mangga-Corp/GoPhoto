@@ -37,6 +37,9 @@ struct GuideDebugPanel: View {
                 Text("Rules: framing \(viewModel.evaluation.framingRule ?? "size ±30%") · height \(viewModel.evaluation.heightRule ?? "none")")
             }
             if !viewModel.guideMode.steps.isEmpty {
+                Text(viewModel.isPhoneStill
+                     ? "Measuring: still · \(viewModel.snapshotFrames) frames"
+                     : "Measuring: phone moving · values frozen")
                 Text(distanceLine)
                 Text(heightLine)
                 Text(stepsLine)

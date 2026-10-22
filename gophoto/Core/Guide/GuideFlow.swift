@@ -19,11 +19,16 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
     case currentStepsHeight
     /// B: main flow. Distance → camera height → tilt → left/right → straighten.
     case heightFirst
+    /// B as first tested on the phone (kept for comparison): distance from head size → body
+    /// height → edge cut-off rule, live measurements (no still-phone snapshot), no height cap.
+    case heightFirstOld
     /// B + crop: distance (a little wider) → camera height → tilt; left/right and a small
     /// horizon tilt are fixed by cropping the photo.
     case heightFirstCrop
     /// C: like B, but tilt before camera height.
     case tiltFirst
+    /// C with B old's rules (live measurements, old distance rule, no height cap).
+    case tiltFirstOld
     /// D: baseline without angle guidance. Distance → left/right → up/down → straighten.
     case noAngle
     /// E: fixed rules from the analysis, measured live only where stable (sensor):
@@ -36,7 +41,15 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
     static let storageKey = "guideMode"
 
     /// Modes offered in the picker. The others stay in code for reference but are hidden.
-    static let visible: [GuideMode] = [.current, .heightFirst, .heightFirstCrop, .noAngle]
+    static let visible: [GuideMode] = [.current, .heightFirst, .heightFirstOld, .heightFirstCrop,
+                                       .tiltFirst, .tiltFirstOld, .noAngle]
+
+    /// The "old" variants: rules as in the first phone test of B.
+    var isOldRules: Bool { self == .heightFirstOld || self == .tiltFirstOld }
+    /// Measure distance / camera height / position from the still-phone snapshot (not the old variants).
+    var usesSnapshot: Bool { !isOldRules }
+    /// Cap the camera-height target at a comfortable reach (not the old variants).
+    var capsHeight: Bool { !isOldRules }
 
     /// The saved mode, or B when nothing (or a hidden mode) is saved.
     static func saved(_ defaults: UserDefaults = .standard) -> GuideMode {
@@ -60,8 +73,10 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
         case .currentSteps:       "A · Steps + bars"
         case .currentStepsHeight: "A · Steps + bars + height"
         case .heightFirst: "B · Height first"
+        case .heightFirstOld: "B · Old (first test)"
         case .heightFirstCrop: "B · Height first + crop"
         case .tiltFirst:   "C · Tilt first"
+        case .tiltFirstOld: "C · Tilt first (old rules)"
         case .noAngle:     "D · No angle"
         case .fixedRules:  "E · Fixed rules"
         case .wideCrop:    "F · Wide + crop"
@@ -71,9 +86,9 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
     /// Step order for the step-by-step modes (B, C). Empty for A and D.
     var steps: [GuideStep] {
         switch self {
-        case .heightFirst:        [.distance, .height, .tilt, .horizontal, .straight]
+        case .heightFirst, .heightFirstOld: [.distance, .height, .tilt, .horizontal, .straight]
         case .heightFirstCrop:    [.distance, .height, .tilt]
-        case .tiltFirst:          [.distance, .tilt, .height, .horizontal, .straight]
+        case .tiltFirst, .tiltFirstOld: [.distance, .tilt, .height, .horizontal, .straight]
         case .currentSteps:       [.distance, .horizontal, .vertical, .tilt, .straight]
         case .currentStepsHeight: [.distance, .horizontal, .vertical, .height, .tilt, .straight]
         case .fixedRules:         [.framing, .heightRule, .tilt, .horizontal, .straight]
@@ -125,6 +140,9 @@ nonisolated struct GuideLive: Sendable {
     var pitch: Double
     /// Largest photo the camera can take, megapixels (mode F crop limit).
     var photoMegapixels: Double? = nil
+    /// Phone pitch of the frames `person` / `face` come from (a still-phone snapshot).
+    /// Used for the camera height so eye position and pitch belong to the same moment.
+    var measurePitch: Double? = nil
 }
 
 /// What the guide measured and decided in one frame (also shown in the debug panel).
@@ -133,6 +151,8 @@ nonisolated struct GuideEvaluation: Equatable, Sendable {
     var checks: [GuideStep: GuideCheck] = [:]
     /// The step being fixed now (first unfinished one); nil when everything is OK.
     var activeStep: GuideStep?
+    /// True for the modes that fix tilt before camera height (C): the height step uses rings.
+    var heightUsesRings = false
     /// "head", "body", or why distance could not be measured.
     var distanceSource = "—"
     /// Live size / target size (> 1 = person too big).
@@ -180,7 +200,8 @@ nonisolated enum GuideFlow {
     static func breakLimit(_ step: GuideStep) -> Double {
         switch step {
         case .distance:              0.35   // size ±35%
-        case .height, .tilt:         8      // degrees
+        case .tilt:                  tiltExit   // degrees: tilt set tight, may drift a little while finding the height
+        case .height:                heightExit
         case .horizontal, .vertical: 0.15   // fraction of the frame
         case .straight:              6      // degrees
         case .framing, .heightRule:  .infinity   // discrete: once done, kept until the person is lost
@@ -190,7 +211,7 @@ nonisolated enum GuideFlow {
     // Tolerances: enter / exit. A step that is OK uses the looser exit value so it does not flicker.
     static let sizeEnter = 0.15, sizeExit = 0.22
     static let heightEnter = 3.0, heightExit = 5.0
-    static let tiltEnter = 3.0, tiltExit = 4.0
+    static let tiltEnter = 2.0, tiltExit = 4.0     // tight first, so the height step reads true
     static let positionEnter = 0.06, positionExit = 0.09
     static let straightEnter = 2.0, straightExit = 3.0
 
@@ -251,32 +272,41 @@ nonisolated enum GuideFlow {
             }
         }
 
-        // 1. Distance: head size when the face is big enough, else body height, else the cut-off rule.
+        // 1. Distance, the same rule as mode A (tested OK on the phone): person box height vs the
+        //    preset's box height. The head-size, body-angle and cut-off rules asked people to
+        //    stand far too far back, so they are no longer used for the decision; the head
+        //    angle is still computed for the debug panel and the distance estimate.
         let liveTop = Double(person.minY) <= edgeMargin, liveBottom = Double(person.maxY) >= 1 - edgeMargin
-        let refTop = analysis?.clippedTop ?? false, refBottom = analysis?.clippedBottom ?? false
         if let face = live.face, let vfov = live.verticalFOV {
             result.headAngle = PreferenceAnalyzer.angle(ofHeight: Double(face.height), verticalFOV: vfov)
         }
-        if let face = live.face, Double(face.height) >= minFaceHeight,
-           let head = result.headAngle, let targetHead = analysis?.headAngle, targetHead > 0 {
-            result.distanceSource = "head"
-            result.sizeRatio = head / targetHead
-        } else if liveTop == refTop, liveBottom == refBottom, target.rect.height > 0 {
-            result.distanceSource = "body"
+        if mode.isOldRules {
+            // B old: head size when the face is big enough, else body height, else the cut-off rule.
+            let refTop = analysis?.clippedTop ?? false, refBottom = analysis?.clippedBottom ?? false
+            if let face = live.face, Double(face.height) >= minFaceHeight,
+               let head = result.headAngle, let targetHead = analysis?.headAngle, targetHead > 0 {
+                result.distanceSource = "head"
+                result.sizeRatio = head / targetHead
+            } else if liveTop == refTop, liveBottom == refBottom, target.rect.height > 0 {
+                result.distanceSource = "body"
+                result.sizeRatio = Double(person.height / target.rect.height)
+            } else if latch, progress.latched.contains(.distance) {
+                result.distanceSource = "latched (edge cut-off changed)"
+                checks[.distance] = .ok
+            } else if (liveTop && !refTop) || (liveBottom && !refBottom) {
+                result.distanceSource = "cut off (photos are not)"
+                checks[.distance] = .pending
+                wanted[.distance] = .moveFarther
+                progress.okSince[.distance] = nil
+            } else {
+                result.distanceSource = "photos cut off, live not"
+                checks[.distance] = .pending
+                wanted[.distance] = .moveCloser
+                progress.okSince[.distance] = nil
+            }
+        } else if target.rect.height > 0 {
+            result.distanceSource = "body (like A)"
             result.sizeRatio = Double(person.height / target.rect.height)
-        } else if latch, progress.latched.contains(.distance) {
-            result.distanceSource = "latched (edge cut-off changed)"
-            checks[.distance] = .ok
-        } else if (liveTop && !refTop) || (liveBottom && !refBottom) {
-            result.distanceSource = "cut off (photos are not)"
-            checks[.distance] = .pending
-            wanted[.distance] = .moveFarther
-            progress.okSince[.distance] = nil
-        } else {
-            result.distanceSource = "photos cut off, live not"
-            checks[.distance] = .pending
-            wanted[.distance] = .moveCloser
-            progress.okSince[.distance] = nil
         }
         if let ratio = result.sizeRatio {
             judge(.distance, error: ratio / mode.distanceFactor - 1, enter: sizeEnter, exit: sizeExit,
@@ -304,7 +334,7 @@ nonisolated enum GuideFlow {
         if case .match = analysis?.angle, var targetElevation = analysis?.eyeElevation {
             // Cap: a camera far above the eyes is out of reach; aim for the highest comfortable
             // position instead of asking to raise the phone forever (tilt still matches the preset).
-            if let d = result.distanceMeters, d > 0 {
+            if mode.capsHeight, let d = result.distanceMeters, d > 0 {
                 let reach = atan(maxLiftAboveEyes / d) * 180 / .pi
                 if targetElevation > reach {
                     targetElevation = reach
@@ -316,10 +346,14 @@ nonisolated enum GuideFlow {
                 let focal = 0.5 / tan(vfov * .pi / 360)                 // frame-height units
                 let eyeY = Double(face.minY) + Double(face.height) * eyeFraction
                 let eyeAboveAxis = atan((0.5 - eyeY) / focal) * 180 / .pi
-                let elevation = live.pitch - eyeAboveAxis               // + = camera above the eyes
+                let elevation = (live.measurePitch ?? live.pitch) - eyeAboveAxis   // + = camera above the eyes
                 result.eyeElevation = elevation
+                // When tilt is already done (mode C), say "keep the angle" so the photographer
+                // moves the phone up/down instead of tilting it again.
+                let tiltFirst = (mode.steps.firstIndex(of: .tilt) ?? .max) < (mode.steps.firstIndex(of: .height) ?? .max)
                 judge(.height, error: elevation - targetElevation, enter: heightEnter, exit: heightExit,
-                      positive: .lowerPhone, negative: .raisePhone)
+                      positive: tiltFirst ? .lowerPhoneKeepAngle : .lowerPhone,
+                      negative: tiltFirst ? .raisePhoneKeepAngle : .raisePhone)
             } else {
                 checks[.height] = .skipped("no face")
             }
@@ -420,6 +454,7 @@ nonisolated enum GuideFlow {
             }
         }
 
+        result.heightUsesRings = mode == .tiltFirst || mode == .tiltFirstOld
         result.checks = checks
         result.activeStep = mode.steps.first { checks[$0] == .pending }
         result.instruction = mode.steps.first { checks[$0] == .pending }.flatMap { wanted[$0] } ?? .holdStill

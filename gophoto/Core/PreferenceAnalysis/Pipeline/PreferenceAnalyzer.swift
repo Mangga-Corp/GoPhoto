@@ -42,7 +42,8 @@ enum PreferenceAnalyzer {
                               framing: majority(profile.subjectFraming, excluding: [.other, .unknown])?.rawValue,
                               heightLevel: profile.viewpoint.flatMap {
                                   majority($0.heightLevel, excluding: [.unknown])?.rawValue
-                              })
+                              },
+                              bodyAngle: bodyAngle(results))
     }
 
     /// Majority rule (decided with the team): guide the angle only when one angle holds a
@@ -85,6 +86,17 @@ enum PreferenceAnalyzer {
                   let vfov = result.angleComparison?.details[.geoCalibLight]?.vfov,
                   head > 0, vfov > 0 else { return nil }
             return angle(ofHeight: head, verticalFOV: vfov)
+        }
+        return values.isEmpty ? nil : median(values)
+    }
+
+    /// Person box height as an angle, median over photos with a valid person and a field of view.
+    nonisolated static func bodyAngle(_ results: [PhotoResult]) -> Double? {
+        let values = results.compactMap { result -> Double? in
+            let p = result.subjectPositioning
+            guard p.assessment.isDetermined, p.isMeasurementValid, let box = p.subjectBox,
+                  let vfov = result.angleComparison?.details[.geoCalibLight]?.vfov, vfov > 0 else { return nil }
+            return angle(ofHeight: Double(box.height), verticalFOV: vfov)
         }
         return values.isEmpty ? nil : median(values)
     }
