@@ -33,7 +33,6 @@ final class CameraViewModel {
 
     // for the guide frame
     private(set) var target: FramingTarget = .center   // from the selected preset's AI analysis
-    private(set) var personOutline: CGImage?
     private(set) var instruction: GuideInstruction = .findPerson
     var isReady: Bool { instruction == .holdStill }      // "green"
 
@@ -41,6 +40,51 @@ final class CameraViewModel {
     private(set) var personBox: CGRect?                  // normalized, origin top-left
     private(set) var roll: Double = 0                    // + = rotated clockwise
     private(set) var pitch: Double = 0                   // + = phone tilted down
+    private(set) var face: CGRect?                       // normalized, origin top-left
+    private(set) var personOutline: CGImage?             // body outline, old-look mode only
+    @ObservationIgnored private var verticalFOV: Double? // of the upright frame, degrees
+    @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
+
+    // Guide variant under test (debug panel). Saved across launches.
+    var guideMode: GuideMode = GuideMode.saved() {
+        didSet {
+            UserDefaults.standard.set(guideMode.rawValue, forKey: GuideMode.storageKey)
+            cameraService.setOutlineEnabled(guideMode == .currentOldLook)
+            cameraService.setHighResolution(guideMode.crops)
+            progress = GuideProgress()
+            updateInstruction()
+        }
+    }
+    /// Steps, checks and measurements of the current frame (modes B and C fill the checks).
+    private(set) var evaluation = GuideEvaluation()
+    @ObservationIgnored private var progress = GuideProgress()
+    /// Keep finished steps done (no going back over small wobbles). Debug-panel toggle.
+    var latchSteps: Bool = UserDefaults.standard.object(forKey: "guideLatch") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(latchSteps, forKey: "guideLatch")
+            progress = GuideProgress()
+        }
+    }
+
+    // Smoothed values for the step bars (live measurements jitter frame to frame).
+    private(set) var barSizeRatio: Double?
+    private(set) var barHeightError: Double?   // camera vs eyes minus target, + = camera too high
+    private(set) var barTiltError: Double?     // pitch minus target, + = tilted down too much
+    @ObservationIgnored private var smoothing: [String: Double] = [:]
+
+    /// Mode E: the photographer holds the phone at the shown body height and taps Done.
+    func confirmPhoneHeight() {
+        progress.heightConfirmed = true
+        updateInstruction()
+    }
+
+    /// Exponential smoothing; nil input resets the key.
+    private func smoothed(_ key: String, _ value: Double?, weight: Double = 0.3) -> Double? {
+        guard let value else { smoothing[key] = nil; return nil }
+        let next = smoothing[key].map { $0 + weight * (value - $0) } ?? value
+        smoothing[key] = next
+        return next
+    }
 
     // The selected preset and what the AI learned from it (copied from PreferencesViewModel).
     private(set) var presetName: String?
@@ -79,6 +123,8 @@ final class CameraViewModel {
         self.photoLibraryService = photoLibraryService
         self.galleryStore = galleryStore ?? GalleryStore()
         self.preferences = preferences ?? .shared
+        self.cameraService.setOutlineEnabled(guideMode == .currentOldLook)
+        self.cameraService.setHighResolution(guideMode.crops)
     }
 
     // MARK: Intents (things the View asks for)
@@ -121,18 +167,16 @@ final class CameraViewModel {
     // listens to person detection until the View's .task is cancelled
     func observePerson() async {
         for await detection in cameraService.personDetections() {
-            // Drawing: skip nil → nil writes (nobody in view)
-            let newOutline = detection?.outline
-            if newOutline != nil || personOutline != nil {
-                personOutline = newOutline
-            }
-
-            // Logic
             personBox = detection?.box
+            if detection?.outline != nil || personOutline != nil { personOutline = detection?.outline }
+            face = detection?.face
+            if let fov = detection?.verticalFOV { verticalFOV = fov }
+            if let mp = detection?.photoMegapixels { photoMegapixels = mp }
             updateInstruction()
         }
-        personOutline = nil
         personBox = nil
+        personOutline = nil
+        face = nil
         instruction = .findPerson
     }
 
@@ -150,12 +194,38 @@ final class CameraViewModel {
             target = newTarget
         }
 
-        let next = GuideInstruction.next(offset: personBox.map(target.offset(of:)),
-                                         roll: roll,
-                                         pitchError: pitchError,
-                                         current: instruction)
-        if next != instruction {
-            instruction = next
+        switch guideMode {
+        case .current, .currentOldLook, .noAngle:
+            let next = GuideInstruction.next(offset: personBox.map(target.offset(of:)),
+                                             roll: roll,
+                                             pitchError: guideMode == .noAngle ? nil : pitchError,
+                                             current: instruction)
+            if next != instruction {
+                instruction = next
+            }
+            let plain = GuideEvaluation(instruction: next)
+            if plain != evaluation { evaluation = plain }
+
+        case .heightFirst, .heightFirstCrop, .tiltFirst, .currentSteps, .currentStepsHeight, .fixedRules, .wideCrop:
+            let live = GuideLive(person: personBox, face: face, verticalFOV: verticalFOV, roll: roll, pitch: pitch,
+                                 photoMegapixels: photoMegapixels)
+            let (result, nextProgress) = GuideFlow.evaluate(
+                mode: guideMode, live: live, analysis: analysis, target: target, targetPitch: targetPitch,
+                progress: progress, latch: latchSteps, now: ProcessInfo.processInfo.systemUptime)
+            progress = nextProgress
+            if result != evaluation { evaluation = result }
+
+            // Size is smoothed in log space so "2x too close" and "2x too far" behave alike.
+            barSizeRatio = smoothed("size", result.sizeRatio.map { log($0) }).map { exp($0) }
+            let heightError: Double? = {
+                guard let now = result.eyeElevation, let target = result.eyeElevationTarget else { return nil }
+                return now - target
+            }()
+            barHeightError = smoothed("height", heightError)
+            barTiltError = smoothed("tilt", pitchError)
+            if result.instruction != instruction {
+                instruction = result.instruction
+            }
         }
     }
 
@@ -177,6 +247,10 @@ final class CameraViewModel {
         guard state == .running, !isCapturing else { return }
         isCapturing = true
 
+        // Mode F: remember where the person is and how the phone is turned at the shutter.
+        let cropPlan: (person: CGRect, target: CGRect, roll: Double, megapixels: Double?)? =
+            guideMode.crops ? personBox.map { ($0, target.rect, roll, photoMegapixels) } : nil
+
         let photo: CapturedPhoto
         do {
             photo = try await cameraService.capturePhoto()
@@ -191,6 +265,17 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: photo.data) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
+            }
+            // Crop modes (testing): also save the cropped, straightened version next to the original.
+            if let plan = cropPlan {
+                let data = photo.data
+                let cropped = await Task.detached(priority: .userInitiated) {
+                    WideCrop.crop(data, person: plan.person, target: plan.target,
+                                  rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
+                }.value
+                if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
+                    galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                }
             }
         } catch {
             errorMessage = error.localizedDescription

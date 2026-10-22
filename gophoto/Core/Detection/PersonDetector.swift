@@ -13,15 +13,23 @@
 //
 import Vision
 import CoreVideo
+import CoreGraphics
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// Result for one camera frame.
+/// Result for one camera frame: ONE person (the largest), never more.
 nonisolated struct PersonDetection: @unchecked Sendable {
-    /// Box around the person (normalized 0...1, origin TOP-LEFT). Used for alignment, not drawn.
+    /// Box around the person (normalized 0...1, origin TOP-LEFT). Used for alignment.
     let box: CGRect
-    /// White ring around the body (with a gap) on a transparent background. Covers the whole frame.
-    let outline: CGImage?
+    /// Face of that person (normalized, origin TOP-LEFT), when Vision found one inside the box.
+    var face: CGRect? = nil
+    /// Vertical field of view of the upright frame, degrees (set by `CameraService`).
+    var verticalFOV: Double? = nil
+    /// Largest photo the camera can take, megapixels (set by `CameraService`).
+    var photoMegapixels: Double? = nil
+    /// White ring around the body on a transparent background, covering the whole frame.
+    /// Only made when `PersonDetector.includeOutline` is on (guide mode "A · Old look").
+    var outline: CGImage? = nil
 }
 
 nonisolated final class PersonDetector {
@@ -33,10 +41,16 @@ nonisolated final class PersonDetector {
         return request
     }()
 
-    // The person's shape (for drawing)
+    // The person's face (eye line and head size for the camera-height and distance guide)
+    private let faceRequest = VNDetectFaceRectanglesRequest()
+
+    /// Draw the body outline too (costly: person segmentation every frame). Old-look mode only.
+    var includeOutline = false
+
+    // The person's shape (for the old-look outline)
     private let maskRequest: VNGeneratePersonSegmentationRequest = {
         let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .balanced                 // made for video; try .fast if it lags
+        request.qualityLevel = .balanced
         request.outputPixelFormat = kCVPixelFormatType_OneComponent8
         return request
     }()
@@ -48,11 +62,12 @@ nonisolated final class PersonDetector {
     private let lineRatio: CGFloat = 0.012  // line thickness
 
     /// Runs both requests on one upright frame. nil = nobody found.
+    /// Only the largest person is used; anyone else in the frame is ignored.
     func detect(in pixelBuffer: CVPixelBuffer) -> PersonDetection? {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
         do {
-            try handler.perform([boxRequest, maskRequest])   // one pass, two answers
+            try handler.perform(includeOutline ? [boxRequest, faceRequest, maskRequest] : [boxRequest, faceRequest])
         } catch {
             return nil
         }
@@ -68,11 +83,20 @@ nonisolated final class PersonDetector {
         let b = largest.boundingBox
         let box = CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
 
-        let outline = maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) }
-        return PersonDetection(box: box, outline: outline)
+        // Largest face whose centre lies inside that person's box
+        let face = faceRequest.results?
+            .map { f -> CGRect in
+                let r = f.boundingBox
+                return CGRect(x: r.minX, y: 1 - r.maxY, width: r.width, height: r.height)
+            }
+            .filter { box.contains(CGPoint(x: $0.midX, y: $0.midY)) }
+            .max { $0.height < $1.height }
+
+        let outline = includeOutline ? maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) } : nil
+        return PersonDetection(box: box, face: face, outline: outline)
     }
 
-    // MARK: - Mask → ring with a gap
+    // MARK: - Mask → ring with a gap (old look)
 
     private func makeOutline(from mask: CVPixelBuffer) -> CGImage? {
         let maskImage = CIImage(cvPixelBuffer: mask)

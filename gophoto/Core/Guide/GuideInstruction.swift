@@ -12,6 +12,8 @@ nonisolated enum GuideInstruction: Equatable, Sendable, CaseIterable {
     case moveLeft, moveRight          // horizontal
     case moveHigher, moveLower        // vertical
     case tiltUp, tiltDown             // camera angle: phone pitch vs the preset (after framing)
+    case raisePhone, lowerPhone       // camera height vs the subject's eyes (GuideFlow, modes B and C)
+    case setPhoneHeight               // hold the phone at a body landmark, then tap Done (mode E)
     case straighten                   // framing OK, phone crooked
     case holdStill                    // everything OK → take the photo
 

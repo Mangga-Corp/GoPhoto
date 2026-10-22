@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 2
+    static let currentVersion = 4
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -22,6 +22,26 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     var angleDeterminedCount: Int?
     /// Weighted share of the leading angle category (0...1).
     var angleLeadingShare: Double?
+
+    // Camera-height and distance guide (version 3). Optional so older saves still decode.
+
+    /// Camera height relative to the eyes, degrees (+ = camera above the eyes): median over the
+    /// photos of the majority angle, only values within ±45°. Nil without an angle majority.
+    var eyeElevation: Double?
+    /// Angular height of the face, degrees (face height in the image converted with GeoCalib's
+    /// field of view), median over the photos that have it. Lens-independent distance cue.
+    var headAngle: Double?
+    /// Most photos have the person cut off at the top / bottom edge of the frame.
+    var clippedTop: Bool?
+    var clippedBottom: Bool?
+
+    // Fixed rules (version 4), for guide mode E. Optional so older saves still decode.
+
+    /// Majority framing: `FramingCategory.rawValue` ("fullBody" / "halfBody"). Nil without a majority.
+    var framing: String?
+    /// Majority camera height against the body: `CameraHeightLevel.rawValue`
+    /// ("aboveHead", "eye", "shoulder", "hip", "knee", "ground"). Nil without a majority.
+    var heightLevel: String?
 
     nonisolated enum AngleTarget: Codable, Sendable, Equatable {
         /// At least 60% of the photos share one camera angle: match this phone pitch.
