@@ -41,6 +41,8 @@ struct DirectionArrowOverlay: View {
         case .moveFarther: "arrow.down.right.and.arrow.up.left"
         case .tiltUp:      "arrow.up.circle"
         case .tiltDown:    "arrow.down.circle"
+        case .raisePhone:  "arrow.up.to.line"
+        case .lowerPhone:  "arrow.down.to.line"
         default:           nil
         }
     }

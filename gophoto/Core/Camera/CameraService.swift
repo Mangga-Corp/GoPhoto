@@ -62,6 +62,10 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func stop() async
     func capturePhoto() async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
+    /// Turns the body outline (old-look guide mode) on or off.
+    func setOutlineEnabled(_ enabled: Bool)
+    /// Take photos at the camera's largest size (mode F crops them).
+    func setHighResolution(_ enabled: Bool)
 }
 
 // MARK: - Real implementation
@@ -80,7 +84,15 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let videoQueue = DispatchQueue(label: "gophoto.camera.video")
     private let personDetector = PersonDetector()
     private var personContinuation: AsyncStream<PersonDetection?>.Continuation?
-    private var frameCount = 0                                                      
+    private var frameCount = 0
+    /// Vertical field of view of the upright (portrait) frame, degrees. Set in `configureSession`.
+    private var verticalFOV: Double?
+    /// Largest photo size, megapixels (video queue copy for the guide).
+    private var photoMegapixels: Double?
+    /// Photo sizes (session queue): largest, and the one closest to 12 MP for normal shots.
+    private var largestPhotoDimensions: CMVideoDimensions?
+    private var normalPhotoDimensions: CMVideoDimensions?
+    private var highResolution = false                                                      
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> CameraPermission {
@@ -140,11 +152,23 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                    connection.isVideoRotationAngleSupported(90) {
                     connection.videoRotationAngle = 90
                 }
-                self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
+                let settings = AVCapturePhotoSettings()
+                if let dimensions = self.highResolution ? self.largestPhotoDimensions : self.normalPhotoDimensions {
+                    settings.maxPhotoDimensions = dimensions
+                }
+                self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
         }
     }
     
+    func setHighResolution(_ enabled: Bool) {
+        sessionQueue.async { self.highResolution = enabled }
+    }
+
+    func setOutlineEnabled(_ enabled: Bool) {
+        videoQueue.async { self.personDetector.includeOutline = enabled }
+    }
+
     // Stream of "where is the person" (nil = nobody). Detection only runs while someone listens.
     func personDetections() -> AsyncStream<PersonDetection?> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -168,11 +192,25 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             throw CameraError.cameraUnavailable
         }
         let input = try AVCaptureDeviceInput(device: device)
+        // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
+        let fov = Double(device.activeFormat.videoFieldOfView)
+        videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
         guard session.canAddInput(input) else { throw CameraError.cannotAddInput }
         session.addInput(input)
 
         guard session.canAddOutput(photoOutput) else { throw CameraError.cannotAddOutput }
         session.addOutput(photoOutput)
+
+        // Allow the largest photo (mode F crops it); normal shots stay near 12 MP.
+        let sizes = device.activeFormat.supportedMaxPhotoDimensions
+        func pixels(_ d: CMVideoDimensions) -> Int { Int(d.width) * Int(d.height) }
+        if let largest = sizes.max(by: { pixels($0) < pixels($1) }) {
+            photoOutput.maxPhotoDimensions = largest
+            largestPhotoDimensions = largest
+            normalPhotoDimensions = sizes.min(by: { abs(pixels($0) - 12_000_000) < abs(pixels($1) - 12_000_000) })
+            let megapixels = Double(pixels(largest)) / 1_000_000
+            videoQueue.async { self.photoMegapixels = megapixels }
+        }
         
         // live video frames → person detection
         videoOutput.alwaysDiscardsLateVideoFrames = true
@@ -223,6 +261,9 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         guard frameCount.isMultiple(of: 2),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        continuation.yield(personDetector.detect(in: pixelBuffer))           
+        var detection = personDetector.detect(in: pixelBuffer)
+        detection?.verticalFOV = verticalFOV
+        detection?.photoMegapixels = photoMegapixels
+        continuation.yield(detection)           
     }
 }

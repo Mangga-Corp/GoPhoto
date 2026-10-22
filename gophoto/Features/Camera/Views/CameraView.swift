@@ -92,19 +92,65 @@ struct CameraView: View {
 
             CameraPreviewView(session: viewModel.session)
                 .overlay {
-                    GuideFramesOverlay(target: viewModel.target.rect,
-                                       personOutline: viewModel.personOutline,
-                                       isAligned: viewModel.isReady)          // green = ready
+                    // Step modes (B, C): rings only for left/right and the final "ready" state.
+                    if viewModel.guideMode.crops {
+                        CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
+                                           isReady: viewModel.isReady)
+                    } else if viewModel.guideMode == .currentOldLook {
+                        GuideFramesOverlay(target: viewModel.target.rect,
+                                           personOutline: viewModel.personOutline,
+                                           isAligned: viewModel.isReady)
+                    } else if showsRing {
+                        GuideRingOverlay(target: viewModel.target.rect,
+                                         person: viewModel.personBox,
+                                         isAligned: viewModel.isReady)      // green = ready
+                    }
                 }
                 .overlay {
                     HorizonLevelView(state: viewModel.horizon)
                 }
                 .overlay {
-                    DirectionArrowOverlay(instruction: viewModel.instruction)
+                    if !showsStepBar {
+                        DirectionArrowOverlay(instruction: viewModel.instruction)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
+                        HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
+                            .padding(.bottom, 12)
+                    } else if activeStep == .distance {
+                        DistanceBar(sizeRatio: viewModel.barSizeRatio, tolerance: GuideFlow.sizeEnter,
+                                    isOK: viewModel.evaluation.checks[.distance] == .ok)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 12)
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    if activeStep == .height {
+                        // Phone icon above the zone = camera too high.
+                        GuideVerticalBar(value: viewModel.barHeightError.map { $0 / Self.barRange },
+                                         zone: GuideFlow.heightEnter / Self.barRange,
+                                         symbol: "iphone", caption: "Height",
+                                         isOK: viewModel.evaluation.checks[.height] == .ok)
+                            .padding(.trailing, 12)
+                    } else if activeStep == .tilt {
+                        // Aim point below the zone = phone tilted down too much.
+                        GuideVerticalBar(value: viewModel.barTiltError.map { -$0 / Self.barRange },
+                                         zone: GuideFlow.tiltEnter / Self.barRange,
+                                         symbol: "scope", caption: "Tilt",
+                                         isOK: viewModel.evaluation.checks[.tilt] == .ok)
+                            .padding(.trailing, 12)
+                    }
                 }
                 .overlay(alignment: .top) {
                     InstructionPill(instruction: viewModel.instruction)
                         .padding(.top, 12)
+                }
+                .overlay(alignment: .top) {
+                    if !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
+                        GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
+                            .padding(.top, 56)   // below the instruction pill
+                    }
                 }
                 .overlay(alignment: .bottomLeading) {
                     if isShowingDebug {
@@ -144,6 +190,24 @@ struct CameraView: View {
             }
         }
         .sensoryFeedback(.impact(flexibility: .rigid, intensity: 1.0), trigger: viewModel.captureCount)
+    }
+
+    // MARK: Step visuals (modes B and C)
+
+    /// Degrees at the ends of the height and tilt bars.
+    private static let barRange = 15.0
+
+    private var activeStep: GuideStep? {
+        viewModel.guideMode.steps.isEmpty ? nil : viewModel.evaluation.activeStep
+    }
+
+    private var showsStepBar: Bool {
+        activeStep == .distance || activeStep == .height || activeStep == .tilt || activeStep == .heightRule
+    }
+
+    private var showsRing: Bool {
+        viewModel.guideMode.steps.isEmpty || activeStep == .horizontal || activeStep == .vertical
+            || viewModel.isReady
     }
 
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
