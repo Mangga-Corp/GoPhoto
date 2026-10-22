@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 4
+    static let currentVersion = 5
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -42,6 +42,12 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Majority camera height against the body: `CameraHeightLevel.rawValue`
     /// ("aboveHead", "eye", "shoulder", "hip", "knee", "ground"). Nil without a majority.
     var heightLevel: String?
+
+    /// Angular height of the person's box, degrees (box height converted with GeoCalib's field of
+    /// view), median over photos with a valid person. Lens-independent distance cue (version 5):
+    /// a person photographed with 0.5x looks small in the frame but has the same angle at the
+    /// same distance, so the camera no longer asks to stand twice as far.
+    var bodyAngle: Double?
 
     nonisolated enum AngleTarget: Codable, Sendable, Equatable {
         /// At least 60% of the photos share one camera angle: match this phone pitch.

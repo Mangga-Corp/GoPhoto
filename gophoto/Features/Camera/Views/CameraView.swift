@@ -21,6 +21,7 @@ struct CameraView: View {
     @State private var isFlashing = false
     @AppStorage("showGuideDebug") private var isShowingDebug = false
     @State private var isShowingAnalysis = false
+    @State private var stepBanner: String?
     @Namespace private var galleryZoom
     
     var body: some View {
@@ -125,8 +126,27 @@ struct CameraView: View {
                             .padding(.bottom, 12)
                     }
                 }
+                .overlay {
+                    // Mode C: camera height as two rings on the subject's eyes, not a bar.
+                    if activeStep == .height, viewModel.evaluation.heightUsesRings,
+                       let rings = viewModel.heightRings {
+                        HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
+                                          isOK: viewModel.evaluation.checks[.height] == .ok)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if let banner = stepBanner {
+                        Text(banner)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(Color.green, in: Capsule())
+                            .padding(.top, 96)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                 .overlay(alignment: .trailing) {
-                    if activeStep == .height {
+                    if activeStep == .height, !viewModel.evaluation.heightUsesRings {
                         // Phone icon above the zone = camera too high.
                         GuideVerticalBar(value: viewModel.barHeightError.map { $0 / Self.barRange },
                                          zone: GuideFlow.heightEnter / Self.barRange,
@@ -176,6 +196,21 @@ struct CameraView: View {
         }
         .task { await viewModel.observeTilt() }
         .task { await viewModel.observePerson() }
+        // A step just finished: tap + short banner so the change of task is obvious
+        // (e.g. tilt is done, now move the phone up/down and keep the angle).
+        .onChange(of: viewModel.evaluation.activeStep) { old, new in
+            guard let old, old != new, viewModel.evaluation.checks[old] == .ok else { return }
+            let next = new.map { " → now \($0.title.lowercased())" } ?? ""
+            withAnimation(.snappy) { stepBanner = "\(old.title) ✓\(next)" }
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation(.easeOut) { stepBanner = nil }
+            }
+        }
+        .sensoryFeedback(.success, trigger: viewModel.evaluation.activeStep) { old, new in
+            guard let old else { return false }
+            return old != new && viewModel.evaluation.checks[old] == .ok
+        }
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.isLevel) { _, isNowLevel in
             isNowLevel
         }

@@ -61,8 +61,22 @@ nonisolated final class PersonDetector {
     private let gapRatio: CGFloat = 0.025   // space between body and line
     private let lineRatio: CGFloat = 0.012  // line thickness
 
-    /// Runs both requests on one upright frame. nil = nobody found.
-    /// Only the largest person is used; anyone else in the frame is ignored.
+    // Subject lock: once a person is chosen, follow THAT person (box overlap) instead of
+    // re-picking the largest every frame, so the guide never jumps to someone else.
+    private var lockedBox: CGRect?
+    private var missedFrames = 0
+    /// Detection frames the locked person may be missing before another person can be chosen.
+    private let maxMissedFrames = 15
+    private let minOverlap: CGFloat = 0.15
+
+    /// Forget the locked person (the next detection picks the largest again).
+    func resetSubjectLock() {
+        lockedBox = nil
+        missedFrames = 0
+    }
+
+    /// Runs the requests on one upright frame. nil = nobody found (or the locked person is
+    /// briefly hidden). Only one person is used; anyone else in the frame is ignored.
     func detect(in pixelBuffer: CVPixelBuffer) -> PersonDetection? {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
@@ -72,16 +86,28 @@ nonisolated final class PersonDetector {
             return nil
         }
 
-        guard let largest = boxRequest.results?.max(by: {
-            $0.boundingBox.width * $0.boundingBox.height <
-            $1.boundingBox.width * $1.boundingBox.height
-        }) else {
-            return nil
+        // Vision's origin is BOTTOM-left; SwiftUI's is TOP-left → flip Y
+        let boxes = (boxRequest.results ?? []).map { r -> CGRect in
+            let b = r.boundingBox
+            return CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
         }
 
-        // Vision's origin is BOTTOM-left; SwiftUI's is TOP-left → flip Y
-        let b = largest.boundingBox
-        let box = CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
+        let box: CGRect
+        if let locked = lockedBox,
+           let best = boxes.max(by: { Self.overlap($0, locked) < Self.overlap($1, locked) }),
+           Self.overlap(best, locked) >= minOverlap {
+            box = best                                   // same person as before
+        } else if lockedBox != nil, missedFrames < maxMissedFrames {
+            missedFrames += 1                            // locked person hidden for a moment: wait
+            return nil
+        } else if let largest = boxes.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+            box = largest                                // first person, or the old one is gone
+        } else {
+            lockedBox = nil
+            return nil
+        }
+        lockedBox = box
+        missedFrames = 0
 
         // Largest face whose centre lies inside that person's box
         let face = faceRequest.results?
@@ -94,6 +120,14 @@ nonisolated final class PersonDetector {
 
         let outline = includeOutline ? maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) } : nil
         return PersonDetection(box: box, face: face, outline: outline)
+    }
+
+    /// Intersection over union of two boxes (0 = apart, 1 = identical).
+    private static func overlap(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let i = a.intersection(b)
+        guard !i.isNull, i.width > 0, i.height > 0 else { return 0 }
+        let inter = i.width * i.height
+        return inter / (a.width * a.height + b.width * b.height - inter)
     }
 
     // MARK: - Mask → ring with a gap (old look)
