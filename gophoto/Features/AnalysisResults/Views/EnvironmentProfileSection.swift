@@ -140,7 +140,8 @@ struct EnvironmentProfileSection: View {
                 Text(dominanceLine(t)).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 4) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 22, maximum: 22), spacing: 4)],
+                      alignment: .leading, spacing: 4) {
                 ForEach(t.presentPhotoIDs, id: \.self) { PhotoThumb(image: thumbnail($0), size: 22) }
             }
             Text(t.condition).font(.caption2).foregroundStyle(.tertiary)

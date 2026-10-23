@@ -2,7 +2,7 @@
 //  HeightRingOverlay.swift
 //  gophoto
 //
-//  Mode C, camera-height step, shown from the photographer's side: the phone puck stays in
+//  Modes B and C, camera-height step, shown from the photographer's side: the phone puck stays in
 //  the middle of the screen (= where the phone is now) and a slot shows where it must go.
 //  Phone too high → slot below the puck; lower the phone and the slot rises into the puck.
 //  Tilting past `tiltWarn` shows a note to move the whole phone and buzzes once, since

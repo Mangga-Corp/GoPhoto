@@ -57,6 +57,12 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
         return mode.map { visible.contains($0) ? $0 : .heightFirst } ?? .heightFirst
     }
 
+    /// Tilt is set before camera height (C), so moving the phone up/down must keep that tilt.
+    var tiltBeforeHeight: Bool {
+        guard let tilt = steps.firstIndex(of: .tilt), let height = steps.firstIndex(of: .height) else { return false }
+        return tilt < height
+    }
+
     /// Modes whose photo is cropped (and taken at full resolution).
     var crops: Bool { self == .wideCrop || self == .heightFirstCrop }
 
@@ -305,8 +311,20 @@ nonisolated enum GuideFlow {
                 progress.okSince[.distance] = nil
             }
         } else if target.rect.height > 0 {
-            result.distanceSource = "body (like A)"
-            result.sizeRatio = Double(person.height / target.rect.height)
+            // Framing guard: the preset's photos show the whole body at that edge (e.g. full body,
+            // feet in frame) but the live person is cut off there, so the box height would read as
+            // "too small" and ask to come closer. Step back until the cut edge is free.
+            let refTop = analysis?.clippedTop ?? false, refBottom = analysis?.clippedBottom ?? false
+            if (liveBottom && !refBottom) || (liveTop && !refTop) {
+                result.distanceSource = liveBottom && !refBottom ? "feet cut off (preset is not)" : "head cut off (preset is not)"
+                checks[.distance] = .pending
+                wanted[.distance] = .moveFarther
+                progress.okSince[.distance] = nil
+                progress.latched.remove(.distance)
+            } else {
+                result.distanceSource = "body (like A)"
+                result.sizeRatio = Double(person.height / target.rect.height)
+            }
         }
         if let ratio = result.sizeRatio {
             judge(.distance, error: ratio / mode.distanceFactor - 1, enter: sizeEnter, exit: sizeExit,
@@ -350,7 +368,7 @@ nonisolated enum GuideFlow {
                 result.eyeElevation = elevation
                 // When tilt is already done (mode C), say "keep the angle" so the photographer
                 // moves the phone up/down instead of tilting it again.
-                let tiltFirst = (mode.steps.firstIndex(of: .tilt) ?? .max) < (mode.steps.firstIndex(of: .height) ?? .max)
+                let tiltFirst = mode.tiltBeforeHeight
                 judge(.height, error: elevation - targetElevation, enter: heightEnter, exit: heightExit,
                       positive: tiltFirst ? .lowerPhoneKeepAngle : .lowerPhone,
                       negative: tiltFirst ? .raisePhoneKeepAngle : .raisePhone)
@@ -454,7 +472,8 @@ nonisolated enum GuideFlow {
             }
         }
 
-        result.heightUsesRings = mode == .tiltFirst || mode == .tiltFirstOld
+        // Camera height as a phone puck + slot (not a bar) in every mode with a height step (B, C).
+        result.heightUsesRings = mode.steps.contains(.height)
         result.checks = checks
         result.activeStep = mode.steps.first { checks[$0] == .pending }
         result.instruction = mode.steps.first { checks[$0] == .pending }.flatMap { wanted[$0] } ?? .holdStill

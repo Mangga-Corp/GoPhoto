@@ -7,10 +7,16 @@
 
 import UIKit
 
-/// One row in the preferences popover. When selected, shows a checkmark and an Edit button below the name.
+/// One row in the preferences popover. When selected, shows a checkmark, an Edit button and a
+/// Full / Half body switch below the name.
 final class PreferenceCell: UITableViewCell {
     static let reuseID = "PreferenceCell"
     var onEdit: (() -> Void)?
+    /// Called with "fullBody" / "halfBody" when the framing switch changes.
+    var onFraming: ((String) -> Void)?
+
+    static let framings = ["fullBody", "halfBody"]
+    private let framingControl = UISegmentedControl(items: ["Full body", "Half body"])
 
     private let nameLabel = UILabel.make("", style: .body)
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark"))
@@ -18,9 +24,15 @@ final class PreferenceCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         let editButton = PillButton(title: "Edit")
-        editRow = UIStackView(arrangedSubviews: [editButton, UIView()])
+        editRow = UIStackView(arrangedSubviews: [editButton, UIView(), framingControl])
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         editButton.addAction(UIAction { [weak self] _ in self?.onEdit?() }, for: .touchUpInside)
+        editRow.alignment = .center
+        editRow.spacing = 8
+        framingControl.addAction(UIAction { [weak self] _ in
+            guard let self, Self.framings.indices.contains(self.framingControl.selectedSegmentIndex) else { return }
+            self.onFraming?(Self.framings[self.framingControl.selectedSegmentIndex])
+        }, for: .valueChanged)
 
         backgroundColor = .clear
         selectionStyle = .none
@@ -46,10 +58,13 @@ final class PreferenceCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(name: String, selected: Bool) {
+    /// `framing`: the framing in use ("fullBody" / "halfBody"), or nil when unknown.
+    func configure(name: String, selected: Bool, framing: String? = nil) {
         nameLabel.text = name
         nameLabel.accessibilityValue = selected ? "Selected" : nil
         checkmark.isHidden = !selected
         editRow.isHidden = !selected
+        framingControl.selectedSegmentIndex = framing.flatMap { Self.framings.firstIndex(of: $0) }
+            ?? UISegmentedControl.noSegment
     }
 }

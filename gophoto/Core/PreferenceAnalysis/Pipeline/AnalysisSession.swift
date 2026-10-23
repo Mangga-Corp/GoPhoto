@@ -60,7 +60,8 @@ final class AnalysisSession: ObservableObject {
     /// Analyses a preset's photos and returns what the camera needs. Nil if cancelled.
     func analyze(_ photos: [PhotoItem]) async -> PresetAnalysis? {
         let references = photos.enumerated().map { index, item in
-            ReferencePhoto(id: item.id, localIdentifier: "", image: item.image, selectionOrder: index)
+            ReferencePhoto(id: item.id, localIdentifier: "", image: item.image, selectionOrder: index,
+                           focalLength35mm: item.focalLength35mm)
         }
         start(photos: references)
         await runTask?.value

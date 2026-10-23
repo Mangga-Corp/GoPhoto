@@ -117,7 +117,9 @@ struct FindingSection<Category: Hashable & Sendable>: View {
                 }
             }
             .frame(height: 8)
-            HStack(spacing: 4) {
+            // Wraps onto more lines: a preset can hold 50 photos, a single row ran off the screen.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 26, maximum: 26), spacing: 4)],
+                      alignment: .leading, spacing: 4) {
                 ForEach(ids, id: \.self) { PhotoThumb(image: thumbnail($0), size: 26) }
             }
         }

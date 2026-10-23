@@ -14,6 +14,24 @@ enum PreferenceAnalyzer {
 
     nonisolated static func make(profile: PreferenceProfile, results: [PhotoResult],
                                  photoCount: Int, date: Date = Date()) -> PresetAnalysis {
+        var analysis = build(profile: profile, results: results, photoCount: photoCount, date: date, only: nil)
+        // One analysis per framing, from that framing's photos only (picked in the preset popover).
+        var variants: [String: PresetAnalysis] = [:]
+        for framing in [FramingCategory.fullBody, .halfBody] {
+            let subset = results.filter { $0.subjectFraming.category == framing }
+            guard !subset.isEmpty else { continue }
+            variants[framing.rawValue] = build(profile: profile, results: subset, photoCount: subset.count,
+                                               date: date, only: framing)
+        }
+        analysis.framingVariants = variants.isEmpty ? nil : variants
+        analysis.photoFramings = Dictionary(results.map { ($0.id.uuidString, $0.subjectFraming.category.rawValue) },
+                                            uniquingKeysWith: { first, _ in first })
+        return analysis
+    }
+
+    /// The analysis of `results`. `only`: these are the photos of one framing (a framing variant).
+    nonisolated static func build(profile: PreferenceProfile, results: [PhotoResult], photoCount: Int,
+                                  date: Date, only: FramingCategory?) -> PresetAnalysis {
         // Subject: median full-body box over photos with one valid main person.
         let boxes = results.compactMap { result -> CGRect? in
             let positioning = result.subjectPositioning
@@ -29,54 +47,114 @@ enum PreferenceAnalyzer {
         let finding = profile.cameraAngle
         var counts: [String: Int] = [:]
         for (category, count) in finding.counts { counts[category.rawValue] = count }
+        let framing = only ?? majority(profile.subjectFraming, excluding: [.other, .unknown])
+        let side = eyeSide(results, framing: framing)
+        let angle: PresetAnalysis.AngleTarget = side.map {
+            PresetAnalysis.AngleTarget.match(category: $0.side.rawValue, pitchDown: $0.pitchDown)
+        } ?? .fixedRule
         return PresetAnalysis(analyzedAt: date, photoCount: photoCount, subjectBox: subjectBox,
                               subjectPhotoCount: boxes.count,
-                              angle: angleTarget(finding, results: results),
+                              angle: angle,
                               angleCounts: counts,
                               angleDeterminedCount: finding.validObservationCount,
                               angleLeadingShare: finding.dominantShare,
-                              eyeElevation: eyeElevation(finding, results: results),
+                              eyeElevation: side?.elevation,
                               headAngle: headAngle(results),
                               clippedTop: clipped(.top, results),
                               clippedBottom: clipped(.bottom, results),
-                              framing: majority(profile.subjectFraming, excluding: [.other, .unknown])?.rawValue,
+                              framing: framing?.rawValue,
                               heightLevel: profile.viewpoint.flatMap {
                                   majority($0.heightLevel, excluding: [.unknown])?.rawValue
                               },
-                              bodyAngle: bodyAngle(results))
+                              bodyAngle: bodyAngle(results),
+                              eyeSide: side?.side.rawValue,
+                              eyeSideSource: side?.source.rawValue,
+                              eyeAboveShare: side?.aboveShare,
+                              eyeSidePhotoCount: side?.photoCount)
     }
 
-    /// Majority rule (decided with the team): guide the angle only when one angle holds a
-    /// majority; mixed angles mean the subject likes them all, so the camera stays quiet.
-    nonisolated static func angleTarget(_ finding: CategoryFinding<CameraAngleCategory>,
-                                        results: [PhotoResult]) -> PresetAnalysis.AngleTarget {
-        switch finding.pattern {
-        case .noEvidence:
-            return .fixedRule
-        case .singleObservation, .mixed:
-            return .noGuidance
-        case .recurring:
-            guard let dominant = finding.dominant else { return .noGuidance }
-            let ids = Set(finding.supportingPhotoIDs[dominant] ?? [])
-            let pitches = results
-                .filter { ids.contains($0.id) }
-                .compactMap { $0.cameraAngle.pitchDownDegrees }
-                .filter { abs($0) <= maxTargetPitch }
-            guard !pitches.isEmpty else { return .noGuidance }
-            return .match(category: dominant.rawValue, pitchDown: median(pitches))
+    // MARK: Eye side (above / below the subject's eyes)
+
+    /// Photos needed before their side counts as the user's taste.
+    nonisolated static let sideMinPhotos = 2
+    /// Mean chance of "above" at or past which the photos agree (≥ 0.7 above, ≤ 0.3 below).
+    nonisolated static let sideAgreement = 0.70
+
+    nonisolated struct EyeVote: Sendable {
+        /// Camera vs eyes, degrees (+ = camera above the eyes), and its standard deviation.
+        let elevation: Double
+        let sigma: Double
+        /// Phone pitch (+ = down), when GeoCalib's pitch was certain enough.
+        let pitchDown: Double?
+        /// Chance the photo was taken from above the eyes: Φ(elevation / sigma). A photo near the
+        /// eye line counts about half for each side instead of flipping on noise.
+        let aboveChance: Double
+    }
+
+    nonisolated struct EyeSideResult: Sendable {
+        let side: PresetAnalysis.EyeSide
+        let source: PresetAnalysis.EyeSideSource
+        let aboveShare: Double?
+        let photoCount: Int
+        /// Camera-vs-eyes target and phone pitch target, degrees.
+        let elevation: Double
+        let pitchDown: Double
+    }
+
+    /// The framing rule: full body is shot from eye level down, half body from eye level up.
+    nonisolated static func ruleSide(for framing: FramingCategory?) -> PresetAnalysis.EyeSide? {
+        switch framing {
+        case .fullBody: PresetAnalysis.EyeSide.below
+        case .halfBody: PresetAnalysis.EyeSide.above
+        default: nil
         }
     }
 
-    /// Camera vs eyes for the majority angle (same photos as the pitch target).
-    nonisolated static func eyeElevation(_ finding: CategoryFinding<CameraAngleCategory>,
-                                         results: [PhotoResult]) -> Double? {
-        guard finding.pattern == .recurring, let dominant = finding.dominant else { return nil }
-        let ids = Set(finding.supportingPhotoIDs[dominant] ?? [])
-        let values = results
-            .filter { ids.contains($0.id) }
-            .compactMap { $0.cameraAngle.elevationDegrees }
-            .filter { abs($0) <= maxTargetPitch }
-        return values.isEmpty ? nil : median(values)
+    /// One vote per photo with a camera-vs-eyes angle, only photos with the preset's framing.
+    nonisolated static func eyeVotes(_ results: [PhotoResult], framing: FramingCategory?) -> [EyeVote] {
+        results.compactMap { result in
+            if let framing, result.subjectFraming.category != framing { return nil }
+            guard let detail = result.angleComparison?.details[.geoCalibLight],
+                  let e = detail.cameraElevation, abs(e) <= maxTargetPitch,
+                  let sigma = detail.cameraElevationUncertainty, sigma.isFinite, sigma > 0 else { return nil }
+            let pitch = result.cameraAngle.pitchDownDegrees.flatMap { abs($0) <= maxTargetPitch ? $0 : nil }
+            let chance = 0.5 * (1 + erf(e / (sigma * 2.0.squareRoot())))
+            return EyeVote(elevation: e, sigma: sigma, pitchDown: pitch, aboveChance: chance)
+        }
+    }
+
+    /// The user's taste first: the photos' side when they agree. The framing rule only decides
+    /// when they split or too few were read. Nil without photos and without a framing.
+    nonisolated static func eyeSide(_ results: [PhotoResult], framing: FramingCategory?) -> EyeSideResult? {
+        let votes = eyeVotes(results, framing: framing)
+        let rule = ruleSide(for: framing)
+        let share = votes.isEmpty ? nil : votes.map(\.aboveChance).reduce(0, +) / Double(votes.count)
+
+        func targets(_ used: [EyeVote], side: PresetAnalysis.EyeSide) -> (Double, Double) {
+            var elevation = median(used.map(\.elevation))
+            // Keep the target on the chosen side of the eye line (eye level is on both).
+            elevation = side == .above ? max(elevation, 0) : min(elevation, 0)
+            let pitches = used.compactMap(\.pitchDown)
+            return (elevation, pitches.isEmpty ? 0 : median(pitches))
+        }
+
+        if votes.count >= sideMinPhotos, let share,
+           share >= sideAgreement || share <= 1 - sideAgreement {
+            let side: PresetAnalysis.EyeSide = share >= 0.5 ? .above : .below
+            let agreeing = votes.filter { side == .above ? $0.aboveChance >= 0.5 : $0.aboveChance < 0.5 }
+            let (elevation, pitch) = targets(agreeing, side: side)
+            return EyeSideResult(side: side, source: .taste, aboveShare: share, photoCount: votes.count,
+                                 elevation: elevation, pitchDown: pitch)
+        }
+        if !votes.isEmpty, let share, votes.count >= sideMinPhotos || rule == nil {
+            let side = rule ?? (share >= 0.5 ? .above : .below)
+            let (elevation, pitch) = targets(votes, side: side)
+            return EyeSideResult(side: side, source: .mixed, aboveShare: share, photoCount: votes.count,
+                                 elevation: elevation, pitchDown: pitch)
+        }
+        guard let rule else { return nil }
+        return EyeSideResult(side: rule, source: .default, aboveShare: share, photoCount: votes.count,
+                             elevation: 0, pitchDown: 0)
     }
 
     /// Face height as an angle: 2 * atan(h * tan(vFoV / 2)), h in image-height units.

@@ -121,7 +121,8 @@ actor AnalysisEngine: PhotoAnalyzing {
 
             // Camera angle with the chosen scan mode only.
             let scan = GeoCalibAngleInterpreter.scan(source.angleMode, original: built.cameraAngle, image: image,
-                                                     evidence: evidence, models: geoCalib)
+                                                     evidence: evidence, models: geoCalib,
+                                                     focalLength35mm: record.focalLength35mm)
             let tAngle = Date()
 
             var scanned = built.withAngleScan(scan, method: source.angleMode)
