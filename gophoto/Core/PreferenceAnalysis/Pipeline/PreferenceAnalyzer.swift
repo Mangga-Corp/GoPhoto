@@ -23,6 +23,15 @@ enum PreferenceAnalyzer {
             variants[framing.rawValue] = build(profile: profile, results: subset, photoCount: subset.count,
                                                date: date, only: framing)
         }
+        let cut = cutLevel(results)
+        analysis.cutLevel = cut?.level
+        analysis.cutLevelCount = cut?.count
+        analysis.cutLevelOf = cut?.of
+        for key in variants.keys {
+            variants[key]?.cutLevel = analysis.cutLevel
+            variants[key]?.cutLevelCount = analysis.cutLevelCount
+            variants[key]?.cutLevelOf = analysis.cutLevelOf
+        }
         analysis.framingVariants = variants.isEmpty ? nil : variants
         analysis.photoFramings = Dictionary(results.map { ($0.id.uuidString, $0.subjectFraming.category.rawValue) },
                                             uniquingKeysWith: { first, _ in first })
@@ -52,7 +61,7 @@ enum PreferenceAnalyzer {
         let angle: PresetAnalysis.AngleTarget = side.map {
             PresetAnalysis.AngleTarget.match(category: $0.side.rawValue, pitchDown: $0.pitchDown)
         } ?? .fixedRule
-        return PresetAnalysis(analyzedAt: date, photoCount: photoCount, subjectBox: subjectBox,
+        var analysis = PresetAnalysis(analyzedAt: date, photoCount: photoCount, subjectBox: subjectBox,
                               subjectPhotoCount: boxes.count,
                               angle: angle,
                               angleCounts: counts,
@@ -71,6 +80,34 @@ enum PreferenceAnalyzer {
                               eyeSideSource: side?.source.rawValue,
                               eyeAboveShare: side?.aboveShare,
                               eyeSidePhotoCount: side?.photoCount)
+        // Face height as a share of the frame height (not an angle): matches how big the person
+        // looks, whatever lens the reference was shot with.
+        let faces = results.compactMap { $0.cameraAngle.horizonCue?.headHeight }.filter { $0 > 0 }
+        analysis.faceHeight = faces.isEmpty ? nil : median(faces)
+        return analysis
+    }
+
+    // MARK: Half-body cut level
+
+    /// The body part where most half-body photos are cut, from the deepest reliable joint.
+    nonisolated static func cutLevel(_ results: [PhotoResult]) -> (level: String, count: Int, of: Int)? {
+        let levels = results.compactMap { result -> String? in
+            guard result.subjectFraming.category == .halfBody else { return nil }
+            switch result.subjectFraming.visibleExtent {
+            case .headAndShoulders: return "chest"
+            case .toHips: return "thigh"
+            case .toKnees: return "shin"
+            default: return nil
+            }
+        }
+        guard !levels.isEmpty else { return nil }
+        let counts = Dictionary(levels.map { ($0, 1) }, uniquingKeysWith: +)
+        // Ties: the order chest < thigh < shin keeps the result stable.
+        let order = ["chest", "thigh", "shin"]
+        guard let best = counts.max(by: { a, b in
+            a.value != b.value ? a.value < b.value : order.firstIndex(of: a.key)! > order.firstIndex(of: b.key)!
+        }) else { return nil }
+        return (best.key, best.value, levels.count)
     }
 
     // MARK: Eye side (above / below the subject's eyes)

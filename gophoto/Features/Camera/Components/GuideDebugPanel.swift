@@ -24,6 +24,7 @@ struct GuideDebugPanel: View {
             }
             Text(presetLine).fontWeight(.semibold)
             Text(angleLine)
+            if let cut = cutLine { Text(cut) }
             Text(targetLine).fontWeight(.semibold).foregroundStyle(.yellow)
             Text(phoneLine)
             Text(String(format: "Horizon roll %+.1f°", viewModel.roll))
@@ -62,6 +63,14 @@ struct GuideDebugPanel: View {
         if viewModel.isAnalyzingPreset { return "\(name) · analyzing…" }
         guard let analysis = viewModel.analysis else { return "\(name) · not analyzed" }
         return "\(name) · \(analysis.photoCount) photos, person in \(analysis.subjectPhotoCount)"
+    }
+
+    /// Where the preset's half-body photos cut the body (from the skeleton).
+    private var cutLine: String? {
+        guard let analysis = viewModel.analysis, let level = analysis.cutLevel else { return nil }
+        var line = "Half-body cut: \(level)"
+        if let n = analysis.cutLevelCount, let of = analysis.cutLevelOf { line += " (\(n)/\(of) photos)" }
+        return line
     }
 
     private var angleLine: String {

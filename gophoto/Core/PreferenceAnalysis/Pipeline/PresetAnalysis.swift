@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 8
+    static let currentVersion = 10
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -67,6 +67,19 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Framing of each photo (`PhotoItem.id.uuidString` → `FramingCategory.rawValue`), so the
     /// preset's gallery can group them; version 7.
     var photoFramings: [String: String]?
+
+    /// Where the half-body photos cut the body, from the skeleton (version 9): "chest" (shoulders
+    /// in, hips out), "thigh" (hips in, knees out) or "shin" (knees in, ankles out). Majority over
+    /// the half-body photos with a reading; nil without one.
+    var cutLevel: String?
+    /// Half-body photos that showed `cutLevel`, and those with any cut reading.
+    var cutLevelCount: Int?
+    var cutLevelOf: Int?
+
+    /// Face height as a share of the frame height, median over the photos (version 10). The
+    /// half-body distance step matches it: unlike `headAngle` it does not depend on the
+    /// reference's lens (a 2× portrait would otherwise ask to stand twice as far).
+    var faceHeight: Double?
 
     /// The analysis for the framing picked in the preset popover: that framing's variant, or this
     /// one when the preset has no photo of it (or nothing is picked).

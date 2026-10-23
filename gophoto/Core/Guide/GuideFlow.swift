@@ -321,6 +321,14 @@ nonisolated enum GuideFlow {
                 wanted[.distance] = .moveFarther
                 progress.okSince[.distance] = nil
                 progress.latched.remove(.distance)
+            } else if refBottom, let face = live.face, Double(face.height) >= minFaceHeight,
+                      let targetFace = analysis?.faceHeight, targetFace > 0 {
+                // Half body (the preset's photos are cut at the bottom): a cut-off box's height is
+                // "head to frame edge", not the person's size, so the face's share of the frame sets
+                // the distance. A share, not an angle: the reference may be a 2-3× portrait, and
+                // matching its angle would send the photographer far back. Sitting does not change it.
+                result.distanceSource = "face size (half body)"
+                result.sizeRatio = Double(face.height) / targetFace
             } else {
                 result.distanceSource = "body (like A)"
                 result.sizeRatio = Double(person.height / target.rect.height)
