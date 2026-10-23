@@ -131,6 +131,7 @@ struct CameraView: View {
                     if activeStep == .height, viewModel.evaluation.heightUsesRings,
                        let rings = viewModel.heightRings {
                         HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
+                                          tiltError: viewModel.pitchError,
                                           isOK: viewModel.evaluation.checks[.height] == .ok)
                     }
                 }
@@ -167,7 +168,7 @@ struct CameraView: View {
                         .padding(.top, 12)
                 }
                 .overlay(alignment: .top) {
-                    if !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
+                    if isShowingDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
                         GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
                             .padding(.top, 56)   // below the instruction pill
                     }

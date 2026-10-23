@@ -41,8 +41,8 @@ struct InstructionPill: View {
         case .raisePhone:  "Raise the phone"
         case .lowerPhone:  "Lower the phone"
         case .setPhoneHeight: "Hold the phone at the marked height"
-        case .raisePhoneKeepAngle: "Keep the angle, raise the phone"
-        case .lowerPhoneKeepAngle: "Keep the angle, lower the phone"
+        case .raisePhoneKeepAngle: "Raise your arms"
+        case .lowerPhoneKeepAngle: "Lower your arms"
         case .straighten:  "Straighten the phone"
         case .holdStill:   "Hold still"
         }
