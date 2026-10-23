@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 5
+    static let currentVersion = 8
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -48,6 +48,46 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// a person photographed with 0.5x looks small in the frame but has the same angle at the
     /// same distance, so the camera no longer asks to stand twice as far.
     var bodyAngle: Double?
+
+    // Eye side (version 6): the camera angle is one of two sides of the subject's eye line.
+
+    /// `EyeSide.rawValue`: camera above or below the subject's eyes. Nil only when no photo was
+    /// read and the framing is unknown (then the PRD fixed rule applies).
+    var eyeSide: String?
+    /// `EyeSideSource.rawValue`: where the side came from.
+    var eyeSideSource: String?
+    /// Mean chance (0...1) that a photo was taken from above the eyes, over the photos that voted.
+    var eyeAboveShare: Double?
+    /// Photos that voted: camera-vs-eyes angle read, same framing as the preset.
+    var eyeSidePhotoCount: Int?
+
+    /// The same analysis made from one framing's photos only, keyed by `FramingCategory.rawValue`
+    /// ("fullBody" / "halfBody"); version 7. Present only for framings with at least one photo.
+    var framingVariants: [String: PresetAnalysis]?
+    /// Framing of each photo (`PhotoItem.id.uuidString` → `FramingCategory.rawValue`), so the
+    /// preset's gallery can group them; version 7.
+    var photoFramings: [String: String]?
+
+    /// The analysis for the framing picked in the preset popover: that framing's variant, or this
+    /// one when the preset has no photo of it (or nothing is picked).
+    func forFraming(_ framing: String?) -> PresetAnalysis {
+        guard let framing, let variant = framingVariants?[framing] else { return self }
+        return variant
+    }
+
+    nonisolated enum EyeSide: String, Sendable {
+        case above, below
+    }
+
+    nonisolated enum EyeSideSource: String, Sendable {
+        /// The preset's photos agree on a side: their side, their angles (the user's taste).
+        case taste
+        /// The photos were read but split: side from the framing rule, angles from the photos
+        /// (kept on that side of the eyes).
+        case mixed
+        /// Too few photos read: framing rule (full body → below, half body → above), eye level.
+        case `default`
+    }
 
     nonisolated enum AngleTarget: Codable, Sendable, Equatable {
         /// At least 60% of the photos share one camera angle: match this phone pitch.

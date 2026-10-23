@@ -5,6 +5,7 @@
 //  Created by Sebastian Darren on 13/10/26.
 //
 
+import SwiftUI
 import UIKit
 
 final class AIPreferencesViewController: UIViewController {
@@ -12,6 +13,9 @@ final class AIPreferencesViewController: UIViewController {
     var onBack: (() -> Void)?
     /// Onboarding: called after the picker closes and the user has named the preference.
     var onPhotosAdded: (([PhotoItem], String) -> Void)?
+    /// The analysed framing of a photo ("fullBody" / "halfBody" / other), to group the grid into
+    /// Full body / Half body sections. Nil = one plain grid (e.g. a preference being created).
+    var framingOf: ((PhotoItem) -> String?)?
 
     private let viewModel: ChoosePhotosViewModel
 
@@ -42,14 +46,92 @@ final class AIPreferencesViewController: UIViewController {
     private let trashButton = CircleButton(symbol: "trash", accessibilityLabel: "Delete", tint: .systemRed)
     private let backButton = CircleButton(symbol: "chevron.left", accessibilityLabel: "Back")
     private lazy var collectionView: UICollectionView = {
-        let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
-        item.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
-        let group = NSCollectionLayoutGroup.horizontal(
-            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(0.25)), subitems: [item])
-        let section = NSCollectionLayoutSection(group: group)
-        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 120, trailing: 10)
-        return UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout(section: section))
+        let layout = UICollectionViewCompositionalLayout { [weak self] index, _ in
+            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
+            item.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
+            let group = NSCollectionLayoutGroup.horizontal(
+                layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(0.25)), subitems: [item])
+            let section = NSCollectionLayoutSection(group: group)
+            let sections = self?.sections ?? []
+            let isLast = index >= sections.count - 1
+            section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: isLast ? 120 : 16, trailing: 10)
+            if sections.indices.contains(index), sections[index].title != nil {
+                let header = NSCollectionLayoutBoundarySupplementaryItem(
+                    layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(32)),
+                    elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)
+                section.boundarySupplementaryItems = [header]
+            }
+            return section
+        }
+        return UICollectionView(frame: .zero, collectionViewLayout: layout)
     }()
+
+    /// The grid's sections: Full body, Half body, then the rest. One untitled section when the
+    /// photos are not analysed yet (or `framingOf` is nil).
+    private var sections: [(title: String?, indices: [Int])] {
+        let all = Array(viewModel.items.indices)
+        guard let framingOf else { return [(nil, all)] }
+        let framings = all.map { framingOf(viewModel.items[$0]) }
+        let full = all.filter { framings[$0] == "fullBody" }
+        let half = all.filter { framings[$0] == "halfBody" }
+        let rest = all.filter { framings[$0] != "fullBody" && framings[$0] != "halfBody" }
+        if full.isEmpty && half.isEmpty { return [(nil, all)] }
+        let groups: [(title: String?, indices: [Int])] = [("Full body", full), ("Half body", half), ("Other", rest)]
+        return groups.filter { !$0.indices.isEmpty }
+    }
+
+    /// Where photo `item` (index into `viewModel.items`) sits in the grid.
+    private func indexPath(forItem item: Int) -> IndexPath? {
+        for (section, group) in sections.enumerated() {
+            if let row = group.indices.firstIndex(of: item) { return IndexPath(item: row, section: section) }
+        }
+        return nil
+    }
+
+    private static func framingTitle(_ framing: String) -> String? {
+        switch framing {
+        case "fullBody": "Full body"
+        case "halfBody": "Half body"
+        default: nil
+        }
+    }
+
+    /// Opens the full-screen viewer on photo `item`, zooming out of its grid cell (swipe down to close).
+    private func showPhoto(at item: Int) {
+        let order = sections.flatMap { $0.indices }       // pages follow the grid order
+        guard let start = order.firstIndex(of: item) else { return }
+        let images = order.map { viewModel.items[$0].image }
+        let labels = order.map { index in framingOf?(viewModel.items[index]).flatMap(Self.framingTitle) }
+        final class Current { var item: Int; init(_ item: Int) { self.item = item } }
+        let current = Current(item)
+
+        let pager = PreferencePhotoPager(
+            images: images, labels: labels, startIndex: start,
+            onPageChange: { [weak self] page in
+                guard let self, order.indices.contains(page) else { return }
+                current.item = order[page]
+                // Keep the cell on screen so closing zooms back into the right photo.
+                if let ip = self.indexPath(forItem: current.item) {
+                    self.collectionView.scrollToItem(at: ip, at: .centeredVertically, animated: false)
+                }
+            },
+            onClose: { [weak self] in self?.dismiss(animated: true) })
+        let host = UIHostingController(rootView: pager)
+        host.modalPresentationStyle = .fullScreen
+        host.preferredTransition = .zoom { [weak self] _ in
+            guard let self, let ip = self.indexPath(forItem: current.item) else { return nil }
+            return self.collectionView.cellForItem(at: ip)
+        }
+        present(host, animated: true)
+    }
+
+    /// The photo index (into `viewModel.items`) shown at `indexPath`.
+    private func itemIndex(at indexPath: IndexPath) -> Int? {
+        let sections = self.sections
+        guard sections.indices.contains(indexPath.section),
+              sections[indexPath.section].indices.indices.contains(indexPath.item) else { return nil }
+        return sections[indexPath.section].indices[indexPath.item]
+    }
 
     init(viewModel: ChoosePhotosViewModel) {
         self.viewModel = viewModel
@@ -64,6 +146,9 @@ final class AIPreferencesViewController: UIViewController {
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
+        collectionView.register(SectionHeaderView.self,
+                                forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+                                withReuseIdentifier: SectionHeaderView.reuseID)
         titleField.delegate = self
         selectButton.isHidden = !viewModel.showsSelectButton
 
@@ -130,6 +215,7 @@ final class AIPreferencesViewController: UIViewController {
         subtitleLabel.isHidden = !viewModel.hasItems
         subtitleLabel.text = viewModel.subtitleText
         collectionView.reloadData()
+        collectionView.collectionViewLayout.invalidateLayout()
     }
 
     /// Select mode like Photos: title shows the count, Back and + are replaced by Cancel and the trash.
@@ -273,19 +359,62 @@ extension AIPreferencesViewController: UITextFieldDelegate {
 }
 
 extension AIPreferencesViewController: UICollectionViewDataSource, UICollectionViewDelegate {
-    func collectionView(_ cv: UICollectionView, numberOfItemsInSection section: Int) -> Int { viewModel.items.count }
+    func numberOfSections(in cv: UICollectionView) -> Int { sections.count }
+
+    func collectionView(_ cv: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        let sections = self.sections
+        return sections.indices.contains(section) ? sections[section].indices.count : 0
+    }
 
     func collectionView(_ cv: UICollectionView, cellForItemAt ip: IndexPath) -> UICollectionViewCell {
-        guard let cell = cv.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseID, for: ip) as? PhotoCell
+        guard let cell = cv.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseID, for: ip) as? PhotoCell,
+              let index = itemIndex(at: ip)
         else { return UICollectionViewCell() }
-        cell.imageView.image = viewModel.items[ip.item].image
+        cell.imageView.image = viewModel.items[index].image
         cell.selectMode = viewModel.isSelecting
-        cell.isChecked = viewModel.isChecked(at: ip.item)
+        cell.isChecked = viewModel.isChecked(at: index)
         return cell
+    }
+
+    func collectionView(_ cv: UICollectionView, viewForSupplementaryElementOfKind kind: String,
+                        at ip: IndexPath) -> UICollectionReusableView {
+        let header = cv.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: SectionHeaderView.reuseID,
+                                                         for: ip)
+        let sections = self.sections
+        if let header = header as? SectionHeaderView, sections.indices.contains(ip.section) {
+            let section = sections[ip.section]
+            header.label.text = section.title.map { "\($0) · \(section.indices.count)" }
+        }
+        return header
     }
 
     func collectionView(_ cv: UICollectionView, didSelectItemAt ip: IndexPath) {
         cv.deselectItem(at: ip, animated: false)   // we track "checked" ourselves
-        viewModel.toggleChecked(at: ip.item)
+        guard let index = itemIndex(at: ip) else { return }
+        if viewModel.isSelecting {
+            viewModel.toggleChecked(at: index)
+        } else {
+            showPhoto(at: index)
+        }
     }
+}
+
+/// Title above a group of photos (Full body / Half body).
+private final class SectionHeaderView: UICollectionReusableView {
+    static let reuseID = "SectionHeaderView"
+    let label = UILabel.make("", style: .headline)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        label.textAlignment = .natural
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }

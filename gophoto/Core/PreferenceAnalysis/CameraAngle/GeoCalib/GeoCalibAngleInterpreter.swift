@@ -77,6 +77,8 @@ nonisolated struct CameraAngleMethodDetail: Sendable, Equatable {
     var optimizeMs: Double?
     /// Why the method produced nothing, when it failed.
     var error: String?
+    /// The camera-vs-eyes angle used the EXIF focal length instead of GeoCalib's estimate.
+    var focalFromExif: Bool? = nil
 
     var totalMs: Double? {
         guard let p = predictMs, let o = optimizeMs else { return nil }
@@ -123,7 +125,8 @@ nonisolated enum GeoCalibAngleInterpreter {
     /// reflects one method (benchmarking). `original` is what the existing pipeline produced;
     /// it is kept only when the mode is `.original`.
     static func scan(_ method: CameraAngleMethod, original: CameraAngleResult, image: CGImage,
-                     evidence: PhotoEvidence, models: GeoCalibModels?) -> CameraAngleComparison {
+                     evidence: PhotoEvidence, models: GeoCalibModels?,
+                     focalLength35mm: Double? = nil) -> CameraAngleComparison {
         guard let mode = method.geoCalibMode else {
             return CameraAngleComparison(results: [.original: original],
                                          details: [.original: detail(fromOriginal: original)])
@@ -156,13 +159,53 @@ nonisolated enum GeoCalibAngleInterpreter {
             failure = "The photo could not be prepared for GeoCalib (\(error))."
         }
         let (result, detail) = interpret(run: run, failure: failure, method: method,
-                                         selection: selection, evidence: evidence, imageSize: imageSize)
+                                         selection: selection, evidence: evidence, imageSize: imageSize,
+                                         focalLength35mm: focalLength35mm)
         return CameraAngleComparison(results: [method: result], details: [method: detail])
+    }
+
+    /// "eye to low" / "eye to high" when every possible category is on one side of the eye line
+    /// (eye level counts for both), else nil.
+    static func eyeSide(of possible: Set<CameraAngleCategory>) -> String? {
+        guard !possible.isEmpty else { return nil }
+        if possible.isSubset(of: [.eyeLevel, .lowAngle, .wormsEye]) { return "eye to low" }
+        if possible.isSubset(of: [.eyeLevel, .highAngle, .birdsEye]) { return "eye to high" }
+        return nil
+    }
+
+    /// Diagonal of a 35 mm frame, mm: a 35 mm-equivalent focal length is relative to it.
+    static let fullFrameDiagonalMM = 43.27
+    /// How far the eye point may be off, in head heights: from eye landmarks / from the face box.
+    static let eyeErrorHeads = (landmarks: 0.05, estimated: 0.15)
+
+    /// One standard deviation of the camera-vs-eyes angle, combining the pitch's, the lens's
+    /// (GeoCalib's focal estimate; none with EXIF) and the eye point's.
+    static func elevationUncertainty(lens: GeoCalibResult, estimate: GeoCalibResult, focalFromExif: Bool,
+                                     eye: CGPoint, imageHeight: Double, anchor: SubjectAnchor,
+                                     pitchSigma: Double) -> Double {
+        let x = Double(eye.x), y = Double(eye.y)
+        var variance = pitchSigma * pitchSigma
+        let df = estimate.focalUncertaintyPx
+        if !focalFromExif, df.isFinite, df > 0, lens.focalPx > df {
+            var wide = lens, narrow = lens
+            narrow.focalPx += df
+            narrow.focalXPx = narrow.focalPx * lens.focalXPx / lens.focalPx
+            wide.focalPx -= df
+            wide.focalXPx = wide.focalPx * lens.focalXPx / lens.focalPx
+            let d = abs(narrow.elevation(x: x, y: y) - wide.elevation(x: x, y: y)) / 2
+            variance += d * d
+        }
+        if let head = anchor.headHeight, head > 0 {
+            let shift = head * (anchor.isEstimated ? eyeErrorHeads.estimated : eyeErrorHeads.landmarks) * imageHeight
+            let d = abs(lens.elevation(x: x, y: y + shift) - lens.elevation(x: x, y: y - shift)) / 2
+            variance += d * d
+        }
+        return variance.squareRoot()
     }
 
     static func interpret(run: GeoCalibRun?, failure: String?, method: CameraAngleMethod,
                           selection: SubjectSelection, evidence: PhotoEvidence,
-                          imageSize: CGSize) -> (CameraAngleResult, CameraAngleMethodDetail) {
+                          imageSize: CGSize, focalLength35mm: Double? = nil) -> (CameraAngleResult, CameraAngleMethodDetail) {
         guard let run else {
             let reason = failure ?? "GeoCalib did not run."
             return (result(.unknown, roll: nil, .unavailable(reason)), CameraAngleMethodDetail(error: reason))
@@ -206,16 +249,44 @@ nonisolated enum GeoCalibAngleInterpreter {
         // Camera elevation relative to the eyes = −(angle of the eyes above the camera's horizontal plane).
         let W = Double(imageSize.width), H = Double(imageSize.height)
         let eyeX = Double(anchor.eyePoint.x), eyeY = Double(anchor.eyePoint.y)
-        let elevation = -r.elevation(x: eyeX * W, y: eyeY * H)
-        let sigma = r.pitchUncertainty.isFinite ? r.pitchUncertainty : 90
+        // Lens: the EXIF focal length when the photo has one (exact; GeoCalib's field of view can be
+        // off by 15°, which moves the eyes' angle by several degrees), else GeoCalib's estimate.
+        // Only the eyes' angle uses it: GeoCalib's pitch barely changes with a known focal length.
+        var lens = r
+        var focalFromExif = false
+        if let mm = focalLength35mm, mm > 0 {
+            let focal = mm / Self.fullFrameDiagonalMM
+                * (r.imageWidth * r.imageWidth + r.imageHeight * r.imageHeight).squareRoot()
+            lens.focalPx = focal
+            lens.focalXPx = focal
+            focalFromExif = true
+        }
+        let elevation = -lens.elevation(x: eyeX * W, y: eyeY * H)
+        let pitchSigma = r.pitchUncertainty.isFinite ? r.pitchUncertainty : 90
+        let sigma = Self.elevationUncertainty(lens: lens, estimate: r, focalFromExif: focalFromExif,
+                                              eye: CGPoint(x: eyeX * W, y: eyeY * H), imageHeight: H,
+                                              anchor: anchor, pitchSigma: pitchSigma)
         detail.cameraElevation = elevation
         detail.cameraElevationUncertainty = sigma
+        detail.focalFromExif = focalFromExif
         references.append(EvidenceReference(
             source: nil, origin: .derivedMeasurement, role: .primary, label: "Camera vs eyes",
-            value: String(format: "%+.1f° (±%.1f°), eyes from %@", elevation, sigma, anchor.eyeSource)))
+            value: String(format: "%+.1f° (±%.1f°), eyes from %@, lens from %@", elevation, sigma, anchor.eyeSource,
+                          focalFromExif ? "EXIF" : "GeoCalib")))
 
         let possible = CameraAngleRule.categories(low: elevation - sigma, high: elevation + sigma)
-        let category: CameraAngleCategory = possible.count == 1 ? possible.first! : .unknown
+        // Two sides of the eye line (version 6+): eye level and below ("eye to low"), eye level and
+        // above ("eye to high"). An interval inside one side is read (best estimate = its centre);
+        // only one reaching both below and above the eye-level band stays unknown.
+        let side = Self.eyeSide(of: possible)
+        let category: CameraAngleCategory
+        if possible.count == 1 {
+            category = possible.first!
+        } else if side != nil {
+            category = CameraAngleRule.category(ofElevation: elevation)
+        } else {
+            category = .unknown
+        }
 
         // Horizon line (where the camera's horizontal plane meets the image), normalised image space.
         let horizon = horizonLine(r, width: W, height: H)
@@ -228,7 +299,7 @@ nonisolated enum GeoCalibAngleInterpreter {
                                 offsetInHeadHeights: anchor.headHeight.map { (eyeY - horizonY) / $0 })
             if let pose {
                 // The level must not change across the pitch uncertainty.
-                let shift = r.focalPx / Double(r.imageHeight) * tan(sigma * .pi / 180)
+                let shift = r.focalPx / Double(r.imageHeight) * tan(pitchSigma * .pi / 180)
                 let joints = SubjectJointHeights(pose: pose)
                 let a = CameraHeightLevelRule.level(horizonY: horizonY - shift, joints: joints)
                 let b = CameraHeightLevelRule.level(horizonY: horizonY + shift, joints: joints)
@@ -261,7 +332,10 @@ nonisolated enum GeoCalibAngleInterpreter {
             let words = CameraAngleRule.ordered.filter(possible.contains).map { Self.label($0) }
             headline = "The camera angle is between \(words.joined(separator: " and ")) within GeoCalib's uncertainty, so it is left unknown."
         }
-        let explanation = headline + String(
+        let sideNote = possible.count > 1 && side != nil
+            ? " Within GeoCalib's uncertainty it is \(side!) (between \(CameraAngleRule.ordered.filter(possible.contains).map { Self.label($0) }.joined(separator: " and ")))."
+            : ""
+        let explanation = headline + sideNote + String(
             format: " %@: camera %.0f° %@ the eyes (±%.0f°), phone tilted %.0f° %@, roll %.1f°.",
             name, abs(elevation), elevation >= 0 ? "above" : "below", sigma,
             abs(r.pitch), r.pitch < 0 ? "down" : "up", r.roll)

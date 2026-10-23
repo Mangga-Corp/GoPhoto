@@ -15,9 +15,12 @@ final class PreferencesStorage {
             let name: String
             let photoIDs: [UUID]
             var analysis: PresetAnalysis?
+            /// EXIF 35 mm-equivalent focal length per photo (`UUID.uuidString`), when known.
+            var focals: [String: Double]?
 
-            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?) {
+            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?, focals: [String: Double]?) {
                 self.id = id; self.name = name; self.photoIDs = photoIDs; self.analysis = analysis
+                self.focals = focals
             }
 
             /// An unreadable analysis is dropped (the preset is analysed again), the preset is kept.
@@ -27,6 +30,7 @@ final class PreferencesStorage {
                 name = try c.decode(String.self, forKey: .name)
                 photoIDs = try c.decode([UUID].self, forKey: .photoIDs)
                 analysis = try? c.decodeIfPresent(PresetAnalysis.self, forKey: .analysis)
+                focals = try? c.decodeIfPresent([String: Double].self, forKey: .focals)
             }
         }
         var entries: [Entry]
@@ -53,7 +57,7 @@ final class PreferencesStorage {
         let preferences = snapshot.entries.map { entry in
             let photos = entry.photoIDs.compactMap { id -> PhotoItem? in
                 guard let image = UIImage(contentsOfFile: photoURL(id).path) else { return nil }
-                return PhotoItem(id: id, image: image)
+                return PhotoItem(id: id, image: image, focalLength35mm: entry.focals?[id.uuidString])
             }
             return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
         }
@@ -76,7 +80,13 @@ final class PreferencesStorage {
                 try? fileManager.removeItem(at: photosURL.appendingPathComponent(file))
             }
             let snapshot = Snapshot(
-                entries: preferences.map { .init(id: $0.id, name: $0.name, photoIDs: $0.photos.map(\.id), analysis: $0.analysis) },
+                entries: preferences.map { preference in
+                    let focals = preference.photos.reduce(into: [String: Double]()) { map, photo in
+                        if let f = photo.focalLength35mm { map[photo.id.uuidString] = f }
+                    }
+                    return .init(id: preference.id, name: preference.name, photoIDs: preference.photos.map(\.id),
+                                 analysis: preference.analysis, focals: focals.isEmpty ? nil : focals)
+                },
                 selectedID: selectedID)
             if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: indexURL, options: .atomic) }
         }

@@ -79,11 +79,20 @@ struct GuideDebugPanel: View {
     }
 
     private var targetLine: String {
-        let tolerance = String(format: "±%.0f°", GuideInstruction.angleEnter)
+        let tolerance = String(format: "±%.0f°", GuideFlow.tiltEnter)
         switch viewModel.analysis?.angle {
         case .match(let category, let pitchDown):
-            let label = CameraAngleCategory(rawValue: category)?.label ?? category
-            return "Target: \(label) · tilt \(Self.tilt(pitchDown)) \(tolerance)"
+            let label = PresetAnalysis.EyeSide(rawValue: category).map { $0 == .above ? "above eyes" : "below eyes" }
+                ?? CameraAngleCategory(rawValue: category)?.label ?? category
+            var line = "Target: \(label)"
+            if let analysis = viewModel.analysis, let source = analysis.eyeSideSource {
+                var why = [source]
+                if let share = analysis.eyeAboveShare { why.append(String(format: "above %.0f%%", share * 100)) }
+                if let n = analysis.eyeSidePhotoCount { why.append("\(n) photos") }
+                if let framing = analysis.framing { why.append(framing) }
+                line += " (\(why.joined(separator: ", ")))"
+            }
+            return line + " · tilt \(Self.tilt(pitchDown)) \(tolerance)"
         case .noGuidance:
             return "Target: no angle guidance (no majority)"
         case .fixedRule:

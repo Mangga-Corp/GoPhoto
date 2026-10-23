@@ -31,6 +31,17 @@ final class CameraViewModel {
     private(set) var horizon: HorizonState = .hidden
     private(set) var captureCount = 0
 
+    /// The photo just taken, shown for review with its enhanced version; saved only on Save.
+    private(set) var review: CaptureReview?
+    private(set) var isSavingReview = false
+    /// Drives the review cover; closing it discards the photo (Retake).
+    var isReviewing: Bool {
+        get { review != nil }
+        set { if !newValue { retake() } }
+    }
+    @ObservationIgnored private let enhancer = PhotoEnhancer()
+    @ObservationIgnored private var enhanceTask: Task<Void, Never>?
+
     // for the guide frame
     private(set) var target: FramingTarget = .center   // from the selected preset's AI analysis
     private(set) var instruction: GuideInstruction = .findPerson
@@ -46,6 +57,12 @@ final class CameraViewModel {
     @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
 
     // Guide variant under test (debug panel). Saved across launches.
+    /// Photo ratio (4:3 native; 1:1 and 16:9 are centred crops of it). Saved across launches.
+    var captureAspect: CaptureAspect =
+        UserDefaults.standard.string(forKey: CaptureAspect.storageKey).flatMap(CaptureAspect.init(rawValue:)) ?? .fourThree {
+        didSet { UserDefaults.standard.set(captureAspect.rawValue, forKey: CaptureAspect.storageKey) }
+    }
+
     var guideMode: GuideMode = GuideMode.saved() {
         didSet {
             UserDefaults.standard.set(guideMode.rawValue, forKey: GuideMode.storageKey)
@@ -168,6 +185,24 @@ final class CameraViewModel {
 
     /// Phone pitch the camera aims for, or nil when there is no angle guidance.
     var targetPitch: Double? { Self.pitchTarget(for: analysis?.angle) }
+
+    /// Values for the optional side-view pose guide (A / B, bottom right). Heights are the camera
+    /// height against the subject's eyes, from the camera-vs-eyes angle and the estimated distance.
+    var poseGuide: PoseGuideState {
+        let e = evaluation
+        func centimetres(_ angle: Double?) -> Double? {
+            guard let angle, let d = e.distanceMeters, d > 0 else { return nil }
+            return d * tan(angle * .pi / 180) * 100
+        }
+        let heightOK = e.eyeElevation.flatMap { now in
+            e.eyeElevationTarget.map { abs(now - $0) <= GuideFlow.heightEnter }
+        } ?? true
+        let tiltOK = pitchError.map { abs($0) <= GuideFlow.tiltEnter } ?? true
+        return PoseGuideState(heightNow: centimetres(e.eyeElevation),
+                              heightTarget: centimetres(e.eyeElevationTarget),
+                              tiltNow: -pitch, tiltTarget: targetPitch.map { -$0 },
+                              distance: e.distanceMeters, heightOK: heightOK, tiltOK: tiltOK)
+    }
     /// Phone pitch minus the target (+ = tilted further down than the target).
     var pitchError: Double? { targetPitch.map { pitch - $0 } }
 
@@ -261,7 +296,8 @@ final class CameraViewModel {
         let preset = preferences.selectedPreference
         if preset?.id != presetID { presetID = preset?.id }
         if preset?.name != presetName { presetName = preset?.name }
-        if preset?.analysis != analysis { analysis = preset?.analysis }
+        let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
+        if picked != analysis { analysis = picked }
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
         if analyzing != isAnalyzingPreset { isAnalyzingPreset = analyzing }
 
@@ -341,15 +377,26 @@ final class CameraViewModel {
         isCapturing = false
         captureCount += 1
 
+        // No review screen: save the original now, then the enhanced copy next to it (background).
+        // A ratio other than 4:3 crops both (centred), like the Camera app.
+        let ratio = captureAspect.ratio
+        let original = photo.data
+        var ratioCropped: Data?
+        if captureAspect != .fourThree {
+            ratioCropped = await Task.detached(priority: .userInitiated) {
+                CapturedPhotoEnhancing.cropped(original, aspect: ratio)
+            }.value
+        }
+        let data = ratioCropped ?? original
         do {
-            if let assetID = try await photoLibraryService.save(imageData: photo.data) {
+            if let assetID = try await photoLibraryService.save(imageData: data) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
             }
-            // Crop modes (testing): also save the cropped, straightened version next to the original.
+            // Crop modes (testing): also save the cropped, straightened version.
             if let plan = cropPlan {
-                let data = photo.data
                 let cropped = await Task.detached(priority: .userInitiated) {
-                    WideCrop.crop(data, person: plan.person, target: plan.target,
+                    // From the full 4:3 frame: the crop plan is in its coordinates.
+                    WideCrop.crop(original, person: plan.person, target: plan.target,
                                   rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
                 }.value
                 if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
@@ -358,6 +405,63 @@ final class CameraViewModel {
             }
         } catch {
             errorMessage = error.localizedDescription
+            return
         }
+
+        let enhancer = self.enhancer
+        Task { [weak self] in
+            let enhancedFile = await Task.detached(priority: .utility) {
+                CapturedPhotoEnhancing.enhance(data, with: enhancer)
+                    .flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: data) }
+            }.value
+            guard let self, let enhancedFile else { return }
+            do {
+                if let assetID = try await self.photoLibraryService.save(imageData: enhancedFile) {
+                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                }
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Saves the reviewed photo: the enhanced version (the original if the enhance failed),
+    /// plus the cropped version in crop modes. Closes the review when done.
+    func saveReview() async {
+        guard let review, !review.isEnhancing, !isSavingReview else { return }
+        isSavingReview = true
+        defer { isSavingReview = false }
+
+        let original = review.photo.data
+        let enhanced = review.enhanced
+        let data = await Task.detached(priority: .userInitiated) {
+            enhanced.flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: original) } ?? original
+        }.value
+
+        do {
+            if let assetID = try await photoLibraryService.save(imageData: data) {
+                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+            }
+            // Crop modes (testing): also save the cropped, straightened version next to it.
+            if let plan = review.cropPlan {
+                let cropped = await Task.detached(priority: .userInitiated) {
+                    WideCrop.crop(data, person: plan.person, target: plan.target,
+                                  rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
+                }.value
+                if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
+                    galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                }
+            }
+            if self.review?.id == review.id { self.review = nil }
+        } catch {
+            self.review?.saveError = error.localizedDescription
+        }
+    }
+
+    /// Discards the reviewed photo and returns to the viewfinder.
+    func retake() {
+        enhanceTask?.cancel()
+        enhanceTask = nil
+        review = nil
     }
 }

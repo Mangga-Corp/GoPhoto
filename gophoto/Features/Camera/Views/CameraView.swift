@@ -20,6 +20,8 @@ struct CameraView: View {
     @State private var isShowingGallery = false
     @State private var isFlashing = false
     @AppStorage("showGuideDebug") private var isShowingDebug = false
+    @AppStorage(PoseGuideStyle.storageKey) private var poseGuideStyle: PoseGuideStyle = .off
+    @AppStorage("showCameraGrid") private var showsGrid = false
     @State private var isShowingAnalysis = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
@@ -108,6 +110,10 @@ struct CameraView: View {
                     }
                 }
                 .overlay {
+                    // Ratio mask + thirds grid, under the guide visuals.
+                    CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: showsGrid)
+                }
+                .overlay {
                     HorizonLevelView(state: viewModel.horizon)
                 }
                 .overlay {
@@ -131,7 +137,8 @@ struct CameraView: View {
                     if activeStep == .height, viewModel.evaluation.heightUsesRings,
                        let rings = viewModel.heightRings {
                         HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
-                                          tiltError: viewModel.pitchError,
+                                          // "Don't tilt" only once the tilt is set (C); in B it comes after.
+                                          tiltError: viewModel.guideMode.tiltBeforeHeight ? viewModel.pitchError : nil,
                                           isOK: viewModel.evaluation.checks[.height] == .ok)
                     }
                 }
@@ -171,6 +178,14 @@ struct CameraView: View {
                     if isShowingDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
                         GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
                             .padding(.top, 56)   // below the instruction pill
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    // Optional side-view pose guide (A / B), picked next to the ladybug.
+                    if poseGuideStyle != .off {
+                        PoseGuidePanel(style: poseGuideStyle, state: viewModel.poseGuide)
+                            .padding(8)
+                            .padding(.bottom, activeStep == .distance ? 48 : 0)   // clear of the distance bar
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -259,6 +274,37 @@ struct CameraView: View {
             }
             .padding(.leading, 8)
             .accessibilityLabel(isShowingDebug ? "Hide guide debug values" : "Show guide debug values")
+            Menu {
+                Picker("Pose guide", selection: $poseGuideStyle) {
+                    ForEach(PoseGuideStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+            } label: {
+                Image(systemName: poseGuideStyle == .off ? "figure.stand" : "figure.stand.line.dotted.figure.stand")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(poseGuideStyle == .off ? .white : .yellow)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Pose guide: \(poseGuideStyle.title)")
+            Button {
+                showsGrid.toggle()
+            } label: {
+                Image(systemName: showsGrid ? "grid.circle.fill" : "grid")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(showsGrid ? .yellow : .white)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(showsGrid ? "Hide grid" : "Show grid")
+            Button {
+                viewModel.captureAspect = viewModel.captureAspect.next
+            } label: {
+                Text(viewModel.captureAspect.title)
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(viewModel.captureAspect == .fourThree ? .white : .yellow)
+                    .padding(.horizontal, 8).frame(height: 28)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             Spacer()
             AIPreferencesButton()
                 .padding(.horizontal, 16)

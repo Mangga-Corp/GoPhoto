@@ -315,7 +315,8 @@ nonisolated struct PhotoEvidence: Sendable, Equatable {
         add(.visionHorizon, imageRoll)
         add(.detrSegmentation, segmentation)
         add(.depthAnything, depth)
-        add(.fastViT, sceneContext)
+        // FastViT is skipped on purpose in GoPhoto (not bundled): only a real failure is a problem.
+        if case .failed(let message) = sceneContext { out.append("\(EvidenceSource.fastViT.displayName): \(message)") }
         // `skipped` is the "not run" default used by tests; only a real failure is a problem.
         if case .failed(let message) = verticalLines { out.append("\(EvidenceSource.imageLineAnalysis.displayName): \(message)") }
         if case .failed(let message) = bodyPose3D { out.append("\(EvidenceSource.visionBodyPose3D.displayName): \(message)") }

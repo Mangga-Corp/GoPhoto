@@ -15,6 +15,20 @@ final class PreferencesViewModel {
     private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
     private(set) var selectedID: UUID?
+    /// Framing picked in the preset popover (`FramingCategory.rawValue`: "fullBody" / "halfBody"),
+    /// or nil for the preset's majority. Saved across launches.
+    private(set) var framing: String? = UserDefaults.standard.string(forKey: PreferencesViewModel.framingKey)
+    private static let framingKey = "presetFraming"
+
+    func setFraming(_ framing: String?) {
+        self.framing = framing
+        UserDefaults.standard.set(framing, forKey: Self.framingKey)
+    }
+
+    /// The framing the camera uses for a preset: the picked one, else the preset's majority.
+    func effectiveFraming(for preference: Preference?) -> String? {
+        framing ?? preference?.analysis?.framing
+    }
 
     init(storage: PreferencesStorage = PreferencesStorage()) {
         self.storage = storage
