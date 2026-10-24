@@ -18,6 +18,8 @@ struct PhotoPagerView: View {
     /// assetID of the image currently on screen
     @State private var currentID: String
     @State private var isDeleting = false
+    /// AI Enhanced look previewed on the current photo; nil = photo as it is. Reset on every photo.
+    @State private var selectedLook: EnhancedLook?
     @Environment(\.dismiss) private var dismiss
 
     /// - Parameter startID: assetID of the photo that was tapped in the grid
@@ -38,7 +40,8 @@ struct PhotoPagerView: View {
             ForEach(photos) { photo in
                 FullPhotoView(assetID: photo.assetID,
                               createdAt: photo.createdAt,
-                              loadImage: loadImage)
+                              loadImage: loadImage,
+                              look: photo.assetID == currentID ? selectedLook : nil)
                     .tag(photo.assetID)          // links the page to currentID
             }
         }
@@ -47,8 +50,15 @@ struct PhotoPagerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: SharedPhoto(assetID: currentID),
-                          preview: SharePreview("Photo", image: Image(systemName: "photo")))
+                // With a look selected the share sheet gets the filtered photo; it has Save Image.
+                if let selectedLook {
+                    ShareLink(item: FilteredPhoto(assetID: currentID, look: selectedLook),
+                              preview: SharePreview("Photo (\(selectedLook.title))",
+                                                    image: Image(systemName: "photo")))
+                } else {
+                    ShareLink(item: SharedPhoto(assetID: currentID),
+                              preview: SharePreview("Photo", image: Image(systemName: "photo")))
+                }
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar){
@@ -58,10 +68,17 @@ struct PhotoPagerView: View {
             }
         }
         .safeAreaInset(edge: .bottom){
-            PhotoStripView(photos: photos,
-                           currentID: $currentID,
-                           loadThumbnail: loadThumbnail,).background(.bar)
+            VStack(spacing: 0) {
+                LookPickerView(assetID: currentID,
+                               selection: $selectedLook,
+                               loadThumbnail: loadThumbnail)
+                PhotoStripView(photos: photos,
+                               currentID: $currentID,
+                               loadThumbnail: loadThumbnail,)
+            }
+            .background(.bar)
         }
+        .onChange(of: currentID) { selectedLook = nil }
     }
 
     /// Date + time of the photo on screen, shown in the nav bar like the Photos app

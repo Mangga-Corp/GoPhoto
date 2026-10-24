@@ -57,6 +57,17 @@ nonisolated struct PhotoEnhancer: Sendable {
         var sharpness: Float = 0.4
         /// Vignette darkening (0 disables it).
         var vignette: Float = 0.35
+        /// Colour grade used by `EnhancedLook`. The defaults change nothing.
+        /// Exposure shift in EV stops.
+        var exposureEV: Float = 0
+        /// Multiplier on saturation (1 = unchanged).
+        var saturation: Float = 1
+        /// Multiplier on contrast (1 = unchanged).
+        var contrast: Float = 1
+        /// Green (−) / magenta (+) shift of the white balance, in Core Image tint units.
+        var tint: Float = 0
+        /// Lifts dark areas (0…1).
+        var shadowLift: Float = 0
     }
 
     /// Fixed strengths for every photo, or nil (the default) to tune them per
@@ -90,10 +101,24 @@ nonisolated struct PhotoEnhancer: Sendable {
         return renderer.render(input, faces: faces, image: image)
     }
 
+    /// Returns `image` in one of the `EnhancedLook`s. The base strengths still come from the
+    /// photo's own measurements (`EnhanceTuner`); the look then shifts them, scaled by the same
+    /// measurements so a photo that already has the look's trait is moved less.
+    func enhance(_ image: UIImage, look: EnhancedLook) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+        let input = CIImage(cgImage: cgImage)
+        let faces = Self.detectFaces(in: cgImage)
+        let stats = PhotoStatistics.measure(input, faces: faces, context: Self.context)
+        var renderer = self
+        renderer.settings = look.settings(from: EnhanceTuner.settings(for: stats), stats: stats)
+        return renderer.render(input, faces: faces, image: image)
+    }
+
     private func render(_ input: CIImage, faces: [VNFaceObservation], image: UIImage) -> UIImage? {
         let extent = input.extent
         var output = autoAdjusted(input)
         output = warmed(output)
+        output = graded(output)
         output = clarified(output, extent: extent)
         output = smoothedSkin(output, faces: faces, extent: extent)
         output = sharpened(output)
@@ -123,15 +148,40 @@ nonisolated struct PhotoEnhancer: Sendable {
     }
 
     private func warmed(_ image: CIImage) -> CIImage {
-        guard settings.warmthKelvin != 0 else { return image }
+        guard settings.warmthKelvin != 0 || settings.tint != 0 else { return image }
         // `neutral` is the illuminant the photo is assumed to have been lit by.
         // Declaring it bluer (higher kelvin) than the 6500 K target makes the
         // filter compensate towards yellow, i.e. warmer.
         let filter = CIFilter.temperatureAndTint()
         filter.inputImage = image
-        filter.neutral = CIVector(x: CGFloat(6500 + settings.warmthKelvin), y: 0)
+        filter.neutral = CIVector(x: CGFloat(6500 + settings.warmthKelvin), y: CGFloat(settings.tint))
         filter.targetNeutral = CIVector(x: 6500, y: 0)
         return filter.outputImage ?? image
+    }
+
+    private func graded(_ image: CIImage) -> CIImage {
+        var output = image
+        if settings.exposureEV != 0 {
+            let filter = CIFilter.exposureAdjust()
+            filter.inputImage = output
+            filter.ev = settings.exposureEV
+            output = filter.outputImage ?? output
+        }
+        if settings.saturation != 1 || settings.contrast != 1 {
+            let filter = CIFilter.colorControls()
+            filter.inputImage = output
+            filter.saturation = settings.saturation
+            filter.contrast = settings.contrast
+            output = filter.outputImage ?? output
+        }
+        if settings.shadowLift > 0 {
+            let filter = CIFilter.highlightShadowAdjust()
+            filter.inputImage = output
+            filter.shadowAmount = settings.shadowLift
+            filter.highlightAmount = 1
+            output = filter.outputImage ?? output
+        }
+        return output
     }
 
     private func clarified(_ image: CIImage, extent: CGRect) -> CIImage {
