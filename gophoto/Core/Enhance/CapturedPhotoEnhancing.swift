@@ -55,7 +55,7 @@ nonisolated enum CapturedPhotoEnhancing {
 
     /// `image` (upright) written in the original file's format with its metadata; the orientation
     /// tag is reset because the pixels are already upright. Nil if it could not be encoded.
-    static func file(for image: UIImage, metadataFrom original: Data) -> Data? {
+    static func file(for image: UIImage, metadataFrom original: Data, quality: Double = 0.9) -> Data? {
         guard let cgImage = image.cgImage,
               let source = CGImageSourceCreateWithData(original as CFData, nil) else { return nil }
         let type = CGImageSourceGetType(source) ?? (UTType.jpeg.identifier as CFString)
@@ -72,7 +72,7 @@ nonisolated enum CapturedPhotoEnhancing {
             exif[kCGImagePropertyExifPixelYDimension] = cgImage.height
             properties[kCGImagePropertyExifDictionary] = exif
         }
-        properties[kCGImageDestinationLossyCompressionQuality] = 0.9
+        properties[kCGImageDestinationLossyCompressionQuality] = quality
 
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(output, type, 1, nil) else { return nil }

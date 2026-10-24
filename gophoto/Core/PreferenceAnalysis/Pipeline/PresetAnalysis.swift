@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 10
+    static let currentVersion = 11
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -80,6 +80,13 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// half-body distance step matches it: unlike `headAngle` it does not depend on the
     /// reference's lens (a 2× portrait would otherwise ask to stand twice as far).
     var faceHeight: Double?
+
+    /// Half-body crop target (version 11), median over the half-body photos with a body pose:
+    /// neck position (normalized, top-left), neck-to-hip length (frame heights), and where the
+    /// frame's bottom cuts, in torso lengths below the hips (0.6 ≈ mid-thigh). Nil without them.
+    var halfBodyNeck: CGPoint?
+    var halfBodyTorso: Double?
+    var cutBelowHip: Double?
 
     /// The analysis for the framing picked in the preset popover: that framing's variant, or this
     /// one when the preset has no photo of it (or nothing is picked).

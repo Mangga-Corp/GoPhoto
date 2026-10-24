@@ -61,6 +61,10 @@ struct CameraView: View {
             }
         }
         .onDisappear { Task { await viewModel.stopCamera() } }
+        // The gallery covers the camera: stop the feed (and the per-frame detection) meanwhile.
+        .onChange(of: isShowingGallery) { _, showing in
+            Task { if showing { await viewModel.stopCamera() } else { await viewModel.resumeCamera() } }
+        }
         .alert("Something went wrong", isPresented: $viewModel.isShowingError) {
             Button("OK", role: .cancel) {}
         } message: {

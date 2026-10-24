@@ -84,6 +84,28 @@ enum PreferenceAnalyzer {
         // looks, whatever lens the reference was shot with.
         let faces = results.compactMap { $0.cameraAngle.horizonCue?.headHeight }.filter { $0 > 0 }
         analysis.faceHeight = faces.isEmpty ? nil : median(faces)
+
+        // Half body: the torso of each photo (neck, neck-to-hip length), for the crop.
+        let torsos = results.compactMap { result -> (neck: CGPoint, length: Double)? in
+            guard result.subjectFraming.category == .halfBody, let box = result.subjectPositioning.subjectBox,
+                  let poses = result.evidence?.pose.value,
+                  let pose = SubjectAssociation.pose(for: box, among: poses),
+                  let neck = pose.reliable(.neck)?.point else { return nil }
+            let hips = [pose.reliable(.leftHip), pose.reliable(.rightHip)].compactMap { $0?.point }
+            guard let hip = pose.reliable(.root)?.point ?? (hips.isEmpty ? nil
+                    : CGPoint(x: hips.map(\.x).reduce(0, +) / CGFloat(hips.count),
+                              y: hips.map(\.y).reduce(0, +) / CGFloat(hips.count))) else { return nil }
+            let length = Double(hip.y - neck.y)
+            return length > 0.02 ? (neck, length) : nil
+        }
+        if !torsos.isEmpty {
+            analysis.halfBodyNeck = CGPoint(x: median(torsos.map { Double($0.neck.x) }),
+                                            y: median(torsos.map { Double($0.neck.y) }))
+            let length = median(torsos.map { $0.length })
+            analysis.halfBodyTorso = length
+            // Bottom edge below the hips, in torso lengths: 1 - (neck + torso), over the torso.
+            analysis.cutBelowHip = median(torsos.map { (1 - Double($0.neck.y) - $0.length) / $0.length })
+        }
         return analysis
     }
 
