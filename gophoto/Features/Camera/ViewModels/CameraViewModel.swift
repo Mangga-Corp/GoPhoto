@@ -377,51 +377,30 @@ final class CameraViewModel {
         isCapturing = false
         captureCount += 1
 
-        // No review screen: save the original now, then the enhanced copy next to it (background).
-        // A ratio other than 4:3 crops both (centred), like the Camera app.
-        let ratio = captureAspect.ratio
+        // One output only: the cropped photo (fitted to the preset). Raw and filtered copies are
+        // not saved; filters are applied later from the gallery and saved by the user.
+        // Without a crop plan (not a crop mode, or no person found) the 4:3 original is used, and a
+        // ratio other than 4:3 crops it (centred), like the Camera app.
         let original = photo.data
-        var ratioCropped: Data?
-        if captureAspect != .fourThree {
-            ratioCropped = await Task.detached(priority: .userInitiated) {
-                CapturedPhotoEnhancing.cropped(original, aspect: ratio)
+        let ratio = captureAspect.ratio
+        let ratioCropped = captureAspect == .fourThree ? nil : await Task.detached(priority: .userInitiated) {
+            CapturedPhotoEnhancing.cropped(original, aspect: ratio)
+        }.value
+        var output = ratioCropped ?? original
+        if let plan = cropPlan {
+            // From the full 4:3 frame: the crop plan is in its coordinates.
+            let cropped = await Task.detached(priority: .userInitiated) {
+                WideCrop.crop(original, person: plan.person, target: plan.target,
+                              rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
             }.value
+            if let cropped { output = cropped }
         }
-        let data = ratioCropped ?? original
         do {
-            if let assetID = try await photoLibraryService.save(imageData: data) {
+            if let assetID = try await photoLibraryService.save(imageData: output) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
-            }
-            // Crop modes (testing): also save the cropped, straightened version.
-            if let plan = cropPlan {
-                let cropped = await Task.detached(priority: .userInitiated) {
-                    // From the full 4:3 frame: the crop plan is in its coordinates.
-                    WideCrop.crop(original, person: plan.person, target: plan.target,
-                                  rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
-                }.value
-                if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
-                    galleryStore.addCaptured(assetID: assetID, presetID: nil)
-                }
             }
         } catch {
             errorMessage = error.localizedDescription
-            return
-        }
-
-        let enhancer = self.enhancer
-        Task { [weak self] in
-            let enhancedFile = await Task.detached(priority: .utility) {
-                CapturedPhotoEnhancing.enhance(data, with: enhancer)
-                    .flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: data) }
-            }.value
-            guard let self, let enhancedFile else { return }
-            do {
-                if let assetID = try await self.photoLibraryService.save(imageData: enhancedFile) {
-                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
-                }
-            } catch {
-                self.errorMessage = error.localizedDescription
-            }
         }
     }
 
