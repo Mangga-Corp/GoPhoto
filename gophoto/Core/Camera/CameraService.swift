@@ -60,7 +60,9 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func configure() async throws
     func start() async
     func stop() async
-    func capturePhoto() async throws -> CapturedPhoto
+    /// Takes a photo. `onShutter` runs (any thread) at the moment the photo is taken, before the
+    /// file is processed: the UI flashes there. Returns once the file is ready.
+    func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
     /// Turns the body outline (old-look guide mode) on or off.
     func setOutlineEnabled(_ enabled: Bool)
@@ -77,7 +79,10 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "gophoto.camera.session")
     private var isConfigured = false
-    private var photoContinuation: CheckedContinuation<CapturedPhoto, Error>?
+    /// Photos being taken (session queue), by `AVCapturePhotoSettings.uniqueID`. Responsive
+    /// capture lets a new shot start while the previous one is still processing.
+    private var photoContinuations: [Int64: CheckedContinuation<CapturedPhoto, Error>] = [:]
+    private var shutterCallbacks: [Int64: @Sendable () -> Void] = [:]
     
     // for the apple vision framework
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -85,6 +90,10 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let personDetector = PersonDetector()
     private var personContinuation: AsyncStream<PersonDetection?>.Continuation?
     private var frameCount = 0
+    /// True from the shutter until the photo arrives (videoQueue): person detection pauses so the
+    /// camera's photo pipeline gets the processor. The guide keeps its last values meanwhile.
+    private var photosInFlight = 0
+    private var isTakingPhoto: Bool { photosInFlight > 0 }
     /// Vertical field of view of the upright (portrait) frame, degrees. Set in `configureSession`.
     private var verticalFOV: Double?
     /// Largest photo size, megapixels (video queue copy for the guide).
@@ -138,15 +147,9 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     }
 
     // 4. Take a photo. The delegate callback below finishes this.
-    func capturePhoto() async throws -> CapturedPhoto {
+    func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async {
-                guard self.photoContinuation == nil else {
-                    continuation.resume(throwing: CameraError.captureInProgress)
-                    return
-                }
-                self.photoContinuation = continuation
-
                 // Portrait photo
                 if let connection = self.photoOutput.connection(with: .video),
                    connection.isVideoRotationAngleSupported(90) {
@@ -156,6 +159,12 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                 if let dimensions = self.highResolution ? self.largestPhotoDimensions : self.normalPhotoDimensions {
                     settings.maxPhotoDimensions = dimensions
                 }
+                // Quality prioritization (benchmark): .quality = most multi-frame processing,
+                // slowest file. .balanced is Apple's default; .speed the fastest.
+                settings.photoQualityPrioritization = .quality
+                self.photoContinuations[settings.uniqueID] = continuation
+                self.shutterCallbacks[settings.uniqueID] = onShutter
+                self.videoQueue.async { self.photosInFlight += 1 }
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
         }
@@ -201,6 +210,19 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         guard session.canAddOutput(photoOutput) else { throw CameraError.cannotAddOutput }
         session.addOutput(photoOutput)
 
+        // Allow up to .quality per shot (the default ceiling is .balanced).
+        photoOutput.maxPhotoQualityPrioritization = .quality
+
+        // Faster shutter: take the frame from the moment of the tap (zero shutter lag) and let
+        // the next shot start while the previous one is still processing (responsive capture).
+        if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
+        if photoOutput.isResponsiveCaptureSupported {
+            photoOutput.isResponsiveCaptureEnabled = true
+            if photoOutput.isFastCapturePrioritizationSupported {
+                photoOutput.isFastCapturePrioritizationEnabled = true
+            }
+        }
+
         // Allow the largest photo (mode F crops it); normal shots stay near 12 MP.
         let sizes = device.activeFormat.supportedMaxPhotoDimensions
         func pixels(_ d: CMVideoDimensions) -> Int { Int(d.width) * Int(d.height) }
@@ -230,6 +252,14 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
 // MARK: - Photo delegate (AVFoundation calls this when the photo is ready)
 
 nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
+    /// The moment the photo is taken (shutter sound): tell the UI before the file is processed.
+    func photoOutput(_ output: AVCapturePhotoOutput, willCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        let id = resolvedSettings.uniqueID
+        sessionQueue.async {
+            self.shutterCallbacks.removeValue(forKey: id)?()
+        }
+    }
+
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishProcessingPhoto photo: AVCapturePhoto,
                      error: Error?) {
@@ -242,9 +272,11 @@ nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
             result = .failure(CameraError.captureFailed)
         }
 
+        let id = photo.resolvedSettings.uniqueID
+        videoQueue.async { self.photosInFlight = max(0, self.photosInFlight - 1) }
         sessionQueue.async {
-            self.photoContinuation?.resume(with: result)
-            self.photoContinuation = nil
+            self.shutterCallbacks.removeValue(forKey: id)?()        // in case it was never called
+            self.photoContinuations.removeValue(forKey: id)?.resume(with: result)
         }
     }
 }
@@ -255,7 +287,7 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let continuation = personContinuation else { return }
+        guard let continuation = personContinuation, !isTakingPhoto else { return }
 
         frameCount += 1
         guard frameCount.isMultiple(of: 2),

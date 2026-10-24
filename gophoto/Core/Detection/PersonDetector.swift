@@ -69,10 +69,51 @@ nonisolated final class PersonDetector {
     private let maxMissedFrames = 15
     private let minOverlap: CGFloat = 0.15
 
+    // Tracker: follows the locked person between detections. Vision's person detector misses
+    // frames (turned away, arms up, partly hidden); the tracker keeps the box so the guide does
+    // not reset. Seeded from the detector, re-seeded when the two disagree.
+    private let sequenceHandler = VNSequenceRequestHandler()
+    private var trackRequest: VNTrackObjectRequest?
+    /// Frames in a row that only the tracker found the person; the detector must confirm in time.
+    private var trackedOnlyFrames = 0
+    private let maxTrackedOnlyFrames = 60
+    private let minTrackConfidence: Float = 0.3
+    /// Below this overlap between tracker and detector, the tracker is re-seeded.
+    private let reseedOverlap: CGFloat = 0.6
+
     /// Forget the locked person (the next detection picks the largest again).
     func resetSubjectLock() {
         lockedBox = nil
         missedFrames = 0
+        trackRequest = nil
+        trackedOnlyFrames = 0
+    }
+
+    /// Starts tracking `box` (top-left origin) from this frame on.
+    private func seedTracker(_ box: CGRect) {
+        let visionBox = CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+        let request = VNTrackObjectRequest(detectedObjectObservation: VNDetectedObjectObservation(boundingBox: visionBox))
+        request.trackingLevel = .fast          // .accurate made the whole camera sluggish
+        trackRequest = request
+    }
+
+    /// The tracked person's box in this frame (top-left origin), or nil when the tracker lost it.
+    private func track(_ pixelBuffer: CVPixelBuffer) -> CGRect? {
+        guard let request = trackRequest else { return nil }
+        do {
+            try sequenceHandler.perform([request], on: pixelBuffer, orientation: .up)
+        } catch {
+            trackRequest = nil
+            return nil
+        }
+        guard let observation = request.results?.first as? VNDetectedObjectObservation,
+              observation.confidence >= minTrackConfidence else {
+            trackRequest = nil
+            return nil
+        }
+        request.inputObservation = observation        // continue from here next frame
+        let b = observation.boundingBox
+        return CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
     }
 
     /// Runs the requests on one upright frame. nil = nobody found (or the locked person is
@@ -92,18 +133,30 @@ nonisolated final class PersonDetector {
             return CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
         }
 
+        // Where the tracker thinks the locked person is now (runs every frame to stay warm).
+        let tracked = lockedBox != nil ? track(pixelBuffer) : nil
+        func match(_ candidate: CGRect) -> CGFloat {
+            max(lockedBox.map { Self.overlap(candidate, $0) } ?? 0, tracked.map { Self.overlap(candidate, $0) } ?? 0)
+        }
+
         let box: CGRect
-        if let locked = lockedBox,
-           let best = boxes.max(by: { Self.overlap($0, locked) < Self.overlap($1, locked) }),
-           Self.overlap(best, locked) >= minOverlap {
+        if lockedBox != nil,
+           let best = boxes.max(by: { match($0) < match($1) }), match(best) >= minOverlap {
             box = best                                   // same person as before
+            trackedOnlyFrames = 0
+            if tracked.map({ Self.overlap($0, best) < reseedOverlap }) ?? true { seedTracker(best) }
+        } else if let tracked, trackedOnlyFrames < maxTrackedOnlyFrames {
+            box = tracked                                // detector missed: the tracker still has them
+            trackedOnlyFrames += 1
         } else if lockedBox != nil, missedFrames < maxMissedFrames {
             missedFrames += 1                            // locked person hidden for a moment: wait
             return nil
         } else if let largest = boxes.max(by: { $0.width * $0.height < $1.width * $1.height }) {
             box = largest                                // first person, or the old one is gone
+            trackedOnlyFrames = 0
+            seedTracker(largest)
         } else {
-            lockedBox = nil
+            resetSubjectLock()
             return nil
         }
         lockedBox = box
