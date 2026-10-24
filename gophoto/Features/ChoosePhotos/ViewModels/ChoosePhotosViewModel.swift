@@ -8,7 +8,7 @@
 import Foundation
 
 final class ChoosePhotosViewModel {
-    static let maxPhotos = 20
+    static let maxPhotos = 50
     static let minPhotos = 3
 
     enum AddDestination { case limitReached, permission, picker, settings }

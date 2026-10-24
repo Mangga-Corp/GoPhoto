@@ -13,15 +13,23 @@
 //
 import Vision
 import CoreVideo
+import CoreGraphics
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// Result for one camera frame.
+/// Result for one camera frame: ONE person (the largest), never more.
 nonisolated struct PersonDetection: @unchecked Sendable {
-    /// Box around the person (normalized 0...1, origin TOP-LEFT). Used for alignment, not drawn.
+    /// Box around the person (normalized 0...1, origin TOP-LEFT). Used for alignment.
     let box: CGRect
-    /// White ring around the body (with a gap) on a transparent background. Covers the whole frame.
-    let outline: CGImage?
+    /// Face of that person (normalized, origin TOP-LEFT), when Vision found one inside the box.
+    var face: CGRect? = nil
+    /// Vertical field of view of the upright frame, degrees (set by `CameraService`).
+    var verticalFOV: Double? = nil
+    /// Largest photo the camera can take, megapixels (set by `CameraService`).
+    var photoMegapixels: Double? = nil
+    /// White ring around the body on a transparent background, covering the whole frame.
+    /// Only made when `PersonDetector.includeOutline` is on (guide mode "A · Old look").
+    var outline: CGImage? = nil
 }
 
 nonisolated final class PersonDetector {
@@ -33,10 +41,16 @@ nonisolated final class PersonDetector {
         return request
     }()
 
-    // The person's shape (for drawing)
+    // The person's face (eye line and head size for the camera-height and distance guide)
+    private let faceRequest = VNDetectFaceRectanglesRequest()
+
+    /// Draw the body outline too (costly: person segmentation every frame). Old-look mode only.
+    var includeOutline = false
+
+    // The person's shape (for the old-look outline)
     private let maskRequest: VNGeneratePersonSegmentationRequest = {
         let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .balanced                 // made for video; try .fast if it lags
+        request.qualityLevel = .balanced
         request.outputPixelFormat = kCVPixelFormatType_OneComponent8
         return request
     }()
@@ -47,32 +61,129 @@ nonisolated final class PersonDetector {
     private let gapRatio: CGFloat = 0.025   // space between body and line
     private let lineRatio: CGFloat = 0.012  // line thickness
 
-    /// Runs both requests on one upright frame. nil = nobody found.
+    // Subject lock: once a person is chosen, follow THAT person (box overlap) instead of
+    // re-picking the largest every frame, so the guide never jumps to someone else.
+    private var lockedBox: CGRect?
+    private var missedFrames = 0
+    /// Detection frames the locked person may be missing before another person can be chosen.
+    private let maxMissedFrames = 15
+    private let minOverlap: CGFloat = 0.15
+
+    // Tracker: follows the locked person between detections. Vision's person detector misses
+    // frames (turned away, arms up, partly hidden); the tracker keeps the box so the guide does
+    // not reset. Seeded from the detector, re-seeded when the two disagree.
+    private let sequenceHandler = VNSequenceRequestHandler()
+    private var trackRequest: VNTrackObjectRequest?
+    /// Frames in a row that only the tracker found the person; the detector must confirm in time.
+    private var trackedOnlyFrames = 0
+    private let maxTrackedOnlyFrames = 60
+    private let minTrackConfidence: Float = 0.3
+    /// Below this overlap between tracker and detector, the tracker is re-seeded.
+    private let reseedOverlap: CGFloat = 0.6
+
+    /// Forget the locked person (the next detection picks the largest again).
+    func resetSubjectLock() {
+        lockedBox = nil
+        missedFrames = 0
+        trackRequest = nil
+        trackedOnlyFrames = 0
+    }
+
+    /// Starts tracking `box` (top-left origin) from this frame on.
+    private func seedTracker(_ box: CGRect) {
+        let visionBox = CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+        let request = VNTrackObjectRequest(detectedObjectObservation: VNDetectedObjectObservation(boundingBox: visionBox))
+        request.trackingLevel = .fast          // .accurate made the whole camera sluggish
+        trackRequest = request
+    }
+
+    /// The tracked person's box in this frame (top-left origin), or nil when the tracker lost it.
+    private func track(_ pixelBuffer: CVPixelBuffer) -> CGRect? {
+        guard let request = trackRequest else { return nil }
+        do {
+            try sequenceHandler.perform([request], on: pixelBuffer, orientation: .up)
+        } catch {
+            trackRequest = nil
+            return nil
+        }
+        guard let observation = request.results?.first as? VNDetectedObjectObservation,
+              observation.confidence >= minTrackConfidence else {
+            trackRequest = nil
+            return nil
+        }
+        request.inputObservation = observation        // continue from here next frame
+        let b = observation.boundingBox
+        return CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
+    }
+
+    /// Runs the requests on one upright frame. nil = nobody found (or the locked person is
+    /// briefly hidden). Only one person is used; anyone else in the frame is ignored.
     func detect(in pixelBuffer: CVPixelBuffer) -> PersonDetection? {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
         do {
-            try handler.perform([boxRequest, maskRequest])   // one pass, two answers
+            try handler.perform(includeOutline ? [boxRequest, faceRequest, maskRequest] : [boxRequest, faceRequest])
         } catch {
             return nil
         }
 
-        guard let largest = boxRequest.results?.max(by: {
-            $0.boundingBox.width * $0.boundingBox.height <
-            $1.boundingBox.width * $1.boundingBox.height
-        }) else {
-            return nil
+        // Vision's origin is BOTTOM-left; SwiftUI's is TOP-left → flip Y
+        let boxes = (boxRequest.results ?? []).map { r -> CGRect in
+            let b = r.boundingBox
+            return CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
         }
 
-        // Vision's origin is BOTTOM-left; SwiftUI's is TOP-left → flip Y
-        let b = largest.boundingBox
-        let box = CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
+        // Where the tracker thinks the locked person is now (runs every frame to stay warm).
+        let tracked = lockedBox != nil ? track(pixelBuffer) : nil
+        func match(_ candidate: CGRect) -> CGFloat {
+            max(lockedBox.map { Self.overlap(candidate, $0) } ?? 0, tracked.map { Self.overlap(candidate, $0) } ?? 0)
+        }
 
-        let outline = maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) }
-        return PersonDetection(box: box, outline: outline)
+        let box: CGRect
+        if lockedBox != nil,
+           let best = boxes.max(by: { match($0) < match($1) }), match(best) >= minOverlap {
+            box = best                                   // same person as before
+            trackedOnlyFrames = 0
+            if tracked.map({ Self.overlap($0, best) < reseedOverlap }) ?? true { seedTracker(best) }
+        } else if let tracked, trackedOnlyFrames < maxTrackedOnlyFrames {
+            box = tracked                                // detector missed: the tracker still has them
+            trackedOnlyFrames += 1
+        } else if lockedBox != nil, missedFrames < maxMissedFrames {
+            missedFrames += 1                            // locked person hidden for a moment: wait
+            return nil
+        } else if let largest = boxes.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+            box = largest                                // first person, or the old one is gone
+            trackedOnlyFrames = 0
+            seedTracker(largest)
+        } else {
+            resetSubjectLock()
+            return nil
+        }
+        lockedBox = box
+        missedFrames = 0
+
+        // Largest face whose centre lies inside that person's box
+        let face = faceRequest.results?
+            .map { f -> CGRect in
+                let r = f.boundingBox
+                return CGRect(x: r.minX, y: 1 - r.maxY, width: r.width, height: r.height)
+            }
+            .filter { box.contains(CGPoint(x: $0.midX, y: $0.midY)) }
+            .max { $0.height < $1.height }
+
+        let outline = includeOutline ? maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) } : nil
+        return PersonDetection(box: box, face: face, outline: outline)
     }
 
-    // MARK: - Mask → ring with a gap
+    /// Intersection over union of two boxes (0 = apart, 1 = identical).
+    private static func overlap(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let i = a.intersection(b)
+        guard !i.isNull, i.width > 0, i.height > 0 else { return 0 }
+        let inter = i.width * i.height
+        return inter / (a.width * a.height + b.width * b.height - inter)
+    }
+
+    // MARK: - Mask → ring with a gap (old look)
 
     private func makeOutline(from mask: CVPixelBuffer) -> CGImage? {
         let maskImage = CIImage(cvPixelBuffer: mask)

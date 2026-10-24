@@ -9,6 +9,7 @@
 //  gophoto
 //
 //  Draws the target frame and the person frame. Plain values in, no ViewModel.
+//  Used only by guide mode "A · Old look" (the first design, kept for comparison).
 //
 import SwiftUI
 

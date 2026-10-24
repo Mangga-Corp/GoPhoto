@@ -93,6 +93,10 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             editorViewModel.onPhotosChange = { [weak self] photos in self?.viewModel.updatePhotos(photos, for: id) }
             editorViewModel.onRename = {[weak self] name in self?.viewModel.rename(id: id, to:name)}
             let editor = AIPreferencesViewController(viewModel: editorViewModel)
+            // Group the photos by analysed framing (Full body / Half body).
+            editor.framingOf = { [weak self] photo in
+                self?.viewModel.preference(id: id)?.analysis?.photoFramings?[photo.id.uuidString]
+            }
             editor.modalPresentationStyle = .fullScreen
             editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }
             presenter.present(editor, animated: true)
@@ -109,7 +113,8 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
 
             creator.onPhotosAdded = { [weak self, weak creator, weak presenter] photos, name in
                 guard let self, self.viewModel.add(name: name, photos: photos) == nil else { return }
-                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(), photos: photos)
+                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: self.viewModel.selectedID),
+                                                        photos: photos)
                 analyzing.modalPresentationStyle = .fullScreen
                 analyzing.onFinish = { presenter?.dismiss(animated: true)}
                 creator?.present(analyzing, animated: true)
