@@ -62,12 +62,14 @@ final class CameraViewModel {
     /// Photo ratio (4:3 native; 1:1 and 16:9 are centred crops of it). Saved across launches.
     var captureAspect: CaptureAspect =
         UserDefaults.standard.string(forKey: CaptureAspect.storageKey).flatMap(CaptureAspect.init(rawValue:)) ?? .fourThree {
-        didSet { UserDefaults.standard.set(captureAspect.rawValue, forKey: CaptureAspect.storageKey) }
+        didSet { if savesSetup { UserDefaults.standard.set(captureAspect.rawValue, forKey: CaptureAspect.storageKey) } }
     }
+    /// False when the view fixes mode + ratio (testing mode): don't overwrite the developer's saved choice.
+    @ObservationIgnored private var savesSetup = true
 
     var guideMode: GuideMode = GuideMode.saved() {
         didSet {
-            UserDefaults.standard.set(guideMode.rawValue, forKey: GuideMode.storageKey)
+            if savesSetup { UserDefaults.standard.set(guideMode.rawValue, forKey: GuideMode.storageKey) }
             cameraService.setOutlineEnabled(guideMode == .currentOldLook)
             cameraService.setHighResolution(guideMode.crops)
             progress = GuideProgress()
@@ -228,12 +230,18 @@ final class CameraViewModel {
          motionService: MotionServiceProtocol = MotionService(),
          photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService(),
          galleryStore: GalleryStoreProtocol? = nil,
-         preferences: PreferencesViewModel? = nil){
+         preferences: PreferencesViewModel? = nil,
+         fixedSetup: (mode: GuideMode, aspect: CaptureAspect)? = nil){
         self.cameraService = cameraService
         self.motionService = motionService
         self.photoLibraryService = photoLibraryService
         self.galleryStore = galleryStore ?? GalleryStore()
         self.preferences = preferences ?? .shared
+        if let fixedSetup {   // testing mode: fixed, not saved
+            savesSetup = false
+            guideMode = fixedSetup.mode
+            captureAspect = fixedSetup.aspect
+        }
         self.cameraService.setOutlineEnabled(guideMode == .currentOldLook)
         self.cameraService.setHighResolution(guideMode.crops)
     }
