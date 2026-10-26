@@ -18,20 +18,29 @@ struct FullPhotoView: View {
     /// AI Enhanced look shown on the photo, or nil for the photo as it is in Photos.
     /// Only a preview: nothing is saved until the user shares / saves it.
     var look: EnhancedLook? = nil
+    /// Manual slider settings; while set they replace `look` and re-render live.
+    var adjustments: PhotoEnhancer.Settings? = nil
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
     @State private var isMissing = false
     @State private var isSharp = false
-    /// The rendered preview and the look it was rendered with (a stale look is never shown)
-    @State private var filtered: (look: EnhancedLook, image: UIImage)?
+    /// The rendered preview and the recipe it was rendered with (a stale look is never shown)
+    @State private var filtered: (recipe: Recipe, image: UIImage)?
     @State private var isFiltering = false
 
     /// Re-render when the look changes or the loaded image is swapped (sharper version on zoom).
     private struct RenderKey: Equatable {
-        let look: EnhancedLook?
+        let recipe: Recipe
         let image: ObjectIdentifier?
     }
+
+    private struct Recipe: Equatable {
+        let look: EnhancedLook?
+        let settings: PhotoEnhancer.Settings?
+    }
+
+    private var recipe: Recipe { Recipe(look: look, settings: adjustments) }
 
     var body: some View {
         // GeometryReader gives the page size, so we ask Photos for a screen-sized image
@@ -39,7 +48,7 @@ struct FullPhotoView: View {
             ZStack {
                 if let image {
                     // Pinch / double-tap to zoom, pan while zoomed
-                    ZoomableImageView(image: (filtered.flatMap { $0.look == look ? $0.image : nil }) ?? image) {
+                    ZoomableImageView(image: (filtered.flatMap { $0.recipe == recipe || adjustments != nil ? $0.image : nil }) ?? image) {
                         loadSharperImage(screenSize: proxy.size)
                     }
                     .overlay(alignment: .top) {
@@ -66,7 +75,7 @@ struct FullPhotoView: View {
                 isMissing = (image == nil)
             }
         }
-        .task(id: RenderKey(look: look, image: image.map(ObjectIdentifier.init))) {
+        .task(id: RenderKey(recipe: recipe, image: image.map(ObjectIdentifier.init))) {
             await renderLook()
         }
         .accessibilityElement()
@@ -74,17 +83,29 @@ struct FullPhotoView: View {
    
     }
     private func renderLook() async {
-        guard let look, let source = image else {
+        let recipe = recipe
+        guard recipe.look != nil || recipe.settings != nil, let source = image else {
             filtered = nil
             return
         }
+        // Slider drags change the recipe many times a second: let the last one win
+        if recipe.settings != nil {
+            try? await Task.sleep(for: .milliseconds(60))
+            guard !Task.isCancelled else { return }
+        }
         isFiltering = true
         defer { isFiltering = false }
-        let result = await Task.detached(priority: .userInitiated) {
-            PhotoEnhancer().enhance(source, look: look)
+        let result: UIImage? = await Task.detached(priority: .userInitiated) {
+            if let settings = recipe.settings {
+                PhotoEnhancer(settings: settings).enhance(source)
+            } else if let look = recipe.look {
+                PhotoEnhancer().enhance(source, look: look)
+            } else {
+                nil
+            }
         }.value
         guard !Task.isCancelled else { return }
-        filtered = result.map { (look, $0) }
+        filtered = result.map { (recipe, $0) }
     }
 
     /// First zoom → fetch a bigger version once, so the photo stays sharp.

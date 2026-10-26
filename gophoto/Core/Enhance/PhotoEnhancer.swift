@@ -114,6 +114,17 @@ nonisolated struct PhotoEnhancer: Sendable {
         return renderer.render(input, faces: faces, image: image)
     }
 
+    /// The AI Enhanced settings of `image` (in `look`, or the plain enhance when nil): the starting
+    /// point of the manual sliders, and what "Revert" returns to. Nil if the image has no pixels.
+    func baselineSettings(for image: UIImage, look: EnhancedLook? = nil) -> Settings? {
+        guard let cgImage = image.cgImage else { return nil }
+        let input = CIImage(cgImage: cgImage)
+        let faces = Self.detectFaces(in: cgImage)
+        let stats = PhotoStatistics.measure(input, faces: faces, context: Self.context)
+        let base = EnhanceTuner.settings(for: stats)
+        return look.map { $0.settings(from: base, stats: stats) } ?? base
+    }
+
     private func render(_ input: CIImage, faces: [VNFaceObservation], image: UIImage) -> UIImage? {
         let extent = input.extent
         var output = autoAdjusted(input)
