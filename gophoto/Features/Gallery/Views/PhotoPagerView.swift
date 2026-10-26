@@ -15,11 +15,18 @@ struct PhotoPagerView: View {
     let loadThumbnail: (String,CGSize) async -> UIImage?
     
     let onDelete: (String) async -> Bool
+    /// (assetID, presetID, settings) → error message, or nil once the edited copy is saved
+    let onSaveEdit: (String, UUID?, PhotoEnhancer.Settings) async -> String?
     /// assetID of the image currently on screen
     @State private var currentID: String
     @State private var isDeleting = false
     /// AI Enhanced look previewed on the current photo; nil = photo as it is. Reset on every photo.
     @State private var selectedLook: EnhancedLook?
+    /// Manual sliders for the current photo: the live values, and the AI Enhance values they started from
+    @State private var adjustments: PhotoEnhancer.Settings?
+    @State private var baseline: PhotoEnhancer.Settings?
+    @State private var isSavingEdit = false
+    @State private var editMessage: String?
     @Environment(\.dismiss) private var dismiss
 
     /// - Parameter startID: assetID of the photo that was tapped in the grid
@@ -27,11 +34,13 @@ struct PhotoPagerView: View {
          startID: String,
          loadImage: @escaping (String, CGSize) async -> UIImage?,
     loadThumbnail: @escaping (String, CGSize) async -> UIImage?,
-         onDelete: @escaping (String) async -> Bool) {
+         onDelete: @escaping (String) async -> Bool,
+         onSaveEdit: @escaping (String, UUID?, PhotoEnhancer.Settings) async -> String?) {
         self.photos = photos
         self.loadImage = loadImage
         self.loadThumbnail = loadThumbnail
         self.onDelete = onDelete
+        self.onSaveEdit = onSaveEdit
         _currentID = State(initialValue: startID)
     }
 
@@ -41,7 +50,8 @@ struct PhotoPagerView: View {
                 FullPhotoView(assetID: photo.assetID,
                               createdAt: photo.createdAt,
                               loadImage: loadImage,
-                              look: photo.assetID == currentID ? selectedLook : nil)
+                              look: photo.assetID == currentID ? selectedLook : nil,
+                              adjustments: photo.assetID == currentID ? adjustments : nil)
                     .tag(photo.assetID)          // links the page to currentID
             }
         }
@@ -51,7 +61,9 @@ struct PhotoPagerView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 // With a look selected the share sheet gets the filtered photo; it has Save Image.
-                if let selectedLook {
+                if adjustments != nil {
+                    EmptyView()   // share after saving: the edit is a normal photo then
+                } else if let selectedLook {
                     ShareLink(item: FilteredPhoto(assetID: currentID, look: selectedLook),
                               preview: SharePreview("Photo (\(selectedLook.title))",
                                                     image: Image(systemName: "photo")))
@@ -61,24 +73,81 @@ struct PhotoPagerView: View {
                 }
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) {
+                Button("Adjust", systemImage: "slider.horizontal.3") {
+                    Task { await startEditing() }
+                }.disabled(adjustments != nil || isDeleting)
+            }
             ToolbarItem(placement: .bottomBar){
                 Button("Delete", systemImage: "trash", role: .destructive){
                     Task{await deleteCurrent()}
-                }.disabled(isDeleting)
+                }.disabled(isDeleting || adjustments != nil)
             }
         }
         .safeAreaInset(edge: .bottom){
             VStack(spacing: 0) {
-                LookPickerView(assetID: currentID,
-                               selection: $selectedLook,
-                               loadThumbnail: loadThumbnail)
-                PhotoStripView(photos: photos,
-                               currentID: $currentID,
-                               loadThumbnail: loadThumbnail,)
+                if let binding = Binding($adjustments) {
+                    AdjustPanelView(settings: binding,
+                                    baseline: baseline,
+                                    isSaving: isSavingEdit,
+                                    onCancel: stopEditing,
+                                    onSave: { Task { await saveEdit() } })
+                } else {
+                    LookPickerView(assetID: currentID,
+                                   selection: $selectedLook,
+                                   loadThumbnail: loadThumbnail)
+                    PhotoStripView(photos: photos,
+                                   currentID: $currentID,
+                                   loadThumbnail: loadThumbnail,)
+                }
             }
             .background(.bar)
         }
-        .onChange(of: currentID) { selectedLook = nil }
+        .onChange(of: currentID) {
+            selectedLook = nil
+            stopEditing()
+        }
+        .alert(editMessage ?? "", isPresented: Binding(get: { editMessage != nil },
+                                                       set: { if !$0 { editMessage = nil } })) {
+            Button("OK", role: .cancel) { }
+        }
+    }
+
+    /// Opens the sliders at the AI Enhance values of the current photo (in the selected look).
+    private func startEditing() async {
+        let id = currentID
+        let look = selectedLook
+        isSavingEdit = false
+        baseline = nil
+        // Screen-sized is enough to measure the photo; the full-resolution save reuses these values
+        guard let image = await loadImage(id, CGSize(width: 1024, height: 1024)) else { return }
+        let measured = await Task.detached(priority: .userInitiated) {
+            PhotoEnhancer().baselineSettings(for: image, look: look)
+        }.value
+        guard id == currentID, let measured else { return }
+        baseline = measured
+        adjustments = measured
+    }
+
+    private func stopEditing() {
+        adjustments = nil
+        baseline = nil
+        isSavingEdit = false
+    }
+
+    private func saveEdit() async {
+        guard let settings = adjustments else { return }
+        let id = currentID
+        let presetID = photos.first(where: { $0.assetID == id })?.presetID
+        isSavingEdit = true
+        let error = await onSaveEdit(id, presetID, settings)
+        isSavingEdit = false
+        if let error {
+            editMessage = error
+        } else {
+            stopEditing()
+            editMessage = "Saved to your gallery as a new photo. The original is unchanged."
+        }
     }
 
     /// Date + time of the photo on screen, shown in the nav bar like the Photos app
@@ -136,7 +205,8 @@ extension GalleryPhoto {
                        startID: "asset-2",
                        loadImage: MockImageLoader().fullImage,
                        loadThumbnail: MockImageLoader().thumbnail,
-                       onDelete: { _ in true })
+                       onDelete: { _ in true },
+                       onSaveEdit: { _, _, _ in nil })
     }
 }
 #endif // DEBUG
