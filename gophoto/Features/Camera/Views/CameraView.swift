@@ -113,8 +113,12 @@ struct CameraView: View {
                 .overlay {
                     // Step modes (B, C): rings only for left/right and the final "ready" state.
                     if viewModel.guideMode.crops {
-                        CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
-                                           isReady: viewModel.isReady)
+                        if showsDebug {
+                            // Debug: the crop window itself (outside dimmed, green when ready).
+                            CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
+                                               isReady: viewModel.isReady)
+                        }
+                        // Otherwise no frame at all: the crop is not shown to the photographer.
                     } else if viewModel.guideMode == .currentOldLook {
                         GuideFramesOverlay(target: viewModel.target.rect,
                                            personOutline: viewModel.personOutline,

@@ -11,6 +11,8 @@ struct CropPreviewOverlay: View {
     /// Normalized crop (origin top-left), nil = not known yet.
     let window: CGRect?
     let isReady: Bool
+    /// Darken everything outside the window (off for a plain "stand here" frame).
+    var dimsOutside = true
 
     var body: some View {
         GeometryReader { geo in
@@ -19,11 +21,13 @@ struct CropPreviewOverlay: View {
                                   width: window.width * geo.size.width, height: window.height * geo.size.height)
                 ZStack {
                     // Dim everything outside the crop.
-                    Path { path in
-                        path.addRect(CGRect(origin: .zero, size: geo.size))
-                        path.addRect(rect)
+                    if dimsOutside {
+                        Path { path in
+                            path.addRect(CGRect(origin: .zero, size: geo.size))
+                            path.addRect(rect)
+                        }
+                        .fill(Color.black.opacity(0.35), style: FillStyle(eoFill: true))
                     }
-                    .fill(Color.black.opacity(0.35), style: FillStyle(eoFill: true))
 
                     Rectangle()
                         .stroke(isReady ? Color.green : Color.white.opacity(0.9),
