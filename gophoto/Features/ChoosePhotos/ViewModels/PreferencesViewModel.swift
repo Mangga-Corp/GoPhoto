@@ -15,19 +15,24 @@ final class PreferencesViewModel {
     private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
     private(set) var selectedID: UUID?
-    /// Framing picked in the preset popover (`FramingCategory.rawValue`: "fullBody" / "halfBody"),
-    /// or nil for the preset's majority. Saved across launches.
+    /// Shot size picked in the preset popover (`PresetAnalysis.ShotSize.rawValue`: "full" /
+    /// "threeQuarter" / "half" / "quarter"), or nil for the preset's default. Saved across launches.
     private(set) var framing: String? = UserDefaults.standard.string(forKey: PreferencesViewModel.framingKey)
-    private static let framingKey = "presetFraming"
+    private static let framingKey = "presetShotSize"
 
     func setFraming(_ framing: String?) {
         self.framing = framing
         UserDefaults.standard.set(framing, forKey: Self.framingKey)
     }
 
-    /// The framing the camera uses for a preset: the picked one, else the preset's majority.
+    /// The shot size the camera uses for a preset: the picked one when the preset has photos of
+    /// it, else the size with the most photos. Older analyses: the picked or majority framing.
     func effectiveFraming(for preference: Preference?) -> String? {
-        framing ?? preference?.analysis?.framing
+        guard let analysis = preference?.analysis else { return framing }
+        let shots = analysis.availableShots
+        if shots.isEmpty { return framing ?? analysis.framing }
+        if let framing, shots.contains(where: { $0.rawValue == framing }) { return framing }
+        return analysis.defaultShot?.rawValue
     }
 
     init(storage: PreferencesStorage = PreferencesStorage()) {

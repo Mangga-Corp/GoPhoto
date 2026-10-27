@@ -100,7 +100,7 @@ struct GuideDebugPanel: View {
                 var why = [source]
                 if let share = analysis.eyeAboveShare { why.append(String(format: "above %.0f%%", share * 100)) }
                 if let n = analysis.eyeSidePhotoCount { why.append("\(n) photos") }
-                if let framing = analysis.framing { why.append(framing) }
+                if let framing = analysis.shotSize ?? analysis.framing { why.append(framing) }
                 line += " (\(why.joined(separator: ", ")))"
             }
             return line + " · tilt \(Self.tilt(pitchDown)) \(tolerance)"

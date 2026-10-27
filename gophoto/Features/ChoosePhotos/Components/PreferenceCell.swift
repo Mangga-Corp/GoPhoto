@@ -8,15 +8,16 @@
 import UIKit
 
 /// One row in the preferences popover. When selected, shows a checkmark, an Edit button and a
-/// Full / Half body switch below the name.
+/// shot-size switch (Full / 3/4 / Half / 1/4, only the sizes the preset has photos of).
 final class PreferenceCell: UITableViewCell {
     static let reuseID = "PreferenceCell"
     var onEdit: (() -> Void)?
-    /// Called with "fullBody" / "halfBody" when the framing switch changes.
+    /// Called with the picked `PresetAnalysis.ShotSize.rawValue` when the switch changes.
     var onFraming: ((String) -> Void)?
 
-    static let framings = ["fullBody", "halfBody"]
-    private let framingControl = UISegmentedControl(items: ["Full body", "Half body"])
+    /// The shot sizes shown, in segment order (`ShotSize.rawValue`).
+    private var framings: [String] = []
+    private let framingControl = UISegmentedControl(items: [])
 
     private let nameLabel = UILabel.make("", style: .body)
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark"))
@@ -30,8 +31,8 @@ final class PreferenceCell: UITableViewCell {
         editRow.alignment = .center
         editRow.spacing = 8
         framingControl.addAction(UIAction { [weak self] _ in
-            guard let self, Self.framings.indices.contains(self.framingControl.selectedSegmentIndex) else { return }
-            self.onFraming?(Self.framings[self.framingControl.selectedSegmentIndex])
+            guard let self, self.framings.indices.contains(self.framingControl.selectedSegmentIndex) else { return }
+            self.onFraming?(self.framings[self.framingControl.selectedSegmentIndex])
         }, for: .valueChanged)
 
         backgroundColor = .clear
@@ -58,13 +59,23 @@ final class PreferenceCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// `framing`: the framing in use ("fullBody" / "halfBody"), or nil when unknown.
-    func configure(name: String, selected: Bool, framing: String? = nil) {
+    /// `shots`: the shot sizes the preset has photos of (`ShotSize.rawValue`, widest first);
+    /// the switch is hidden without any. `framing`: the one in use, or nil when unknown.
+    func configure(name: String, selected: Bool, framing: String? = nil, shots: [String] = []) {
         nameLabel.text = name
         nameLabel.accessibilityValue = selected ? "Selected" : nil
         checkmark.isHidden = !selected
         editRow.isHidden = !selected
-        framingControl.selectedSegmentIndex = framing.flatMap { Self.framings.firstIndex(of: $0) }
+        if shots != framings {
+            framings = shots
+            framingControl.removeAllSegments()
+            for (index, raw) in shots.enumerated() {
+                let shot = PresetAnalysis.ShotSize(rawValue: raw)
+                framingControl.insertSegment(withTitle: shot?.shortTitle ?? raw, at: index, animated: false)
+            }
+        }
+        framingControl.isHidden = shots.isEmpty
+        framingControl.selectedSegmentIndex = framing.flatMap { framings.firstIndex(of: $0) }
             ?? UISegmentedControl.noSegment
     }
 }

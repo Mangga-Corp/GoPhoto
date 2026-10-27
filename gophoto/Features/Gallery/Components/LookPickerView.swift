@@ -2,9 +2,10 @@
 //  LookPickerView.swift
 //  gophoto
 //
-//  Row under the full-screen viewer: the photo as it is, plus the five AI Enhanced looks, each
-//  previewed on a small copy of the current photo. Tap a look to preview it, tap it again (or
-//  "Original") to go back. Nothing is saved here: saving goes through the share sheet.
+//  Row under the full-screen viewer in edit mode (after Edit): the photo as it is, plus the five
+//  AI Enhanced looks, each previewed on a small copy of the current photo. Tap a look to preview
+//  it, tap it again (or "Original") to go back. Nothing is saved here: the pager's Save button
+//  saves the look as a new photo (or the share sheet shares it).
 //
 
 import SwiftUI
