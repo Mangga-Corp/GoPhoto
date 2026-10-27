@@ -101,7 +101,17 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// Photo sizes (session queue): largest, and the one closest to 12 MP for normal shots.
     private var largestPhotoDimensions: CMVideoDimensions?
     private var normalPhotoDimensions: CMVideoDimensions?
-    private var highResolution = false                                                      
+    private var highResolution = false
+    /// The camera (session queue), for the exposure and focus points.
+    private var device: AVCaptureDevice?
+    /// Where exposure and focus last aimed (video queue), upright frame, origin top-left;
+    /// nil = the camera's default (frame centre).
+    private var meteringPoint: CGPoint?
+    private var meteringUpdatedAt: TimeInterval = 0
+    /// Re-aim only when the subject moved this far (frame fraction), at most this often, so the
+    /// brightness doesn't pump as the face box jitters.
+    private static let meteringMinMove: CGFloat = 0.05
+    private static let meteringMinInterval: TimeInterval = 0.5                                                      
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> CameraPermission {
@@ -201,6 +211,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             throw CameraError.cameraUnavailable
         }
         let input = try AVCaptureDeviceInput(device: device)
+        self.device = device
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
         let fov = Double(device.activeFormat.videoFieldOfView)
         videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
@@ -296,6 +307,53 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         var detection = personDetector.detect(in: pixelBuffer)
         detection?.verticalFOV = verticalFOV
         detection?.photoMegapixels = photoMegapixels
-        continuation.yield(detection)           
+        continuation.yield(detection)
+        updateMetering(for: detection)
+    }
+
+    /// Aims exposure and focus at the subject's face (else the top of the person's box, where
+    /// the head is), so a bright sky behind them doesn't darken the face. Back to the frame
+    /// centre when nobody is found. Video queue; not called while a photo is being taken.
+    private func updateMetering(for detection: PersonDetection?) {
+        let target: CGPoint? = detection.map { d in
+            if let face = d.face { return CGPoint(x: face.midX, y: face.midY) }
+            return CGPoint(x: d.box.midX, y: d.box.minY + d.box.height * 0.08)
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - meteringUpdatedAt >= Self.meteringMinInterval else { return }
+        switch (target, meteringPoint) {
+        case (nil, nil):
+            return
+        case let (new?, old?) where hypot(new.x - old.x, new.y - old.y) < Self.meteringMinMove:
+            return
+        default:
+            break
+        }
+        meteringPoint = target
+        meteringUpdatedAt = now
+        // Upright portrait frame (top-left origin) → the sensor's landscape space: (y, 1 − x).
+        let devicePoint = target.map { CGPoint(x: min(max($0.y, 0), 1), y: min(max(1 - $0.x, 0), 1)) }
+            ?? CGPoint(x: 0.5, y: 0.5)
+        sessionQueue.async { self.aim(at: devicePoint) }
+    }
+
+    /// Sets the exposure and focus point (sensor space), keeping both on continuous auto.
+    /// Session queue.
+    private func aim(at point: CGPoint) {
+        guard let device else { return }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            if device.isExposurePointOfInterestSupported, device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposurePointOfInterest = point
+                device.exposureMode = .continuousAutoExposure      // applies the new point
+            }
+            if device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusPointOfInterest = point
+                device.focusMode = .continuousAutoFocus
+            }
+        } catch {
+            // Another client holds the configuration: keep the camera's own metering this time.
+        }
     }
 }
