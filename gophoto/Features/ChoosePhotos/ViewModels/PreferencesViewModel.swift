@@ -15,12 +15,30 @@ final class PreferencesViewModel {
     private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
     private(set) var selectedID: UUID?
+    /// Framing picked in the preset popover (`FramingCategory.rawValue`: "fullBody" / "halfBody"),
+    /// or nil for the preset's majority. Saved across launches.
+    private(set) var framing: String? = UserDefaults.standard.string(forKey: PreferencesViewModel.framingKey)
+    private static let framingKey = "presetFraming"
+
+    func setFraming(_ framing: String?) {
+        self.framing = framing
+        UserDefaults.standard.set(framing, forKey: Self.framingKey)
+    }
+
+    /// The framing the camera uses for a preset: the picked one, else the preset's majority.
+    func effectiveFraming(for preference: Preference?) -> String? {
+        framing ?? preference?.analysis?.framing
+    }
 
     init(storage: PreferencesStorage = PreferencesStorage()) {
         self.storage = storage
         let saved = storage.load()
         preferences = saved.preferences
         selectedID = saved.selectedID
+        // Presets saved before the AI existed (or with an older result) are analysed now.
+        for preference in preferences where preference.analysis?.isCurrent != true {
+            reanalyze(id: preference.id)
+        }
     }
 
     var hasPreferences: Bool { !preferences.isEmpty }
@@ -30,6 +48,8 @@ final class PreferencesViewModel {
     func isSelected(at index: Int) -> Bool { preferences[index].id == selectedID }
 
     func preference(id: UUID) -> Preference? { preferences.first { $0.id == id } }
+
+    var selectedPreference: Preference? { selectedID.flatMap { preference(id: $0) } }
 
     func select(at index: Int) {
         guard preferences.indices.contains(index) else { return }
@@ -84,6 +104,49 @@ final class PreferencesViewModel {
     func updatePhotos(_ photos: [PhotoItem], for id: UUID) {
         guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }
         preferences[index].photos = photos
+        persist()
+        reanalyze(id: id)   // PRD 1.3: adding or removing photos analyses the preset again
+    }
+
+    // MARK: AI analysis
+
+    /// The last analysis started; the next one waits for it so only one runs at a time.
+    private var analysisChain: Task<Void, Never>?
+    private var analysisTokens: [UUID: Int] = [:]
+    /// Latest analysis run per preset, kept in memory for the results screen (not saved).
+    private var sessions: [UUID: AnalysisSession] = [:]
+    private var analyzingIDs: Set<UUID> = []
+
+    func session(for id: UUID) -> AnalysisSession? { sessions[id] }
+    func isAnalyzing(_ id: UUID) -> Bool { analyzingIDs.contains(id) }
+
+    /// Analyses a preset's photos and saves the result with the preset.
+    /// Only the newest request per preset is saved. Await `value` to know when it is done.
+    @discardableResult
+    func reanalyze(id: UUID) -> Task<Void, Never>? {
+        guard let photos = preference(id: id)?.photos, !photos.isEmpty else { return nil }
+        let token = (analysisTokens[id] ?? 0) + 1
+        analysisTokens[id] = token
+        let session = AnalysisSession()
+        sessions[id] = session
+        analyzingIDs.insert(id)
+        let previous = analysisChain
+        let task = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            guard self.analysisTokens[id] == token else { return }
+            let analysis = await session.analyze(photos)
+            guard self.analysisTokens[id] == token else { return }
+            self.analyzingIDs.remove(id)
+            if let analysis { self.setAnalysis(analysis, for: id) }
+        }
+        analysisChain = task
+        return task
+    }
+
+    func setAnalysis(_ analysis: PresetAnalysis, for id: UUID) {
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }
+        preferences[index].analysis = analysis
         persist()
     }
 
