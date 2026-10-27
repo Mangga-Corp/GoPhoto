@@ -13,7 +13,15 @@ import SwiftUI
 import UIKit
 
 struct CameraView: View {
-    @State private var viewModel = CameraViewModel()
+    /// Which camera to build. Change this number:
+    /// 1 = testing: clean camera for testers. Guide B + crop, grid on, 4:3. No pose guide,
+    ///     no debug, no pickers.
+    /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
+    private static let appMode = 1
+    private static var isTesting: Bool { appMode == 1 }
+
+    @State private var viewModel = CameraViewModel(
+        fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -22,6 +30,10 @@ struct CameraView: View {
     @AppStorage("showGuideDebug") private var isShowingDebug = false
     @AppStorage(PoseGuideStyle.storageKey) private var poseGuideStyle: PoseGuideStyle = .off
     @AppStorage("showCameraGrid") private var showsGrid = false
+    private var isDeveloper: Bool { !Self.isTesting }
+    private var showsDebug: Bool { isDeveloper && isShowingDebug }
+    /// Developer: the picked style. Testing: none.
+    private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
@@ -61,6 +73,10 @@ struct CameraView: View {
             }
         }
         .onDisappear { Task { await viewModel.stopCamera() } }
+        // The gallery covers the camera: stop the feed (and the per-frame detection) meanwhile.
+        .onChange(of: isShowingGallery) { _, showing in
+            Task { if showing { await viewModel.stopCamera() } else { await viewModel.resumeCamera() } }
+        }
         .alert("Something went wrong", isPresented: $viewModel.isShowingError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -111,7 +127,7 @@ struct CameraView: View {
                 }
                 .overlay {
                     // Ratio mask + thirds grid, under the guide visuals.
-                    CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: showsGrid)
+                    CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
                 }
                 .overlay {
                     HorizonLevelView(state: viewModel.horizon)
@@ -175,21 +191,21 @@ struct CameraView: View {
                         .padding(.top, 12)
                 }
                 .overlay(alignment: .top) {
-                    if isShowingDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
+                    if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
                         GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
                             .padding(.top, 56)   // below the instruction pill
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     // Optional side-view pose guide (A / B), picked next to the ladybug.
-                    if poseGuideStyle != .off {
-                        PoseGuidePanel(style: poseGuideStyle, state: viewModel.poseGuide)
+                    if activePoseGuide != .off {
+                        PoseGuidePanel(style: activePoseGuide, state: viewModel.poseGuide)
                             .padding(8)
                             .padding(.bottom, activeStep == .distance ? 48 : 0)   // clear of the distance bar
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    if isShowingDebug {
+                    if showsDebug {
                         GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
                             .padding(8)
                     }
@@ -264,47 +280,49 @@ struct CameraView: View {
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
     private var topBar: some View {
         HStack {
-            Button {
-                isShowingDebug.toggle()
-            } label: {
-                Image(systemName: isShowingDebug ? "ladybug.fill" : "ladybug")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isShowingDebug ? .yellow : .white)
-                    .frame(width: 44, height: 44)
-            }
-            .padding(.leading, 8)
-            .accessibilityLabel(isShowingDebug ? "Hide guide debug values" : "Show guide debug values")
-            Menu {
-                Picker("Pose guide", selection: $poseGuideStyle) {
-                    ForEach(PoseGuideStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+            if isDeveloper {
+                Button {
+                    isShowingDebug.toggle()
+                } label: {
+                    Image(systemName: isShowingDebug ? "ladybug.fill" : "ladybug")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(isShowingDebug ? .yellow : .white)
+                        .frame(width: 44, height: 44)
                 }
-            } label: {
-                Image(systemName: poseGuideStyle == .off ? "figure.stand" : "figure.stand.line.dotted.figure.stand")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(poseGuideStyle == .off ? .white : .yellow)
-                    .frame(width: 44, height: 44)
+                .padding(.leading, 8)
+                .accessibilityLabel(isShowingDebug ? "Hide guide debug values" : "Show guide debug values")
+                Menu {
+                    Picker("Pose guide", selection: $poseGuideStyle) {
+                        ForEach(PoseGuideStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                } label: {
+                    Image(systemName: poseGuideStyle == .off ? "figure.stand" : "figure.stand.line.dotted.figure.stand")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(poseGuideStyle == .off ? .white : .yellow)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Pose guide: \(poseGuideStyle.title)")
+                Button {
+                    showsGrid.toggle()
+                } label: {
+                    Image(systemName: showsGrid ? "grid.circle.fill" : "grid")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(showsGrid ? .yellow : .white)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(showsGrid ? "Hide grid" : "Show grid")
+                Button {
+                    viewModel.captureAspect = viewModel.captureAspect.next
+                } label: {
+                    Text(viewModel.captureAspect.title)
+                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(viewModel.captureAspect == .fourThree ? .white : .yellow)
+                        .padding(.horizontal, 8).frame(height: 28)
+                        .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             }
-            .accessibilityLabel("Pose guide: \(poseGuideStyle.title)")
-            Button {
-                showsGrid.toggle()
-            } label: {
-                Image(systemName: showsGrid ? "grid.circle.fill" : "grid")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(showsGrid ? .yellow : .white)
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel(showsGrid ? "Hide grid" : "Show grid")
-            Button {
-                viewModel.captureAspect = viewModel.captureAspect.next
-            } label: {
-                Text(viewModel.captureAspect.title)
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(viewModel.captureAspect == .fourThree ? .white : .yellow)
-                    .padding(.horizontal, 8).frame(height: 28)
-                    .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             Spacer()
             AIPreferencesButton()
                 .padding(.horizontal, 16)

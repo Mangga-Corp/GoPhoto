@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 10
+    static let currentVersion = 12
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -67,6 +67,9 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Framing of each photo (`PhotoItem.id.uuidString` → `FramingCategory.rawValue`), so the
     /// preset's gallery can group them; version 7.
     var photoFramings: [String: String]?
+    /// Shot size of each photo (`PhotoItem.id.uuidString` → `ShotSize.rawValue`), for the
+    /// gallery's four sections; version 12. Data only: the guide still uses full / half body.
+    var photoShotSizes: [String: String]?
 
     /// Where the half-body photos cut the body, from the skeleton (version 9): "chest" (shoulders
     /// in, hips out), "thigh" (hips in, knees out) or "shin" (knees in, ankles out). Majority over
@@ -81,11 +84,33 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// reference's lens (a 2× portrait would otherwise ask to stand twice as far).
     var faceHeight: Double?
 
+    /// Half-body crop target (version 11), median over the half-body photos with a body pose:
+    /// neck position (normalized, top-left), neck-to-hip length (frame heights), and where the
+    /// frame's bottom cuts, in torso lengths below the hips (0.6 ≈ mid-thigh). Nil without them.
+    var halfBodyNeck: CGPoint?
+    var halfBodyTorso: Double?
+    var cutBelowHip: Double?
+
     /// The analysis for the framing picked in the preset popover: that framing's variant, or this
     /// one when the preset has no photo of it (or nothing is picked).
     func forFraming(_ framing: String?) -> PresetAnalysis {
         guard let framing, let variant = framingVariants?[framing] else { return self }
         return variant
+    }
+
+    /// How much of the body a photo shows, by where the frame's bottom cuts it (headshot types):
+    /// full body; three-quarter (mid-thigh or knees up); half body (waist up); one-quarter (chest up).
+    nonisolated enum ShotSize: String, Sendable, CaseIterable {
+        case full, threeQuarter, half, quarter
+
+        var title: String {
+            switch self {
+            case .full: "Full body"
+            case .threeQuarter: "Three-quarter"
+            case .half: "Half body"
+            case .quarter: "One-quarter"
+            }
+        }
     }
 
     nonisolated enum EyeSide: String, Sendable {

@@ -35,6 +35,9 @@ enum PreferenceAnalyzer {
         analysis.framingVariants = variants.isEmpty ? nil : variants
         analysis.photoFramings = Dictionary(results.map { ($0.id.uuidString, $0.subjectFraming.category.rawValue) },
                                             uniquingKeysWith: { first, _ in first })
+        analysis.photoShotSizes = Dictionary(results.compactMap { result in
+            shotSize(of: result).map { (result.id.uuidString, $0.rawValue) }
+        }, uniquingKeysWith: { first, _ in first })
         return analysis
     }
 
@@ -84,7 +87,85 @@ enum PreferenceAnalyzer {
         // looks, whatever lens the reference was shot with.
         let faces = results.compactMap { $0.cameraAngle.horizonCue?.headHeight }.filter { $0 > 0 }
         analysis.faceHeight = faces.isEmpty ? nil : median(faces)
+
+        // Half body: the torso of each photo (neck, neck-to-hip length), for the crop.
+        let torsos = results.compactMap { result -> (neck: CGPoint, length: Double)? in
+            guard result.subjectFraming.category == .halfBody, let box = result.subjectPositioning.subjectBox,
+                  let poses = result.evidence?.pose.value,
+                  let pose = SubjectAssociation.pose(for: box, among: poses),
+                  let neck = pose.reliable(.neck)?.point else { return nil }
+            let hips = [pose.reliable(.leftHip), pose.reliable(.rightHip)].compactMap { $0?.point }
+            guard let hip = pose.reliable(.root)?.point ?? (hips.isEmpty ? nil
+                    : CGPoint(x: hips.map(\.x).reduce(0, +) / CGFloat(hips.count),
+                              y: hips.map(\.y).reduce(0, +) / CGFloat(hips.count))) else { return nil }
+            let length = Double(hip.y - neck.y)
+            return length > 0.02 ? (neck, length) : nil
+        }
+        if !torsos.isEmpty {
+            analysis.halfBodyNeck = CGPoint(x: median(torsos.map { Double($0.neck.x) }),
+                                            y: median(torsos.map { Double($0.neck.y) }))
+            let length = median(torsos.map { $0.length })
+            analysis.halfBodyTorso = length
+            // Bottom edge below the hips, in torso lengths: 1 - (neck + torso), over the torso.
+            analysis.cutBelowHip = median(torsos.map { (1 - Double($0.neck.y) - $0.length) / $0.length })
+        }
         return analysis
+    }
+
+    // MARK: Shot size (four levels, data only)
+
+    /// Where the frame's bottom may cut, in torso lengths below the neck joint (neck → hip joint
+    /// = 1): below it one-quarter (chest up), up to `halfMaxCut` half body (waist to just below the
+    /// hips), deeper three-quarter (mid-thigh / knees up). Body proportions: chest ≈ 0.4,
+    /// waist ≈ 0.7, hip joint 1, mid-thigh ≈ 1.45, knee ≈ 1.85.
+    nonisolated static let quarterMaxCut = 0.55
+    nonisolated static let halfMaxCut = 1.2
+    /// Torso length (neck joint → hip joint) in face-box heights, when the hips are out of frame.
+    nonisolated static let torsoInFaceHeights = 2.5
+
+    /// The shot size of one photo, or nil when its framing was not read (or has no person).
+    nonisolated static func shotSize(of result: PhotoResult) -> PresetAnalysis.ShotSize? {
+        let framing = result.subjectFraming
+        switch framing.category {
+        case .fullBody:
+            return .full
+        case .other:
+            // Head-only close-up: grouped with the tightest level.
+            return framing.visibleExtent == .headOnly ? .quarter : nil
+        case .halfBody:
+            break
+        default:
+            return nil
+        }
+        if framing.visibleExtent == .toKnees { return .threeQuarter }
+
+        // The frame's bottom (y = 1, top-left origin) below the neck, in torso lengths.
+        if let box = result.subjectPositioning.subjectBox,
+           let poses = result.evidence?.pose.value,
+           let pose = SubjectAssociation.pose(for: box, among: poses),
+           let neck = pose.reliable(.neck)?.point {
+            let hips = [pose.reliable(.leftHip), pose.reliable(.rightHip)].compactMap { $0?.point }
+            let hip = pose.reliable(.root)?.point ?? (hips.isEmpty ? nil
+                : CGPoint(x: 0, y: hips.map(\.y).reduce(0, +) / CGFloat(hips.count)))
+            var torso: Double?
+            if let hip, hip.y - neck.y > 0.02 {
+                torso = Double(hip.y - neck.y)
+            } else if let face = result.cameraAngle.horizonCue?.headHeight, face > 0 {
+                torso = face * torsoInFaceHeights
+            }
+            if let torso {
+                let cut = (1 - Double(neck.y)) / torso
+                if cut < quarterMaxCut { return .quarter }
+                if cut < halfMaxCut { return .half }
+                return .threeQuarter
+            }
+        }
+        // No neck or torso: the deepest visible joints decide.
+        switch framing.visibleExtent {
+        case .headAndShoulders: return .quarter
+        case .toHips: return .half
+        default: return nil
+        }
     }
 
     // MARK: Half-body cut level
