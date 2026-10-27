@@ -14,12 +14,10 @@ import UIKit
 
 struct CameraView: View {
     /// Which camera to build. Change this number:
-    /// 1 = testing: clean camera for testers. Guide B + crop, grid on, 4:3, pose guide
-    ///     (top right, once a person is found). No debug, no pickers.
+    /// 1 = testing: clean camera for testers. Guide B + crop, grid on, 4:3. No pose guide,
+    ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
     private static let appMode = 1
-    /// Pose guide shown in testing (no picker there): .annotated = A, .sideView = B.
-    private static let testingPoseGuide: PoseGuideStyle = .annotated
     private static var isTesting: Bool { appMode == 1 }
 
     @State private var viewModel = CameraViewModel(
@@ -32,14 +30,10 @@ struct CameraView: View {
     @AppStorage("showGuideDebug") private var isShowingDebug = false
     @AppStorage(PoseGuideStyle.storageKey) private var poseGuideStyle: PoseGuideStyle = .off
     @AppStorage("showCameraGrid") private var showsGrid = false
-    /// Testing: the pose guide appears once the first person has been found.
-    @State private var hasSeenPerson = false
     private var isDeveloper: Bool { !Self.isTesting }
     private var showsDebug: Bool { isDeveloper && isShowingDebug }
-    /// Developer: the picked style. Testing: fixed style, once the first person has been found.
-    private var activePoseGuide: PoseGuideStyle {
-        isDeveloper ? poseGuideStyle : (hasSeenPerson ? Self.testingPoseGuide : .off)
-    }
+    /// Developer: the picked style. Testing: none.
+    private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
@@ -234,9 +228,6 @@ struct CameraView: View {
         }
         .task { await viewModel.observeTilt() }
         .task { await viewModel.observePerson() }
-        .onChange(of: viewModel.personBox != nil) { _, found in
-            if found, !hasSeenPerson { withAnimation(.easeOut) { hasSeenPerson = true } }
-        }
         // A step just finished: tap + short banner so the change of task is obvious
         // (e.g. tilt is done, now move the phone up/down and keep the angle).
         .onChange(of: viewModel.evaluation.activeStep) { old, new in

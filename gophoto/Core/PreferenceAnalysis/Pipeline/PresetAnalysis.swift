@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 11
+    static let currentVersion = 12
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -67,6 +67,9 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Framing of each photo (`PhotoItem.id.uuidString` → `FramingCategory.rawValue`), so the
     /// preset's gallery can group them; version 7.
     var photoFramings: [String: String]?
+    /// Shot size of each photo (`PhotoItem.id.uuidString` → `ShotSize.rawValue`), for the
+    /// gallery's four sections; version 12. Data only: the guide still uses full / half body.
+    var photoShotSizes: [String: String]?
 
     /// Where the half-body photos cut the body, from the skeleton (version 9): "chest" (shoulders
     /// in, hips out), "thigh" (hips in, knees out) or "shin" (knees in, ankles out). Majority over
@@ -93,6 +96,21 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     func forFraming(_ framing: String?) -> PresetAnalysis {
         guard let framing, let variant = framingVariants?[framing] else { return self }
         return variant
+    }
+
+    /// How much of the body a photo shows, by where the frame's bottom cuts it (headshot types):
+    /// full body; three-quarter (mid-thigh or knees up); half body (waist up); one-quarter (chest up).
+    nonisolated enum ShotSize: String, Sendable, CaseIterable {
+        case full, threeQuarter, half, quarter
+
+        var title: String {
+            switch self {
+            case .full: "Full body"
+            case .threeQuarter: "Three-quarter"
+            case .half: "Half body"
+            case .quarter: "One-quarter"
+            }
+        }
     }
 
     nonisolated enum EyeSide: String, Sendable {
