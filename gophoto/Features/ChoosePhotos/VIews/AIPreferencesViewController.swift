@@ -66,17 +66,19 @@ final class AIPreferencesViewController: UIViewController {
         return UICollectionView(frame: .zero, collectionViewLayout: layout)
     }()
 
-    /// The grid's sections: Full body, Half body, then the rest. One untitled section when the
-    /// photos are not analysed yet (or `framingOf` is nil).
+    /// The grid's sections: Full body, Three-quarter, Half body, One-quarter, then the rest.
+    /// One untitled section when the photos are not analysed yet (or `framingOf` is nil).
+    /// Older analyses only know "fullBody" / "halfBody"; those still group as Full / Half body.
     private var sections: [(title: String?, indices: [Int])] {
         let all = Array(viewModel.items.indices)
         guard let framingOf else { return [(nil, all)] }
-        let framings = all.map { framingOf(viewModel.items[$0]) }
-        let full = all.filter { framings[$0] == "fullBody" }
-        let half = all.filter { framings[$0] == "halfBody" }
-        let rest = all.filter { framings[$0] != "fullBody" && framings[$0] != "halfBody" }
-        if full.isEmpty && half.isEmpty { return [(nil, all)] }
-        let groups: [(title: String?, indices: [Int])] = [("Full body", full), ("Half body", half), ("Other", rest)]
+        let titles = all.map { framingOf(viewModel.items[$0]).flatMap(Self.framingTitle) }
+        let order = ["Full body", "Three-quarter", "Half body", "One-quarter"]
+        if titles.allSatisfy({ $0 == nil }) { return [(nil, all)] }
+        var groups: [(title: String?, indices: [Int])] = order.map { title in
+            (title, all.filter { titles[$0] == title })
+        }
+        groups.append(("Other", all.filter { titles[$0] == nil }))
         return groups.filter { !$0.indices.isEmpty }
     }
 
@@ -90,8 +92,10 @@ final class AIPreferencesViewController: UIViewController {
 
     private static func framingTitle(_ framing: String) -> String? {
         switch framing {
-        case "fullBody": "Full body"
-        case "halfBody": "Half body"
+        case "full", "fullBody": "Full body"
+        case "threeQuarter": "Three-quarter"
+        case "half", "halfBody": "Half body"
+        case "quarter": "One-quarter"
         default: nil
         }
     }

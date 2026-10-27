@@ -22,8 +22,8 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
     /// B as first tested on the phone (kept for comparison): distance from head size → body
     /// height → edge cut-off rule, live measurements (no still-phone snapshot), no height cap.
     case heightFirstOld
-    /// B + crop: distance (a little wider) → camera height → tilt; left/right and a small
-    /// horizon tilt are fixed by cropping the photo.
+    /// B + crop: distance (a little wider) → camera height → tilt → rough left/right; the crop
+    /// puts the person exactly on the target and rotates a small horizon tilt away.
     case heightFirstCrop
     /// C: like B, but tilt before camera height.
     case tiltFirst
@@ -93,7 +93,7 @@ nonisolated enum GuideMode: String, CaseIterable, Identifiable, Sendable {
     var steps: [GuideStep] {
         switch self {
         case .heightFirst, .heightFirstOld: [.distance, .height, .tilt, .horizontal, .straight]
-        case .heightFirstCrop:    [.distance, .height, .tilt]
+        case .heightFirstCrop:    [.distance, .height, .tilt, .horizontal]
         case .tiltFirst, .tiltFirstOld: [.distance, .tilt, .height, .horizontal, .straight]
         case .currentSteps:       [.distance, .horizontal, .vertical, .tilt, .straight]
         case .currentStepsHeight: [.distance, .horizontal, .vertical, .height, .tilt, .straight]
@@ -201,7 +201,7 @@ nonisolated enum GuideFlow {
     // Latch: a step that stayed OK this long is kept done, so later steps do not send the
     // guide back over small wobbles. Only a big drift (`breakLimit`) reopens it.
     static let latchDwell = 0.4
-    static let lostReset = 1.0
+    static let lostReset = 2.5
 
     static func breakLimit(_ step: GuideStep) -> Double {
         switch step {
@@ -397,7 +397,18 @@ nonisolated enum GuideFlow {
 
         // 4. Left / right (vertical position follows from height + tilt + distance).
         // Directions are for the PHOTOGRAPHER, same as `GuideInstruction`.
-        judge(.horizontal, error: Double(person.midX - target.rect.midX),
+        //    B + crop: loose. The crop moves the person onto the target, so this only asks for
+        //    what the crop cannot fix: how far the crop window would run past the frame's side
+        //    (then it is pushed back in and the person lands off target). Anywhere the crop can
+        //    reach counts as OK; with no room to crop it is the normal ±6%.
+        var horizontalError = Double(person.midX - target.rect.midX)
+        if mode == .heightFirstCrop, target.rect.height > 0 {
+            let minScale = WideCrop.minimumScale(photoMegapixels: live.photoMegapixels)
+            let scale = min(WideCrop.maxScale, max(minScale, Double(person.height / target.rect.height)))
+            let window = WideCrop.window(person: person, target: target.rect, scale: scale)
+            horizontalError = Double(window.minX - WideCrop.clamped(window).minX)
+        }
+        judge(.horizontal, error: horizontalError,
               enter: positionEnter, exit: positionExit, positive: .moveRight, negative: .moveLeft)
 
         // 4b. Up / down in the frame (only modes that list `.vertical`; B and C leave it to

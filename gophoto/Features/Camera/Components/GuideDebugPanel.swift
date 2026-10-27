@@ -24,6 +24,7 @@ struct GuideDebugPanel: View {
             }
             Text(presetLine).fontWeight(.semibold)
             Text(angleLine)
+            if let timing = viewModel.lastShotTiming { Text("Last shot: " + timing) }
             if let cut = cutLine { Text(cut) }
             Text(targetLine).fontWeight(.semibold).foregroundStyle(.yellow)
             Text(phoneLine)
@@ -70,6 +71,7 @@ struct GuideDebugPanel: View {
         guard let analysis = viewModel.analysis, let level = analysis.cutLevel else { return nil }
         var line = "Half-body cut: \(level)"
         if let n = analysis.cutLevelCount, let of = analysis.cutLevelOf { line += " (\(n)/\(of) photos)" }
+        if let below = analysis.cutBelowHip { line += String(format: " · %.1f torso below hips", below) }
         return line
     }
 

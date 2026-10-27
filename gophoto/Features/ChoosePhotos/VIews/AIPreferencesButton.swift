@@ -93,9 +93,11 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             editorViewModel.onPhotosChange = { [weak self] photos in self?.viewModel.updatePhotos(photos, for: id) }
             editorViewModel.onRename = {[weak self] name in self?.viewModel.rename(id: id, to:name)}
             let editor = AIPreferencesViewController(viewModel: editorViewModel)
-            // Group the photos by analysed framing (Full body / Half body).
+            // Group the photos by analysed shot size (four levels); older analyses: full / half body.
             editor.framingOf = { [weak self] photo in
-                self?.viewModel.preference(id: id)?.analysis?.photoFramings?[photo.id.uuidString]
+                let analysis = self?.viewModel.preference(id: id)?.analysis
+                return analysis?.photoShotSizes?[photo.id.uuidString]
+                    ?? analysis?.photoFramings?[photo.id.uuidString]
             }
             editor.modalPresentationStyle = .fullScreen
             editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }
