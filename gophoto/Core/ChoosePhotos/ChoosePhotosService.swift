@@ -47,6 +47,10 @@ final class ChoosePhotosService {
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
 
+        var focals = [Double?](repeating: nil, count: assets.count)
+        let dataOptions = PHImageRequestOptions()
+        dataOptions.isNetworkAccessAllowed = true
+
         for (index, asset) in assets.enumerated() {
             group.enter()
             imageManager.requestImage(for: asset, targetSize: CGSize(width: 1024, height: 1024),
@@ -57,9 +61,26 @@ final class ChoosePhotosService {
                     group.leave()
                 }
             }
+            // EXIF focal length, for the camera-vs-eyes angle. Optional: a failure is ignored.
+            group.enter()
+            imageManager.requestImageDataAndOrientation(for: asset, options: dataOptions) { data, _, _, _ in
+                let focal = data.flatMap { LensMetadataReader.focalLength35mm(imageData: $0) }
+                DispatchQueue.main.async {
+                    focals[index] = focal
+                    group.leave()
+                }
+            }
         }
         group.notify(queue: .main) {
-            failed ? completion(.failure(PhotoError.loadFailed)) : completion(.success(results.compactMap { $0 }))
+            if failed { completion(.failure(PhotoError.loadFailed)); return }
+            for index in results.indices {
+                guard let item = results[index], let focal = focals[index] else { continue }
+                // Only an uncropped 4:3 frame keeps the EXIF field of view.
+                let w = item.image.size.width, h = item.image.size.height
+                let aspect = max(w, h) / max(min(w, h), 1)
+                if abs(aspect - 4.0 / 3.0) < 0.02 { results[index]?.focalLength35mm = focal }
+            }
+            completion(.success(results.compactMap { $0 }))
         }
     }
 
