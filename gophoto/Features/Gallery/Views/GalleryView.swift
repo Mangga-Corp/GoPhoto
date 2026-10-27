@@ -66,7 +66,8 @@ struct GalleryView: View {
                                startID: photo.assetID,
                                loadImage: viewModel.fullImage,
                                loadThumbnail: viewModel.thumbnail,
-                               onDelete: viewModel.delete(assetID:))
+                               onDelete: viewModel.delete(assetID:),
+                               onSaveEdit: viewModel.saveEdited)
                 .navigationTransition(.zoom(sourceID: photo.assetID, in: photoZoom))
                 // Alert lives on the pager (the screen on top), not on the grid
                 .alert("Couldn't Delete", isPresented: deleteErrorBinding(when: !isSelecting)) {

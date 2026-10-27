@@ -416,31 +416,28 @@ final class CameraViewModel {
         let captureSeconds = Date().timeIntervalSince(shutterAt)
         lastShotTiming = String(format: "shutter %.2fs · file %.2fs · processing…", shutterSeconds, captureSeconds)
 
-        // One photo per shot, the finished one, made in the background so the shutter is free:
-        // crop modes crop (from the full 4:3 frame, where the plan's coordinates are), other
-        // ratios crop to 1:1 / 16:9, then the enhance. If a step fails, the photo before it is kept.
+        // One photo per shot, made in the background so the shutter is free: crop modes crop
+        // (from the full 4:3 frame, where the plan's coordinates are), other ratios crop to
+        // 1:1 / 16:9. No auto enhance: filters are applied later from the gallery by the user.
+        // Without a crop the camera's file is saved as is (no re-encode).
         let original = photo.data
         let aspect = captureAspect
         let ratio = aspect.ratio
-        let enhancer = self.enhancer
         Task { [weak self] in
-            let (finished, cropSeconds, enhanceSeconds) = await Task.detached(priority: .userInitiated) {
-                () -> (Data, Double?, Double) in
-                var base = original
-                var cropSeconds: Double?
+            let (finished, cropSeconds) = await Task.detached(priority: .userInitiated) {
+                () -> (Data, Double?) in
                 let cropStart = Date()
                 if let plan = cropPlan {
-                    base = WideCrop.crop(original, person: plan.person, target: plan.target, torsoTarget: plan.torso,
-                                         rollDegrees: plan.roll, photoMegapixels: plan.megapixels) ?? original
-                    cropSeconds = Date().timeIntervalSince(cropStart)
-                } else if aspect != .fourThree {
-                    base = CapturedPhotoEnhancing.cropped(original, aspect: ratio) ?? original
-                    cropSeconds = Date().timeIntervalSince(cropStart)
+                    let cropped = WideCrop.crop(original, person: plan.person, target: plan.target,
+                                                torsoTarget: plan.torso, rollDegrees: plan.roll,
+                                                photoMegapixels: plan.megapixels) ?? original
+                    return (cropped, Date().timeIntervalSince(cropStart))
                 }
-                let enhanceStart = Date()
-                let result = CapturedPhotoEnhancing.enhance(base, with: enhancer)
-                    .flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: base) } ?? base
-                return (result, cropSeconds, Date().timeIntervalSince(enhanceStart))
+                if aspect != .fourThree {
+                    let cropped = CapturedPhotoEnhancing.cropped(original, aspect: ratio) ?? original
+                    return (cropped, Date().timeIntervalSince(cropStart))
+                }
+                return (original, nil)
             }.value
             guard let self else { return }
             let saveStart = Date()
@@ -453,9 +450,10 @@ final class CameraViewModel {
             }
             let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
             self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + crop
-                + String(format: " · enhance %.2fs · save %.2fs", enhanceSeconds, Date().timeIntervalSince(saveStart))
+                + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
         }
     }
+      
 
     /// Saves the reviewed photo: the enhanced version (the original if the enhance failed),
     /// plus the cropped version in crop modes. Closes the review when done.

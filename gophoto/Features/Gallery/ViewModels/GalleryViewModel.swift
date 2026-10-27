@@ -9,6 +9,7 @@
 
 import Observation
 import UIKit
+import UniformTypeIdentifiers
 
 @Observable
 final class GalleryViewModel {
@@ -23,17 +24,20 @@ final class GalleryViewModel {
     
     private let photoDeleter: PhotoDeleterProtocol
     private let galleryStore: GalleryStoreProtocol
+    private let photoLibraryService: PhotoLibraryServiceProtocol
     var deleteErrorMessage: String?
     init(authorization: PhotoAuthorizationProtocol = PhotoAuthorization(),
          imageLoader: ImageLoaderProtocol = ImageLoader(),
          gallerySync: GallerySync? = nil,
          photoDeleter: PhotoDeleterProtocol = PhotoDeleter(),
-         galleryStore: GalleryStoreProtocol? = nil) {
+         galleryStore: GalleryStoreProtocol? = nil,
+         photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService()) {
         self.authorization = authorization
         self.imageLoader = imageLoader
         self.gallerySync = gallerySync ?? GallerySync()
         self.photoDeleter = photoDeleter
         self.galleryStore = galleryStore ?? GalleryStore()
+        self.photoLibraryService = photoLibraryService
     }
 
     func onAppear() async {
@@ -74,4 +78,26 @@ final class GalleryViewModel {
 
     func delete(assetID: String) async -> Bool {
         await delete(assetIDs: [assetID])
-    }}
+    }
+
+    /// Renders the photo at full resolution with the manually adjusted `settings` and saves it as a
+    /// NEW photo in Photos and the gallery. The original is untouched, so it is always the way back.
+    /// Returns an error message, or nil on success.
+    func saveEdited(assetID: String, presetID: UUID?, settings: PhotoEnhancer.Settings) async -> String? {
+        do {
+            let source = try await PhotoExport.data(for: assetID, as: .jpeg)
+            let output: Data? = await Task.detached(priority: .userInitiated) {
+                CapturedPhotoEnhancing.enhance(source, with: PhotoEnhancer(settings: settings))
+                    .flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: source) }
+            }.value
+            guard let output else { return PhotoExportError.unreadable.localizedDescription }
+            guard let newID = try await photoLibraryService.save(imageData: output) else {
+                return PhotoLibraryError.saveFailed.localizedDescription
+            }
+            galleryStore.addCaptured(assetID: newID, presetID: presetID)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+}

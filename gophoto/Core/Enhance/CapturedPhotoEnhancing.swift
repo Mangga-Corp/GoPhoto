@@ -53,6 +53,12 @@ nonisolated enum CapturedPhotoEnhancing {
         return enhancer.enhance(upright)
     }
 
+    /// The camera file in an AI Enhanced look, upright. Heavy: call off the main actor.
+    static func enhance(_ data: Data, look: EnhancedLook, with enhancer: PhotoEnhancer = PhotoEnhancer()) -> UIImage? {
+        guard let upright = uprightImage(from: data) else { return nil }
+        return enhancer.enhance(upright, look: look)
+    }
+
     /// `image` (upright) written in the original file's format with its metadata; the orientation
     /// tag is reset because the pixels are already upright. Nil if it could not be encoded.
     static func file(for image: UIImage, metadataFrom original: Data, quality: Double = 0.9) -> Data? {
