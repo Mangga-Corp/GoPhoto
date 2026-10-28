@@ -6,6 +6,10 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		000000000000000300000001 /* SunKit in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000300000003 /* SunKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* gophoto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = gophoto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -35,6 +39,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				000000000000000300000001 /* SunKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -73,6 +78,9 @@
 				000000000000000000000010 /* gophoto */,
 			);
 			name = gophoto;
+			packageProductDependencies = (
+				000000000000000300000003 /* SunKit */,
+			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* gophoto.app */;
 			productType = "com.apple.product-type.application";
@@ -101,6 +109,9 @@
 			);
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				000000000000000300000002 /* XCRemoteSwiftPackageReference "SunKit" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -272,6 +283,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your location only to work out where the sun is, so it can tell you where to stand. It is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -315,6 +327,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your location only to work out where the sun is, so it can tell you where to stand. It is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -366,6 +379,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		000000000000000300000002 /* XCRemoteSwiftPackageReference "SunKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Sunlitt/SunKit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.8.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		000000000000000300000003 /* SunKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000300000002 /* XCRemoteSwiftPackageReference "SunKit" */;
+			productName = SunKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
 }

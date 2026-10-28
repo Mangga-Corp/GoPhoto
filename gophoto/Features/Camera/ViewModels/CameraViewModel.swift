@@ -56,6 +56,7 @@ final class CameraViewModel {
     private(set) var face: CGRect?                       // normalized, origin top-left
     private(set) var personOutline: CGImage?             // body outline, old-look mode only
     private(set) var exposure: ExposureStatus?           // auto-exposure bias / ISO / shutter (debug panel)
+    let lighting = LightingCoordinator()                 // sun / light tips; the camera owns the exposure bias
     @ObservationIgnored private var verticalFOV: Double? // of the upright frame, degrees
     @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
 
@@ -306,8 +307,10 @@ final class CameraViewModel {
     func observeExposure() async {
         for await status in cameraService.exposureStatus() {
             exposure = status
+            lighting.ingest(status, hasPerson: personBox != nil)
         }
         exposure = nil
+        lighting.reset()
     }
 
     private func updateInstruction() {
@@ -374,6 +377,7 @@ final class CameraViewModel {
     }
 
     func stopCamera() async {
+        lighting.reset()
         await cameraService.stop()
     }
 

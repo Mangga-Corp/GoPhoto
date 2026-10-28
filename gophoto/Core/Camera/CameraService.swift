@@ -40,6 +40,9 @@ nonisolated struct ExposureStatus: Sendable, Equatable {
     let shutter: Double
     /// The backlight rule is currently raising the bias.
     let isBacklit: Bool
+    /// How bright the face (nil: none found) and the whole frame are, 0...1.
+    let faceLuminance: Double?
+    let frameLuminance: Double
 }
 
 // MARK: - Errors
@@ -362,7 +365,7 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         let isBacklit = backlight.isBacklit
         sessionQueue.async {
             self.applyExposure(bias: bias)
-            self.publishStatus(isBacklit: isBacklit)
+            self.publishStatus(isBacklit: isBacklit, reading: reading)
         }
     }
 
@@ -387,10 +390,11 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         }
     }
 
-    private func publishStatus(isBacklit: Bool) {
+    private func publishStatus(isBacklit: Bool, reading: LuminanceMeter.Reading) {
         guard let device else { return }
         let status = ExposureStatus(bias: device.exposureTargetBias, iso: device.iso,
-                                    shutter: device.exposureDuration.seconds, isBacklit: isBacklit)
+                                    shutter: device.exposureDuration.seconds, isBacklit: isBacklit,
+                                    faceLuminance: reading.face, frameLuminance: reading.frame)
         videoQueue.async { self.statusContinuation?.yield(status) }
     }
 
