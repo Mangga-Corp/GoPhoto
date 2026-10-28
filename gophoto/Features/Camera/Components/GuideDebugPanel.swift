@@ -31,6 +31,7 @@ struct GuideDebugPanel: View {
             Text(String(format: "Horizon roll %+.1f°", viewModel.roll))
             Text(frameLine)
             Text(personLine)
+            Text(exposureLine)
             if viewModel.guideMode.crops, let w = viewModel.evaluation.cropWindow {
                 Text(String(format: "Crop %.0f%% of frame (min %.0f%%) · x%.2f y%.2f",
                             w.width * 100, (viewModel.evaluation.cropMinScale ?? 0) * 100, w.minX, w.minY))
@@ -128,6 +129,13 @@ struct GuideDebugPanel: View {
         guard let box = viewModel.personBox else { return "Person: not found" }
         let o = viewModel.target.offset(of: box)
         return String(format: "Person dx %+.2f dy %+.2f size ×%.2f", o.dx, o.dy, o.sizeRatio)
+    }
+
+    private var exposureLine: String {
+        guard let e = viewModel.exposure else { return "Exposure: —" }
+        let shutter = e.shutter > 0 ? "1/\(Int((1 / e.shutter).rounded()))" : "—"
+        return String(format: "Exposure bias %+.2f EV · ISO %.0f · ", e.bias, e.iso) + shutter + " s"
+            + (e.isBacklit ? " · backlit" : "")
     }
 
     private var distanceLine: String {
