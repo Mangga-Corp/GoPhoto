@@ -2,102 +2,101 @@
 //  PersonRelight.swift
 //  gophoto
 //
-//  Core layer: makes backlit people brighter without touching the background. Brightening a
-//  finished photo cannot work: the camera has already thrown away the colour in the dark parts, so
-//  skin turns grey. Instead the camera takes a bracket (one normal frame, one exposed brighter for
-//  the people) and this puts the people from the bright frame onto the normal one. The colours are
-//  what the sensor really saw, at full resolution. The segmentation model finds the people.
+//  Core layer: brightens only the people in a photo. A backlit face is dark, but raising the
+//  camera's exposure would also wash out the background, so the lift is applied afterwards: the
+//  segmentation model finds the people on a small copy, and the mask is scaled up to the full photo
+//  so the result keeps the camera's full resolution.
 //
 
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import CoreGraphics
 import UIKit
-import Vision
 
 nonisolated enum PersonRelight {
 
     /// The segmentation model, loaded once and shared.
     static let segmenter = DETRSegmenter()
 
-    /// Lifts smaller than this (units of `BacklightController.lift`) are not worth a bracket.
+    /// Lifts smaller than this (EV) are not worth the processing.
     static let minLift = 0.1
-    /// Photographic stops for one unit of lift: the lift is measured on the frame's encoded
-    /// brightness, which is roughly the light raised to 1 / 2.2.
-    private static let stopsPerLift = 2.2
-    /// Most the bright frame is pushed above the normal one, stops.
-    private static let maxBracketStops = 2.0
 
     /// Long edge of the copy the model looks at; the model itself works at a fixed small size.
     private static let maskSourceLongEdge: CGFloat = 640
-    /// Long edge of the copies used to line the two frames up.
-    private static let alignLongEdge: CGFloat = 1024
     /// Mask edge softness, as a share of the photo's long edge.
     private static let featherShare: CGFloat = 0.003
     /// Long edge of the photo copy that guides the mask edges.
     private static let guideLongEdge: CGFloat = 1024
-    /// How far the mask is pulled inside the person's outline, in pixels of the guide copy: the
-    /// bright frame's background right at the edge is overexposed and must not show (no halo).
+    /// Photographic stops of light for one unit of `lift`: `lift` is measured on the frame's encoded
+    /// brightness, which is roughly the light raised to 1 / 2.2.
+    private static let stopsPerLift = 2.2
+    /// How far the mask is pulled inside the person's outline, in pixels of the guide copy, so the
+    /// bright background right at the edge is not lifted with them (no halo).
     private static let erosionGuidePixels: CGFloat = 2
 
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
-    /// Exposure bias for the bright frame of the bracket, stops; nil when no bracket is needed.
-    static func bracketBias(forLift lift: Double) -> Float? {
+    /// The photo with every person lifted by `lift` EV and the rest untouched, same pixel size.
+    /// Nil when nobody was found or anything failed: the caller keeps the original.
+    /// Heavy: call off the main actor.
+    static func relit(_ photo: CGImage, lift: Double, using segmenter: any SemanticSegmenting = segmenter) async -> CGImage? {
         guard lift >= minLift else { return nil }
-        return Float(min(lift * stopsPerLift, maxBracketStops))
+        let image = CIImage(cgImage: photo)
+        guard let small = smallCopy(of: image),
+              let map = try? await segmenter.segment(small),
+              let mask = personMask(from: map, guideImage: image, fullSize: image.extent.size) else { return nil }
+
+        // Scaling the light (a plain exposure change) keeps every pixel's colour ratios, so skin and
+        // clothes keep their own colour. Highlights are held back so nothing already bright clips.
+        let lifted = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: lift * stopsPerLift])
+        guard let weight = shadowWeight(of: image),
+              let weighted = CIFilter(name: "CIMultiplyCompositing",
+                                      parameters: [kCIInputImageKey: mask, kCIInputBackgroundImageKey: weight])?.outputImage
+        else { return nil }
+
+        let blend = CIFilter.blendWithMask()
+        blend.inputImage = lifted
+        blend.backgroundImage = image
+        blend.maskImage = weighted
+        guard let output = blend.outputImage?.cropped(to: image.extent) else { return nil }
+
+        return context.createCGImage(output, from: image.extent, format: .RGBA8,
+                                     colorSpace: photo.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB))
     }
 
-    /// The normal camera file with the people taken from the bright frame: same size, the normal
-    /// file's metadata. Nil when nobody was found or anything failed: the caller keeps the normal file.
+    /// The camera file with the people lifted by `lift` EV: the same photo, full resolution, with
+    /// the original's metadata. Nil when nothing was changed (no lift, nobody found, failure).
     /// Heavy: runs off the main actor.
-    static func compositeFile(normal: Data, people: Data, bias: Float) async -> Data? {
-        await Task.detached(priority: .userInitiated) { () -> Data? in
-            guard let normalImage = CapturedPhotoEnhancing.uprightImage(from: normal)?.cgImage,
-                  let peopleImage = CapturedPhotoEnhancing.uprightImage(from: people)?.cgImage,
-                  let result = await composite(normal: normalImage, people: peopleImage, bias: bias) else { return nil }
-            return CapturedPhotoEnhancing.file(for: UIImage(cgImage: result), metadataFrom: normal, quality: 0.95)
+    static func relitFile(_ data: Data, lift: Double) async -> Data? {
+        guard lift >= minLift else { return nil }
+        return await Task.detached(priority: .userInitiated) { () -> Data? in
+            guard let upright = CapturedPhotoEnhancing.uprightImage(from: data),
+                  let photo = upright.cgImage,
+                  let relit = await relit(photo, lift: lift) else { return nil }
+            return CapturedPhotoEnhancing.file(for: UIImage(cgImage: relit), metadataFrom: data, quality: 0.95)
         }.value
     }
 
-    /// `normal` with the people replaced by the same people from `people` (the frame taken `bias`
-    /// stops brighter), lined up first in case the phone moved between the two frames.
-    static func composite(normal: CGImage, people: CGImage, bias: Float,
-                          using segmenter: any SemanticSegmenting = segmenter) async -> CGImage? {
-        let base = CIImage(cgImage: normal)
-        let bright = CIImage(cgImage: people)
-        guard base.extent.size == bright.extent.size,
-              let small = smallCopy(of: bright, longEdge: maskSourceLongEdge),
-              let map = try? await segmenter.segment(small),
-              let mask = personMask(from: map, guideImage: bright, fullSize: bright.extent.size) else { return nil }
-
-        let shift = offset(of: bright, onto: base, bias: bias) ?? .identity
-        let blend = CIFilter.blendWithMask()
-        blend.inputImage = bright.transformed(by: shift)
-        blend.backgroundImage = base
-        blend.maskImage = mask.transformed(by: shift)
-        guard let output = blend.outputImage?.cropped(to: base.extent) else { return nil }
-
-        return context.createCGImage(output, from: base.extent, format: .RGBA8,
-                                     colorSpace: normal.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB))
+    /// How much of the lift each pixel takes, from its own brightness: all of it in the shadows and
+    /// mid-tones, fading to none in the highlights.
+    private static func shadowWeight(of image: CIImage) -> CIImage? {
+        let luma = image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+            "inputGVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+            "inputBVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+        ])
+        let curve = CIFilter.toneCurve()
+        curve.inputImage = luma
+        curve.point0 = CGPoint(x: 0, y: 1)
+        curve.point1 = CGPoint(x: 0.15, y: 1)
+        curve.point2 = CGPoint(x: 0.4, y: 0.5)
+        curve.point3 = CGPoint(x: 0.7, y: 0.1)
+        curve.point4 = CGPoint(x: 1, y: 0)
+        return curve.outputImage
     }
 
-    /// The shift (full-size pixels) that lines `moving` up with `reference`. The bright frame is
-    /// darkened back first so both look alike to the registration. Nil when it could not be measured.
-    private static func offset(of moving: CIImage, onto reference: CIImage, bias: Float) -> CGAffineTransform? {
-        let darkened = moving.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: -bias])
-        guard let referenceSmall = smallCopy(of: reference, longEdge: alignLongEdge),
-              let movingSmall = smallCopy(of: darkened, longEdge: alignLongEdge) else { return nil }
-        let request = VNTranslationalImageRegistrationRequest(targetedCGImage: movingSmall)
-        try? VNImageRequestHandler(cgImage: referenceSmall).perform([request])
-        guard let shift = (request.results?.first as? VNImageTranslationAlignmentObservation)?.alignmentTransform
-        else { return nil }
-        let scale = reference.extent.width / CGFloat(referenceSmall.width)
-        return CGAffineTransform(translationX: shift.tx * scale, y: shift.ty * scale)
-    }
-
-    private static func smallCopy(of image: CIImage, longEdge: CGFloat) -> CGImage? {
-        let scale = min(1, longEdge / max(image.extent.width, image.extent.height))
+    private static func smallCopy(of image: CIImage) -> CGImage? {
+        let scale = min(1, maskSourceLongEdge / max(image.extent.width, image.extent.height))
         let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         return context.createCGImage(scaled, from: scaled.extent)
     }

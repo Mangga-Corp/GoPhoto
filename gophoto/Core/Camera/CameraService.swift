@@ -23,8 +23,6 @@ import CoreMedia
 nonisolated struct CapturedPhoto: Sendable {
     let data: Data      // Original file-data (HEIC/ JPEG + metadata) -> For saving to phone
     let image: UIImage  // Decoded image -> for showing on screen (view -> iPhone screen)
-    /// Backlight bracket only: the same moment exposed brighter, for the people. Nil otherwise.
-    var peopleFrame: Data? = nil
 }
 
 /// Result of asking for camera access.
@@ -36,9 +34,10 @@ nonisolated enum CameraPermission: Sendable {
 
 /// What the camera's auto-exposure is doing now (debug panel).
 nonisolated struct ExposureStatus: Sendable, Equatable {
-    /// How much the people need brightening (0 = not backlit; see `PersonRelight.bracketBias`),
-    /// ISO, and shutter time in seconds.
+    /// How much the people will be brightened after the shot, EV (0 = not backlit), ISO, and
+    /// shutter time in seconds.
     let lift: Double
+
     let iso: Float
     let shutter: Double
     /// The backlight rule currently sees a backlit person.
@@ -77,13 +76,11 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func start() async
     func stop() async
     /// Shutter no slower than this many seconds (nil: no limit). Auto-exposure keeps running and
-    /// ISO makes up the light. The exposure bias is never changed: backlit people come from a bracket.
+    /// ISO makes up the light. The exposure bias is never changed: backlit people are brightened after the shot.
     func setSlowestShutter(_ seconds: TimeInterval?)
     /// Takes a photo. `onShutter` runs (any thread) at the moment the photo is taken, before the
-    /// file is processed: the UI flashes there. Returns once the file is ready. With `peopleBias`
-    /// (stops) it takes a bracket: the normal photo plus one that much brighter (`peopleFrame`),
-    /// when the camera supports it.
-    func capturePhoto(peopleBias: Float?, onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
+    /// file is processed: the UI flashes there. Returns once the file is ready.
+    func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
     /// Backlight lift, ISO and shutter, about twice a second while someone listens.
     func exposureStatus() -> AsyncStream<ExposureStatus>
@@ -106,8 +103,6 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// capture lets a new shot start while the previous one is still processing.
     private var photoContinuations: [Int64: CheckedContinuation<CapturedPhoto, Error>] = [:]
     private var shutterCallbacks: [Int64: @Sendable () -> Void] = [:]
-    /// Frames of a bracket that arrived so far (session queue), with their exposure bias.
-    private var bracketFrames: [Int64: [(bias: Float, data: Result<Data, Error>)]] = [:]
     
     // for the apple vision framework
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -192,7 +187,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     }
 
     // 4. Take a photo. The delegate callback below finishes this.
-    func capturePhoto(peopleBias: Float?, onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto {
+    func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async {
                 // Portrait photo
@@ -200,18 +195,13 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                    connection.isVideoRotationAngleSupported(90) {
                     connection.videoRotationAngle = 90
                 }
-                let settings: AVCapturePhotoSettings
-                if let peopleBias, let bracket = self.bracketSettings(peopleBias: peopleBias) {
-                    settings = bracket
-                } else {
-                    settings = AVCapturePhotoSettings()
-                    // Quality prioritization (benchmark): .quality = most multi-frame processing,
-                    // slowest file. .balanced is Apple's default; .speed the fastest.
-                    settings.photoQualityPrioritization = .quality
-                }
+                let settings = AVCapturePhotoSettings()
                 if let dimensions = self.highResolution ? self.largestPhotoDimensions : self.normalPhotoDimensions {
                     settings.maxPhotoDimensions = dimensions
                 }
+                // Quality prioritization (benchmark): .quality = most multi-frame processing,
+                // slowest file. .balanced is Apple's default; .speed the fastest.
+                settings.photoQualityPrioritization = .quality
                 self.photoContinuations[settings.uniqueID] = continuation
                 self.shutterCallbacks[settings.uniqueID] = onShutter
                 self.videoQueue.async { self.photosInFlight += 1 }
@@ -220,27 +210,6 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         }
     }
     
-    /// Backlight bracket (session queue): a normal frame and one `peopleBias` stops brighter, both
-    /// on auto exposure. Brackets cannot use zero shutter lag or multi-frame fusion, so they are
-    /// only taken when a backlit person needs them. Nil when the camera cannot bracket.
-    private func bracketSettings(peopleBias: Float) -> AVCapturePhotoBracketSettings? {
-        guard let device, photoOutput.maxBracketedCapturePhotoCount >= 2 else { return nil }
-        let bias = min(max(peopleBias, device.minExposureTargetBias), device.maxExposureTargetBias)
-        let codec: AVVideoCodecType = photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
-        let settings = AVCapturePhotoBracketSettings(
-            rawPixelFormatType: 0,
-            processedFormat: [AVVideoCodecKey: codec],
-            bracketedSettings: [
-                AVCaptureAutoExposureBracketedStillImageSettings.autoExposureSettings(exposureTargetBias: 0),
-                AVCaptureAutoExposureBracketedStillImageSettings.autoExposureSettings(exposureTargetBias: bias),
-            ])
-        settings.photoQualityPrioritization = .speed
-        if photoOutput.isLensStabilizationDuringBracketedCaptureSupported {
-            settings.isLensStabilizationEnabled = true
-        }
-        return settings
-    }
-
     func setSlowestShutter(_ seconds: TimeInterval?) {
         sessionQueue.async {
             guard self.slowestShutter != seconds else { return }
@@ -354,44 +323,20 @@ nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishProcessingPhoto photo: AVCapturePhoto,
                      error: Error?) {
-        let frame: Result<Data, Error>
+        let result: Result<CapturedPhoto, Error>
         if let error {
-            frame = .failure(error)
-        } else if let data = photo.fileDataRepresentation() {
-            frame = .success(data)
+            result = .failure(error)
+        } else if let data = photo.fileDataRepresentation(), let image = UIImage(data: data) {
+            result = .success(CapturedPhoto(data: data, image: image))
         } else {
-            frame = .failure(CameraError.captureFailed)
+            result = .failure(CameraError.captureFailed)
         }
-        let bias = (photo.bracketSettings as? AVCaptureAutoExposureBracketedStillImageSettings)?.exposureTargetBias ?? 0
 
         let id = photo.resolvedSettings.uniqueID
-        let expected = photo.resolvedSettings.expectedPhotoCount
+        videoQueue.async { self.photosInFlight = max(0, self.photosInFlight - 1) }
         sessionQueue.async {
-            // A bracket calls back once per frame: finish when all of them are here.
-            var frames = self.bracketFrames[id, default: []]
-            frames.append((bias, frame))
-            guard frames.count >= expected else {
-                self.bracketFrames[id] = frames
-                return
-            }
-            self.bracketFrames[id] = nil
-            self.videoQueue.async { self.photosInFlight = max(0, self.photosInFlight - 1) }
             self.shutterCallbacks.removeValue(forKey: id)?()        // in case it was never called
-            self.photoContinuations.removeValue(forKey: id)?.resume(with: Self.photo(from: frames))
-        }
-    }
-
-    /// The finished photo: the darkest frame is the photo, a brighter one (bracket) the people frame.
-    private static func photo(from frames: [(bias: Float, data: Result<Data, Error>)]) -> Result<CapturedPhoto, Error> {
-        let sorted = frames.sorted { $0.bias < $1.bias }
-        guard let normal = sorted.first else { return .failure(CameraError.captureFailed) }
-        switch normal.data {
-        case .failure(let error):
-            return .failure(error)
-        case .success(let data):
-            guard let image = UIImage(data: data) else { return .failure(CameraError.captureFailed) }
-            let people = sorted.count > 1 ? try? sorted[sorted.count - 1].data.get() : nil
-            return .success(CapturedPhoto(data: data, image: image, peopleFrame: people))
+            self.photoContinuations.removeValue(forKey: id)?.resume(with: result)
         }
     }
 }
