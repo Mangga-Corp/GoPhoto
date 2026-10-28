@@ -395,7 +395,7 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
                 device.setExposureTargetBias(Float(bias))
             }
             let format = device.activeFormat
-            let caps = [bias > 0 ? BacklightController.slowestShutter : nil, slowestShutter].compactMap { $0 }
+            let caps = [bias > 0 ? ExposureLimits.slowestShutter : nil, slowestShutter].compactMap { $0 }
             let cap = caps.min().map { CMTime(seconds: $0, preferredTimescale: 1000) } ?? format.maxExposureDuration
             let limited = CMTimeMaximum(format.minExposureDuration, CMTimeMinimum(cap, format.maxExposureDuration))
             if device.activeMaxExposureDuration != limited { device.activeMaxExposureDuration = limited }

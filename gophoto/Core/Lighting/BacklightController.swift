@@ -29,9 +29,6 @@ nonisolated struct BacklightController: Sendable {
         var resetDelay: TimeInterval = 1.0
     }
 
-    /// Slowest shutter allowed while the bias is raised; the missing light comes from ISO (spec A2).
-    static let slowestShutter: TimeInterval = 1.0 / 60
-
     private let tuning: Tuning
     private(set) var bias = 0.0
     private(set) var isBacklit = false

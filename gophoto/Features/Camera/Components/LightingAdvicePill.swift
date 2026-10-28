@@ -35,7 +35,7 @@ struct LightingAdvicePill: View {
         case .misty:      "cloud.fog"
         case .heavyRain:  "cloud.heavyrain"
         case .goldenHour: "sun.horizon"
-        case .night:      "moon.stars"
+        case .night:      "light.max"
         case .unknown:    "sun.min"
         }
     }
