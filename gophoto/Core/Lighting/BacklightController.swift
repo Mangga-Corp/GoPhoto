@@ -13,11 +13,11 @@ nonisolated struct BacklightController: Sendable {
 
     struct Tuning: Sendable, Equatable {
         /// Backlit when the face is darker than this share of the frame's brightness...
-        var enterRatio = 0.55
+        var enterRatio = 0.70
         /// ...and the light is back to normal above this share (the gap is the hysteresis).
-        var exitRatio = 0.80
+        var exitRatio = 0.85
         /// Dim scenes are skipped: a dark room is not backlight.
-        var minFrameLuminance = 0.25
+        var minFrameLuminance = 0.20
         /// Face brightness the lift aims for (0...1, as encoded in the frame).
         var targetFaceLuminance = 0.42
         /// Most the people may be lifted, EV.

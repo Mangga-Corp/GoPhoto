@@ -474,7 +474,9 @@ final class CameraViewModel {
             } catch {
                 self.errorMessage = error.localizedDescription
             }
-            let relight = relightSeconds.map { String(format: " · relight %.2fs", $0) } ?? ""
+            let relight = lift < PersonRelight.minLift ? String(format: " · no lift (%.2f EV)", lift)
+                : relightSeconds.map { String(format: " · lift %+.2f EV, relight %.2fs", lift, $0) }
+                    ?? String(format: " · lift %+.2f EV but no person found", lift)
             let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
             self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + relight + crop
                 + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
