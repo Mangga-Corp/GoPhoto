@@ -33,6 +33,7 @@ struct GuideDebugPanel: View {
             Text(personLine)
             Text(exposureLine)
             Text(sunLine)
+            Text(lightingLine)
             if viewModel.guideMode.crops, let w = viewModel.evaluation.cropWindow {
                 Text(String(format: "Crop %.0f%% of frame (min %.0f%%) · x%.2f y%.2f",
                             w.width * 100, (viewModel.evaluation.cropMinScale ?? 0) * 100, w.minX, w.minY))
@@ -144,6 +145,16 @@ struct GuideDebugPanel: View {
         guard let sun = lighting.sunPosition else { return "Sun: — (no location)" }
         let heading = lighting.heading.map { String(format: "%.0f°", $0.degrees) + ($0.isReliable ? "" : "?") } ?? "—"
         return String(format: "Sun az %.0f° alt %.0f°", sun.azimuth, sun.altitude) + " · camera \(heading)"
+    }
+
+    private var lightingLine: String {
+        let lighting = viewModel.lighting
+        let weather = lighting.weather.map { String(describing: $0) } ?? "unknown"
+        guard let advice = lighting.recommendation else { return "Light: weather \(weather) · no advice" }
+        let rule = advice.rule
+        return "Light: \(advice.scene.rawValue) (weather \(weather)) · f/\(rule.aperture.lowerBound.formatted())–"
+            + "\(rule.aperture.upperBound.formatted()) info · shutter ≥1/\(Int((1 / advice.slowestShutter).rounded()))"
+            + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) info"
     }
 
     private var distanceLine: String {

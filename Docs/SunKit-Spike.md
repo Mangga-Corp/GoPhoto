@@ -28,8 +28,9 @@ What was checked in the source / by running the package, and what still needs a 
   share the heading is dropped (`CameraHeading.minHorizontalShare`).
 - True north needs location services on (Core Motion uses the location for magnetic declination);
   `CMMotionManager.availableAttitudeReferenceFrames()` is checked and the stream ends if it is missing.
-- `HeadingService` has its own `CMMotionManager` (the tilt service has another). Two managers worked
-  in the API's contract; Apple recommends one per app, so this is a candidate to merge later.
+- `HeadingService` has its own `CMMotionManager` (the tilt service has another). Apple recommends one
+  per app, and running both side by side is **not verified on a device**; merging them is the
+  fallback if the tilt stream and the heading stream disturb each other.
 
 ## Compass calibration
 

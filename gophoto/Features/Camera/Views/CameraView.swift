@@ -195,6 +195,8 @@ struct CameraView: View {
                         InstructionPill(instruction: viewModel.instruction)
                         if let tip = viewModel.lighting.suggestion {
                             LightingTipPill(suggestion: tip)
+                        } else if let advice = viewModel.lighting.recommendation {
+                            LightingAdvicePill(recommendation: advice)
                         }
                         if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
                             GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
