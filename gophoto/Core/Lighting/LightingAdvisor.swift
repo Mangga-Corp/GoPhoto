@@ -5,10 +5,9 @@
 //  Core layer: pure logic, no network or sensors. Turns the weather, the sun and what the user's
 //  own photos prefer into one lighting recommendation for photographing people.
 //
-//  What can really be applied: an iPhone's aperture is fixed, so the f-numbers here are
-//  guidance only. The only setting the app applies is the slowest shutter (a cap on auto
-//  exposure, so ISO makes up the difference). The ISO range is guidance too. The exposure bias
-//  is never changed: backlit people are brightened after the shot (`BacklightController`).
+//  Everything here is guidance: the app does not change the camera's exposure (an iPhone's
+//  aperture is fixed anyway). Backlit people are handled by telling the photographer where to
+//  move (`BacklightController`), not by editing the photo.
 //
 
 import Foundation
@@ -42,8 +41,8 @@ nonisolated struct LightingRule: Sendable, Equatable {
     let title: String
     /// f-number range: guidance only (fixed aperture on iPhone).
     let aperture: ClosedRange<Double>
-    /// Slowest shutter to allow, seconds (applied as the shutter cap), and the fastest the light
-    /// usually gives (guidance only).
+    /// Slowest shutter worth using with people, seconds, and the fastest the light usually gives
+    /// (both guidance only).
     let slowestShutter: TimeInterval
     let fastestShutter: TimeInterval
     /// ISO range: guidance only.
@@ -56,7 +55,7 @@ nonisolated struct LightingRecommendation: Sendable, Equatable {
     let rule: LightingRule
     /// Up to `LightingAdvisor.ideaCount` ideas, the user's style first.
     let ideas: [PhotoIdea]
-    /// Shutter no slower than this (seconds) while the camera picks the exposure.
+    /// Slowest shutter worth using (seconds), guidance only.
     var slowestShutter: TimeInterval { rule.slowestShutter }
 }
 

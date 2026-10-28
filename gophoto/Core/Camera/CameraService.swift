@@ -32,19 +32,21 @@ nonisolated enum CameraPermission: Sendable {
     case restricted   // blocked by Screen Time / device management → user can't fix it
 }
 
-/// What the camera's auto-exposure is doing now (debug panel).
+/// The light the camera sees now: the backlight tip, plus values for the debug panel.
 nonisolated struct ExposureStatus: Sendable, Equatable {
-    /// How much the people will be brightened after the shot, EV (0 = not backlit), ISO, and
-    /// shutter time in seconds.
-    let lift: Double
-
+    /// Where to move because the person is backlit; nil when they are not.
+    let backlightTip: BacklightTip?
+    /// ISO, and shutter time in seconds (auto-exposure, never changed by the app).
     let iso: Float
     let shutter: Double
-    /// The backlight rule currently sees a backlit person.
+    /// The backlight rule currently sees a backlit person (the tip follows after a moment).
     let isBacklit: Bool
-    /// How bright the face (nil: none found) and the whole frame are, 0...1.
+    /// How bright the face (nil: none found), the whole frame and the background left / right of
+    /// the person are, 0...1.
     let faceLuminance: Double?
     let frameLuminance: Double
+    let leftLuminance: Double?
+    let rightLuminance: Double?
 }
 
 // MARK: - Errors
@@ -75,14 +77,11 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func configure() async throws
     func start() async
     func stop() async
-    /// Shutter no slower than this many seconds (nil: no limit). Auto-exposure keeps running and
-    /// ISO makes up the light. The exposure bias is never changed: backlit people are brightened after the shot.
-    func setSlowestShutter(_ seconds: TimeInterval?)
     /// Takes a photo. `onShutter` runs (any thread) at the moment the photo is taken, before the
     /// file is processed: the UI flashes there. Returns once the file is ready.
     func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
-    /// Backlight lift, ISO and shutter, about twice a second while someone listens.
+    /// Backlight tip, ISO and shutter, about twice a second while someone listens.
     func exposureStatus() -> AsyncStream<ExposureStatus>
     /// Turns the body outline (old-look guide mode) on or off.
     func setOutlineEnabled(_ enabled: Bool)
@@ -133,12 +132,11 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private static let meteringMinMove: CGFloat = 0.05
     private static let meteringMinInterval: TimeInterval = 0.5
 
-    // Backlight (X1), all on the video queue except the camera calls: the face is measured against
-    // the frame about twice a second, and the controller answers with how much to brighten the people.
+    // Backlight, on the video queue: the face is measured against the frame about twice a second,
+    // and the controller answers with where to move. The camera's exposure is left alone.
     private let luminanceMeter = LuminanceMeter()
     private var backlight = BacklightController()
     private var luminanceMeasuredAt: TimeInterval = 0
-    private var slowestShutter: TimeInterval?      // session queue: the lighting rule's cap
     private var statusContinuation: AsyncStream<ExposureStatus>.Continuation?
     private static let luminanceInterval: TimeInterval = 0.5
 
@@ -210,14 +208,6 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         }
     }
     
-    func setSlowestShutter(_ seconds: TimeInterval?) {
-        sessionQueue.async {
-            guard self.slowestShutter != seconds else { return }
-            self.slowestShutter = seconds
-            self.applyShutterCap()
-        }
-    }
-
     func setHighResolution(_ enabled: Bool) {
         sessionQueue.async { self.highResolution = enabled }
     }
@@ -358,44 +348,31 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         detection?.photoMegapixels = photoMegapixels
         continuation.yield(detection)
         updateMetering(for: detection)
-        updateBacklight(face: detection?.face, pixelBuffer: pixelBuffer)
+        updateBacklight(face: detection?.face, person: detection?.box, pixelBuffer: pixelBuffer)
     }
 
-    /// Backlight rule (video queue): measures the face against the frame and keeps the lift the
-    /// people get after the shot. Throttled; a face-less frame lets the lift fall back to 0.
-    private func updateBacklight(face: CGRect?, pixelBuffer: CVPixelBuffer) {
+    /// Backlight rule (video queue): measures the face against the frame and the background on
+    /// each side of the person. Throttled.
+    private func updateBacklight(face: CGRect?, person: CGRect?, pixelBuffer: CVPixelBuffer) {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - luminanceMeasuredAt >= Self.luminanceInterval,
-              let reading = luminanceMeter.measure(pixelBuffer, face: face) else { return }
+              let reading = luminanceMeter.measure(pixelBuffer, face: face, person: person) else { return }
         luminanceMeasuredAt = now
-        let lift = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame, now: now)
+        let tip = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame,
+                                   leftLuminance: reading.left, rightLuminance: reading.right, now: now)
         let isBacklit = backlight.isBacklit
         sessionQueue.async {
-            self.publishStatus(lift: lift, isBacklit: isBacklit, reading: reading)
+            self.publishStatus(tip: tip, isBacklit: isBacklit, reading: reading)
         }
     }
 
-    /// Keeps the shutter no slower than the lighting rule's cap; auto-exposure keeps running and
-    /// ISO makes up the light. Session queue.
-    private func applyShutterCap() {
+    /// Session queue (where the camera is read).
+    private func publishStatus(tip: BacklightTip?, isBacklit: Bool, reading: LuminanceMeter.Reading) {
         guard let device else { return }
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            let format = device.activeFormat
-            let cap = slowestShutter.map { CMTime(seconds: $0, preferredTimescale: 1000) } ?? format.maxExposureDuration
-            let limited = CMTimeMaximum(format.minExposureDuration, CMTimeMinimum(cap, format.maxExposureDuration))
-            if device.activeMaxExposureDuration != limited { device.activeMaxExposureDuration = limited }
-        } catch {
-            // Another client holds the configuration: try again at the next change.
-        }
-    }
-
-    private func publishStatus(lift: Double, isBacklit: Bool, reading: LuminanceMeter.Reading) {
-        guard let device else { return }
-        let status = ExposureStatus(lift: lift, iso: device.iso,
+        let status = ExposureStatus(backlightTip: tip, iso: device.iso,
                                     shutter: device.exposureDuration.seconds, isBacklit: isBacklit,
-                                    faceLuminance: reading.face, frameLuminance: reading.frame)
+                                    faceLuminance: reading.face, frameLuminance: reading.frame,
+                                    leftLuminance: reading.left, rightLuminance: reading.right)
         videoQueue.async { self.statusContinuation?.yield(status) }
     }
 
