@@ -284,7 +284,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your location only to work out where the sun is, so it can tell you where to stand. It is never saved.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -329,7 +329,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your location only to work out where the sun is, so it can tell you where to stand. It is never saved.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GoPhoto uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "GoPhoto saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "GoPhoto shows the photos you’ve taken in its gallery";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

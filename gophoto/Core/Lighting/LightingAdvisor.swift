@@ -177,11 +177,11 @@ nonisolated enum LightingAdvisor {
                 PhotoIdea(text: "Long shadows along the ground", styles: [.moody]),
             ]),
         .night: LightingRule(
-            title: "Night",
-            aperture: 1.8...2.8, slowestShutter: 1.0 / 60, fastestShutter: 1.0 / 250, iso: 800...3200,
+            title: "Low light",
+            aperture: 1.8...2.8, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 250, iso: 800...3200,
             ideas: [
-                PhotoIdea(text: "Stand near a street light or shop window", styles: [.bright, .balanced, .moody]),
-                PhotoIdea(text: "City lights glowing behind them", styles: [.moody, .balanced]),
+                PhotoIdea(text: "Stand near a light source so it falls on their face", styles: [.bright, .balanced, .moody]),
+                PhotoIdea(text: "Bright lights glowing behind them", styles: [.moody, .balanced]),
             ]),
     ]
 }

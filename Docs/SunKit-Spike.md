@@ -13,6 +13,9 @@ What was checked in the source / by running the package, and what still needs a 
 - **Golden hour is not "30 min before sunset"**: SunKit uses sun elevation −4°…+6°. At Jakarta that
   gave 17:17–17:58 with sunset at 17:45, so it starts about 28 min before sunset. We use
   `isEveningGoldenHour` as is. Morning golden hour is ignored (the ticket says sunset).
+  **This differs slightly from the ticket's "30 minutes before sunset"**: the window is defined by
+  elevation (−4° to +6°), so its length and its start relative to sunset change with latitude and
+  season; at Jakarta in October it begins about 28 minutes before sunset. Accepted as is.
 - `Sun` init + `setDate` cost well under 1 ms, so it can be recomputed on every light reading.
 - One `Sun` per call; the app passes `TimeZone.current` (only sunrise/sunset day boundaries use it).
 
