@@ -39,32 +39,30 @@ nonisolated protocol MotionServiceProtocol: AnyObject {
 
 nonisolated final class MotionService: MotionServiceProtocol, @unchecked Sendable {
 
-    private let motionManager = CMMotionManager()
-    private let queue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 1
-        return queue
-    }()
+    private let hub: MotionHub
+
+    init(hub: MotionHub = .shared) {
+        self.hub = hub
+    }
 
     /// A stream of tilt readings (~30 per second).
     /// The sensor starts when someone listens and stops automatically when they stop listening.
     func tiltUpdates() -> AsyncStream<DeviceTilt> {
         AsyncStream { continuation in
-            guard motionManager.isDeviceMotionAvailable else {
+            let id = hub.subscribe(.tilt, deliver: { sample in
+                continuation.yield(
+                    DeviceTilt(gravityX: sample.gravityX, gravityY: sample.gravityY, gravityZ: sample.gravityZ)
+                )
+            }, finish: {
+                continuation.finish()
+            })
+            guard let id else {
                 continuation.finish()   // e.g. Simulator: no sensors
                 return
             }
 
-            motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
-            motionManager.startDeviceMotionUpdates(to: queue) { motion, _ in
-                guard let gravity = motion?.gravity else { return }
-                continuation.yield(
-                    DeviceTilt(gravityX: gravity.x, gravityY: gravity.y, gravityZ: gravity.z)
-                )
-            }
-
-            continuation.onTermination = { _ in
-                self.motionManager.stopDeviceMotionUpdates()
+            continuation.onTermination = { [hub] _ in
+                hub.unsubscribe(id)
             }
         }
     }

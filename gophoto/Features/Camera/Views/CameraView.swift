@@ -237,8 +237,7 @@ struct CameraView: View {
         .task { await viewModel.observeTilt() }
         .task { await viewModel.observePerson() }
         .task { await viewModel.observeExposure() }
-        .task { await viewModel.lighting.refreshLocation() }
-        .task { await viewModel.lighting.observeHeading() }
+        .task { await viewModel.lighting.run() }
         // A step just finished: tap + short banner so the change of task is obvious
         // (e.g. tilt is done, now move the phone up/down and keep the angle).
         .onChange(of: viewModel.evaluation.activeStep) { old, new in

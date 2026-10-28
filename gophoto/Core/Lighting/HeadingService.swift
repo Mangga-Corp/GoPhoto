@@ -38,32 +38,42 @@ nonisolated protocol HeadingServiceProtocol: AnyObject {
 
 nonisolated final class HeadingService: HeadingServiceProtocol, @unchecked Sendable {
 
-    private let motionManager = CMMotionManager()
-    private let queue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.maxConcurrentOperationCount = 1
-        return queue
-    }()
+    private let hub: MotionHub
+
+    init(hub: MotionHub = .shared) {
+        self.hub = hub
+    }
+
+    /// The hub delivers ~30 readings per second; one in this many is passed on (~10 per second).
+    private static let keepEvery = 3
 
     func headingUpdates() -> AsyncStream<CameraHeading?> {
         AsyncStream { continuation in
-            guard motionManager.isDeviceMotionAvailable,
-                  CMMotionManager.availableAttitudeReferenceFrames().contains(.xTrueNorthZVertical) else {
+            let counter = Counter()
+            let id = hub.subscribe(.heading, deliver: { sample in
+                guard counter.next() % Self.keepEvery == 0 else { return }
+                continuation.yield(CameraHeading(m31: sample.m31, m32: sample.m32,
+                                                 magneticAccuracy: sample.magneticAccuracy))
+            }, finish: {
+                continuation.finish()
+            })
+            guard let id else {
                 continuation.finish()
                 return
             }
 
-            motionManager.deviceMotionUpdateInterval = 0.1
-            motionManager.startDeviceMotionUpdates(using: .xTrueNorthZVertical, to: queue) { motion, _ in
-                guard let motion else { return }
-                let m = motion.attitude.rotationMatrix
-                continuation.yield(CameraHeading(m31: m.m31, m32: m.m32,
-                                                 magneticAccuracy: motion.magneticField.accuracy))
+            continuation.onTermination = { [hub] _ in
+                hub.unsubscribe(id)
             }
+        }
+    }
 
-            continuation.onTermination = { _ in
-                self.motionManager.stopDeviceMotionUpdates()
-            }
+    /// Counts readings; only ever touched from the hub's serial queue.
+    private final class Counter: @unchecked Sendable {
+        private var value = 0
+        func next() -> Int {
+            value += 1
+            return value
         }
     }
 }
