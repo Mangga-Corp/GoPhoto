@@ -9,7 +9,16 @@
 import CoreLocation
 import WeatherKit
 
+/// What Apple requires next to WeatherKit data: its mark and the legal page.
+struct WeatherAttributionInfo: Sendable {
+    let markLightURL: URL
+    let markDarkURL: URL
+    let legalPageURL: URL
+}
+
 protocol WeatherServiceProtocol: AnyObject {
+    /// Apple's attribution, or nil when it cannot be loaded (offline, no capability).
+    func attribution() async -> WeatherAttributionInfo?
     /// The weather here and now, or nil (offline, no capability, failure).
     func currentWeather(at location: CLLocation) async -> LightingWeather?
 }
@@ -20,6 +29,13 @@ final class WeatherKitService: WeatherServiceProtocol {
     /// A reading this young, from this close by, is reused: it saves quota and battery.
     private static let maxAge: TimeInterval = 20 * 60
     private static let maxDistance: CLLocationDistance = 5_000
+
+    func attribution() async -> WeatherAttributionInfo? {
+        guard let attribution = try? await WeatherKit.WeatherService.shared.attribution else { return nil }
+        return WeatherAttributionInfo(markLightURL: attribution.combinedMarkLightURL,
+                                      markDarkURL: attribution.combinedMarkDarkURL,
+                                      legalPageURL: attribution.legalPageURL)
+    }
 
     func currentWeather(at location: CLLocation) async -> LightingWeather? {
         if let cached, Date().timeIntervalSince(cached.at) < Self.maxAge,

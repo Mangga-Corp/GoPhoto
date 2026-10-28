@@ -35,6 +35,7 @@ struct CameraView: View {
     /// Developer: the picked style. Testing: none.
     private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
+    @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
     
@@ -81,6 +82,9 @@ struct CameraView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .sheet(isPresented: $isShowingAcknowledgements) {
+            AcknowledgementsView()
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
@@ -334,6 +338,15 @@ struct CameraView: View {
                 .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             }
             Spacer()
+            Button {
+                isShowingAcknowledgements = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Acknowledgements")
             AIPreferencesButton()
                 .padding(.horizontal, 16)
                 .frame(height: 44)
