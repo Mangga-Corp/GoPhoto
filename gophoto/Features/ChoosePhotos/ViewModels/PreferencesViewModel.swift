@@ -121,6 +121,13 @@ final class PreferencesViewModel {
     /// Latest analysis run per preset, kept in memory for the results screen (not saved).
     private var sessions: [UUID: AnalysisSession] = [:]
     private var analyzingIDs: Set<UUID> = []
+    /// The newest analysis task per preset, so a screen can wait for one already running.
+    private var analysisTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
+    func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
+        analyzingIDs.contains(id) ? analysisTasks[id] : nil
+    }
 
     func session(for id: UUID) -> AnalysisSession? { sessions[id] }
     func isAnalyzing(_ id: UUID) -> Bool { analyzingIDs.contains(id) }
@@ -146,6 +153,7 @@ final class PreferencesViewModel {
             if let analysis { self.setAnalysis(analysis, for: id) }
         }
         analysisChain = task
+        analysisTasks[id] = task
         return task
     }
 

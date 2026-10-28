@@ -90,7 +90,12 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
         private func showEditor(for id: UUID, from presenter: UIViewController?) {
             guard let presenter, let preference = viewModel.preference(id: id) else { return }
             let editorViewModel = ChoosePhotosViewModel(service: service, preferenceName: preference.name, items: preference.photos)
-            editorViewModel.onPhotosChange = { [weak self] photos in self?.viewModel.updatePhotos(photos, for: id) }
+            final class Flag { var value = false }
+            let photosChanged = Flag()
+            editorViewModel.onPhotosChange = { [weak self] photos in
+                photosChanged.value = true
+                self?.viewModel.updatePhotos(photos, for: id)
+            }
             editorViewModel.onRename = {[weak self] name in self?.viewModel.rename(id: id, to:name)}
             let editor = AIPreferencesViewController(viewModel: editorViewModel)
             // Group the photos by analysed shot size (four levels); older analyses: full / half body.
@@ -100,8 +105,39 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
                     ?? analysis?.photoFramings?[photo.id.uuidString]
             }
             editor.modalPresentationStyle = .fullScreen
-            editor.onBack = { [weak editor] in editor?.dismiss(animated: true) }
+            // Photos changed: the analysis runs again, so show it (training) and the new style card.
+            editor.onBack = { [weak self, weak editor, weak presenter] in
+                guard let self, let editor, photosChanged.value,
+                      let photos = self.viewModel.preference(id: id)?.photos, !photos.isEmpty else {
+                    editor?.dismiss(animated: true)
+                    return
+                }
+                self.showAnalysis(of: id, photos: photos, over: editor, buttonTitle: "Done") {
+                    presenter?.dismiss(animated: true)
+                }
+            }
             presenter.present(editor, animated: true)
+        }
+
+        /// Analysing screen over `host`, then the "Your style" card; `finish` closes the flow.
+        private func showAnalysis(of id: UUID, photos: [PhotoItem], over host: UIViewController,
+                                  buttonTitle: String, finish: @escaping () -> Void) {
+            let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: id), photos: photos)
+            analyzing.modalPresentationStyle = .fullScreen
+            analyzing.onFinish = { [weak self, weak analyzing] in
+                guard let self, let analyzing, let preference = self.viewModel.preference(id: id),
+                      let summary = StyleSummary(analysis: preference.analysis, photos: preference.photos) else {
+                    finish()
+                    return
+                }
+                let card = StyleCardViewController(summary: summary, presetName: preference.name,
+                                                   buttonTitle: buttonTitle)
+                card.modalPresentationStyle = .fullScreen
+                card.modalTransitionStyle = .crossDissolve
+                card.onDone = finish
+                analyzing.present(card, animated: true)
+            }
+            host.present(analyzing, animated: true)
         }
 
         private func showCreator(from presenter: UIViewController?) {
@@ -114,12 +150,11 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
             creator.onBack = { [weak creator] in creator?.dismiss(animated: true)}
 
             creator.onPhotosAdded = { [weak self, weak creator, weak presenter] photos, name in
-                guard let self, self.viewModel.add(name: name, photos: photos) == nil else { return }
-                let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: self.viewModel.selectedID),
-                                                        photos: photos)
-                analyzing.modalPresentationStyle = .fullScreen
-                analyzing.onFinish = { presenter?.dismiss(animated: true)}
-                creator?.present(analyzing, animated: true)
+                guard let self, let creator, self.viewModel.add(name: name, photos: photos) == nil,
+                      let id = self.viewModel.selectedID else { return }
+                self.showAnalysis(of: id, photos: photos, over: creator, buttonTitle: "Start shooting") {
+                    presenter?.dismiss(animated: true)
+                }
             }
             presenter.present(creator, animated: true)
 
