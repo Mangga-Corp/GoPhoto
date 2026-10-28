@@ -416,15 +416,16 @@ final class CameraViewModel {
         let cropPlan: (person: CGRect, target: CGRect, torso: WideCrop.TorsoTarget?, roll: Double, megapixels: Double?)? =
             guideMode.crops ? personBox.map { ($0, target.rect, torsoTarget, roll, photoMegapixels) } : nil
 
-        // Backlit people are brightened after the shot, not by the camera (the background stays).
-        let liftAtShutter = exposure?.lift ?? 0
+        // Backlit people: a bracket adds a brighter frame, and the people are taken from it after
+        // the shot so the background keeps the normal exposure.
+        let peopleBias = PersonRelight.bracketBias(forLift: exposure?.lift ?? 0)
 
         let photo: CapturedPhoto
         let shutterAt = Date()
         do {
             // Flash + free the shutter at the moment the photo is taken, not when the (48 MP)
             // file is ready: with zero shutter lag that moment is the tap.
-            photo = try await cameraService.capturePhoto(onShutter: { [weak self] in
+            photo = try await cameraService.capturePhoto(peopleBias: peopleBias, onShutter: { [weak self] in
                 Task { @MainActor in self?.shutterFired(after: shutterAt) }
             })
         } catch {
@@ -441,12 +442,16 @@ final class CameraViewModel {
         // 1:1 / 16:9. No auto enhance: filters are applied later from the gallery by the user.
         // Without a crop the camera's file is saved as is (no re-encode).
         let original = photo.data
-        let lift = liftAtShutter
+        let peopleFrame = photo.peopleFrame
         let aspect = captureAspect
         let ratio = aspect.ratio
         Task { [weak self] in
             let relightStart = Date()
-            let relit = await PersonRelight.relitFile(original, lift: lift)
+            let relit: Data? = if let peopleBias, let peopleFrame {
+                await PersonRelight.compositeFile(normal: original, people: peopleFrame, bias: peopleBias)
+            } else {
+                nil
+            }
             let source = relit ?? original
             let relightSeconds = relit.map { _ in Date().timeIntervalSince(relightStart) }
             let (finished, cropSeconds) = await Task.detached(priority: .userInitiated) {
@@ -474,9 +479,13 @@ final class CameraViewModel {
             } catch {
                 self.errorMessage = error.localizedDescription
             }
-            let relight = lift < PersonRelight.minLift ? String(format: " · no lift (%.2f EV)", lift)
-                : relightSeconds.map { String(format: " · lift %+.2f EV, relight %.2fs", lift, $0) }
-                    ?? String(format: " · lift %+.2f EV but no person found", lift)
+            let relight: String = if let peopleBias {
+                peopleFrame == nil ? String(format: " · bracket %+.1f EV not supported", peopleBias)
+                    : relightSeconds.map { String(format: " · bracket %+.1f EV, merged %.2fs", peopleBias, $0) }
+                        ?? String(format: " · bracket %+.1f EV but no person found", peopleBias)
+            } else {
+                " · no backlight"
+            }
             let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
             self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + relight + crop
                 + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
