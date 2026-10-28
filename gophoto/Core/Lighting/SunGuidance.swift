@@ -45,6 +45,8 @@ nonisolated struct SunRules: Sendable, Equatable {
     /// Face darker than this share of the frame (entering) / of this share (leaving).
     var faceDarkerEnter = 0.8
     var faceDarkerExit = 0.9
+    /// "Golden hour" is told once: it stays this many updates (about 6 s) and is never shown again.
+    var goldenHourUpdates = 12
 
     static let standard = SunRules()
 }
@@ -52,17 +54,18 @@ nonisolated struct SunRules: Sendable, Equatable {
 nonisolated struct SunGuidance: Sendable {
     private let rules: SunRules
     private(set) var current: SunSuggestion?
-    private var hasShownGoldenHour = false
+    private var goldenHourUpdatesLeft: Int
 
     init(rules: SunRules = .standard) {
         self.rules = rules
+        goldenHourUpdatesLeft = rules.goldenHourUpdates
     }
 
     /// The tip for these conditions, or nil. "Golden hour" is given once, then never again.
     mutating func update(_ conditions: SunConditions) -> SunSuggestion? {
         let next = Self.suggestion(for: conditions, current: current, rules: rules,
-                                   canShowGoldenHour: !hasShownGoldenHour)
-        if next == .goldenHour { hasShownGoldenHour = true }
+                                   canShowGoldenHour: goldenHourUpdatesLeft > 0)
+        if next == .goldenHour { goldenHourUpdatesLeft -= 1 }
         current = next
         return next
     }
@@ -88,7 +91,7 @@ nonisolated struct SunGuidance: Sendable {
             if facingSun, faceDark { return .swapPlaces }
         }
 
-        if sun.isGoldenHour, canShowGoldenHour || current == .goldenHour { return .goldenHour }
+        if sun.isGoldenHour, canShowGoldenHour { return .goldenHour }
         return nil
     }
 }

@@ -73,6 +73,9 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func configure() async throws
     func start() async
     func stop() async
+    /// Shutter no slower than this many seconds (nil: no limit). Auto-exposure keeps running and
+    /// ISO makes up the light. The exposure bias is not set from here: the backlight rule owns it.
+    func setSlowestShutter(_ seconds: TimeInterval?)
     /// Takes a photo. `onShutter` runs (any thread) at the moment the photo is taken, before the
     /// file is processed: the UI flashes there. Returns once the file is ready.
     func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
@@ -134,6 +137,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private var backlight = BacklightController()
     private var luminanceMeasuredAt: TimeInterval = 0
     private var biasRange: ClosedRange<Double> = 0...0
+    private var lastBias = 0.0                     // session queue copy of the applied bias
+    private var slowestShutter: TimeInterval?      // session queue: the lighting rule's cap
     private var statusContinuation: AsyncStream<ExposureStatus>.Continuation?
     private static let luminanceInterval: TimeInterval = 0.5
 
@@ -206,6 +211,14 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         }
     }
     
+    func setSlowestShutter(_ seconds: TimeInterval?) {
+        sessionQueue.async {
+            guard self.slowestShutter != seconds else { return }
+            self.slowestShutter = seconds
+            self.applyExposure(bias: self.lastBias)
+        }
+    }
+
     func setHighResolution(_ enabled: Bool) {
         sessionQueue.async { self.highResolution = enabled }
     }
@@ -369,9 +382,11 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         }
     }
 
-    /// Sets the exposure bias; auto-exposure keeps running. While the bias is raised the shutter
-    /// stays at 1/60 s or faster, so the missing light comes from ISO. Session queue.
+    /// Sets the exposure bias and the shutter cap; auto-exposure keeps running. While the bias is
+    /// raised the shutter stays at 1/60 s or faster, so the missing light comes from ISO; the
+    /// lighting rule's own cap applies too, the faster of the two wins. Session queue.
     private func applyExposure(bias: Double) {
+        lastBias = bias
         guard let device else { return }
         do {
             try device.lockForConfiguration()
@@ -380,9 +395,8 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
                 device.setExposureTargetBias(Float(bias))
             }
             let format = device.activeFormat
-            let cap = bias > 0
-                ? CMTime(seconds: BacklightController.slowestShutter, preferredTimescale: 1000)
-                : format.maxExposureDuration
+            let caps = [bias > 0 ? BacklightController.slowestShutter : nil, slowestShutter].compactMap { $0 }
+            let cap = caps.min().map { CMTime(seconds: $0, preferredTimescale: 1000) } ?? format.maxExposureDuration
             let limited = CMTimeMaximum(format.minExposureDuration, CMTimeMinimum(cap, format.maxExposureDuration))
             if device.activeMaxExposureDuration != limited { device.activeMaxExposureDuration = limited }
         } catch {

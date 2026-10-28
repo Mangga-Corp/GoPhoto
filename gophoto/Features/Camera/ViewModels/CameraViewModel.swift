@@ -308,9 +308,11 @@ final class CameraViewModel {
         for await status in cameraService.exposureStatus() {
             exposure = status
             lighting.ingest(status, hasPerson: personBox != nil)
+            cameraService.setSlowestShutter(lighting.slowestShutter)
         }
         exposure = nil
         lighting.reset()
+        cameraService.setSlowestShutter(nil)
     }
 
     private func updateInstruction() {
@@ -320,6 +322,7 @@ final class CameraViewModel {
         if preset?.name != presetName { presetName = preset?.name }
         let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
         if picked != analysis { analysis = picked }
+        lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
         if analyzing != isAnalyzingPreset { isAnalyzingPreset = analyzing }
 
