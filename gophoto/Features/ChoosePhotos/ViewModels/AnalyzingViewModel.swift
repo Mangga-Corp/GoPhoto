@@ -40,7 +40,9 @@ final class AnalyzingViewModel {
                     self?.onMessage?(message)
                 }
             }
-            if let id = self.preferenceID, let analysis = self.preferences.reanalyze(id: id) {
+            // An edit already started the analysis: wait for it rather than running it twice.
+            if let id = self.preferenceID,
+               let analysis = self.preferences.runningAnalysis(for: id) ?? self.preferences.reanalyze(id: id) {
                 await analysis.value
             } else {
                 try? await Task.sleep(for: .seconds(step * Double(messages.count)))
