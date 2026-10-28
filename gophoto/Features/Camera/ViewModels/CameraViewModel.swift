@@ -55,7 +55,7 @@ final class CameraViewModel {
     private(set) var pitch: Double = 0                   // + = phone tilted down
     private(set) var face: CGRect?                       // normalized, origin top-left
     private(set) var personOutline: CGImage?             // body outline, old-look mode only
-    private(set) var exposure: ExposureStatus?           // backlight lift / ISO / shutter (debug panel)
+    private(set) var exposure: ExposureStatus?           // backlight tip / ISO / shutter (debug panel)
     let lighting = LightingCoordinator()                 // sun / light tips; the camera owns the exposure
     @ObservationIgnored private var verticalFOV: Double? // of the upright frame, degrees
     @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
@@ -308,11 +308,9 @@ final class CameraViewModel {
         for await status in cameraService.exposureStatus() {
             exposure = status
             lighting.ingest(status, hasPerson: personBox != nil)
-            cameraService.setSlowestShutter(lighting.slowestShutter)
         }
         exposure = nil
         lighting.reset()
-        cameraService.setSlowestShutter(nil)
     }
 
     private func updateInstruction() {
@@ -415,9 +413,6 @@ final class CameraViewModel {
         let cropPlan: (person: CGRect, target: CGRect, torso: WideCrop.TorsoTarget?, roll: Double, megapixels: Double?)? =
             guideMode.crops ? personBox.map { ($0, target.rect, torsoTarget, roll, photoMegapixels) } : nil
 
-        // Backlit people are brightened after the shot, not by the camera (the background stays).
-        let liftAtShutter = exposure?.lift ?? 0
-
         let photo: CapturedPhoto
         let shutterAt = Date()
         do {
@@ -440,17 +435,11 @@ final class CameraViewModel {
         // 1:1 / 16:9. No auto enhance: filters are applied later from the gallery by the user.
         // Without a crop the camera's file is saved as is (no re-encode).
         let original = photo.data
-        let lift = liftAtShutter
         let aspect = captureAspect
         let ratio = aspect.ratio
         Task { [weak self] in
-            let relightStart = Date()
-            let relit = await PersonRelight.relitFile(original, lift: lift)
-            let source = relit ?? original
-            let relightSeconds = relit.map { _ in Date().timeIntervalSince(relightStart) }
             let (finished, cropSeconds) = await Task.detached(priority: .userInitiated) {
                 () -> (Data, Double?) in
-                let original = source
                 let cropStart = Date()
                 if let plan = cropPlan {
                     let cropped = WideCrop.crop(original, person: plan.person, target: plan.target,
@@ -473,12 +462,8 @@ final class CameraViewModel {
             } catch {
                 self.errorMessage = error.localizedDescription
             }
-            let stops = PersonRelight.stops(forLift: lift)
-            let relight = lift < PersonRelight.minLift ? " · no backlight"
-                : relightSeconds.map { String(format: " · people %+.1f stops, relight %.2fs", stops, $0) }
-                    ?? String(format: " · people %+.1f stops but no person found", stops)
             let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
-            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + relight + crop
+            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + crop
                 + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
         }
     }

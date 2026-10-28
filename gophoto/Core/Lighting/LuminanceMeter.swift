@@ -16,15 +16,22 @@ nonisolated final class LuminanceMeter {
     struct Reading: Sendable, Equatable {
         let face: Double?
         let frame: Double
+        /// The background left and right of the person; nil when that side is too narrow to judge.
+        let left: Double?
+        let right: Double?
     }
 
     /// Width of the shrunk copy that is averaged.
     private static let sampleWidth: CGFloat = 96
+    /// A side narrower than this share of the frame says too little about where the light comes from.
+    private static let minSideWidth: CGFloat = 0.1
 
     private let context = CIContext(options: [.workingColorSpace: NSNull()])
 
-    /// - Parameter face: the face box, normalized, origin TOP-LEFT, upright frame.
-    func measure(_ pixelBuffer: CVPixelBuffer, face: CGRect?) -> Reading? {
+    /// - Parameters:
+    ///   - face: the face box, normalized, origin TOP-LEFT, upright frame.
+    ///   - person: the person's box, same space; the background beside it is measured too.
+    func measure(_ pixelBuffer: CVPixelBuffer, face: CGRect?, person: CGRect?) -> Reading? {
         let image = CIImage(cvPixelBuffer: pixelBuffer)
         guard image.extent.width > 0 else { return nil }
 
@@ -45,7 +52,14 @@ nonisolated final class LuminanceMeter {
                 faceLuminance = average(of: small.cropped(to: box))
             }
         }
-        return Reading(face: faceLuminance, frame: frame)
+        let width = small.extent.width, height = small.extent.height
+        func side(from minX: CGFloat, to maxX: CGFloat) -> Double? {
+            guard maxX - minX >= Self.minSideWidth else { return nil }
+            return average(of: small.cropped(to: CGRect(x: minX * width, y: 0, width: (maxX - minX) * width, height: height)))
+        }
+        let left = person.flatMap { side(from: 0, to: max(0, $0.minX)) }
+        let right = person.flatMap { side(from: min(1, $0.maxX), to: 1) }
+        return Reading(face: faceLuminance, frame: frame, left: left, right: right)
     }
 
     private func average(of image: CIImage) -> Double? {

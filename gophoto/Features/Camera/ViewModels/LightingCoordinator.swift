@@ -3,9 +3,8 @@
 //  gophoto
 //
 //  Gathers the light-related inputs (sun, compass, weather, brightness, the user's preference) and
-//  decides what the photographer sees: at most one sun tip, and the lighting recommendation for the
-//  weather. It never touches the camera: the exposure belongs to `CameraService`, and the
-//  recommended shutter cap is handed to the camera by the view model.
+//  decides what the photographer sees: at most one light tip (sun, else backlight), and the lighting
+//  recommendation for the weather. It never touches the camera or the photo: the tips are guidance.
 //
 
 import Observation
@@ -14,9 +13,12 @@ import CoreLocation
 @Observable
 final class LightingCoordinator {
 
-    /// The sun tip on screen, or nil. While one shows, the recommendation stays hidden so the two
-    /// never talk over each other.
+    /// The sun tip on screen, or nil. While one shows, the backlight tip and the recommendation
+    /// stay hidden so the tips never talk over each other.
     private(set) var suggestion: SunSuggestion?
+    /// Where to move because the person is backlit (any light, indoors too), or nil. Shown when
+    /// there is no sun tip; it hides the recommendation.
+    private(set) var backlightTip: BacklightTip?
     /// The weather recommendation to show, or nil (indoors, or nothing known about the light).
     private(set) var recommendation: LightingRecommendation?
 
@@ -26,8 +28,6 @@ final class LightingCoordinator {
     private(set) var weather: LightingWeather?
     /// Why the weather is missing (debug panel); nil when it loaded or has not been asked yet.
     private(set) var weatherFailure: String?
-    /// Slowest shutter the recommendation asks the camera for; nil when none applies.
-    private(set) var slowestShutter: TimeInterval?
 
     @ObservationIgnored private var guidance = SunGuidance()
     @ObservationIgnored private var location: CLLocation?
@@ -107,17 +107,17 @@ final class LightingCoordinator {
 
         if sun != sunPosition { sunPosition = sun }
         if tip != suggestion { suggestion = tip }
+        let backlight = tip == nil ? exposure.backlightTip : nil
+        if backlight != backlightTip { backlightTip = backlight }
         let shown = applies ? advice : nil
         if shown != recommendation { recommendation = shown }
-        let shutter = shown?.slowestShutter
-        if shutter != slowestShutter { slowestShutter = shutter }
     }
 
     /// The camera stopped: tips would be stale when it comes back.
     func reset() {
         guidance = SunGuidance()
         suggestion = nil
+        backlightTip = nil
         recommendation = nil
-        slowestShutter = nil
     }
 }

@@ -8,7 +8,7 @@
 import Foundation
 
 nonisolated enum ExposureLimits {
-    /// The slowest shutter the app ever allows with a person in the frame (spec X1 / "A2"); the low-light rule uses it, seconds.
-    /// Anything dimmer is made up with ISO.
+    /// The slowest shutter worth using with a person in the frame (spec X1 / "A2"), seconds:
+    /// slower blurs a moving person. Guidance in the lighting rules.
     static let slowestShutter: TimeInterval = 1.0 / 60
 }

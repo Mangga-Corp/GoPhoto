@@ -139,8 +139,10 @@ struct GuideDebugPanel: View {
     private var exposureLine: String {
         guard let e = viewModel.exposure else { return "Exposure: —" }
         let shutter = e.shutter > 0 ? "1/\(Int((1 / e.shutter).rounded()))" : "—"
-        return String(format: "Person fill %+.1f stops · ISO %.0f · ", e.lift >= PersonRelight.minLift ? PersonRelight.stops(forLift: e.lift) : 0, e.iso) + shutter + " s"
-            + (e.isBacklit ? " · backlit" : "")
+        func level(_ v: Double?) -> String { v.map { String(format: "%.2f", $0) } ?? "—" }
+        let backlight = e.backlightTip.map { " · tip \(String(describing: $0))" } ?? (e.isBacklit ? " · backlit" : "")
+        return String(format: "ISO %.0f · ", e.iso) + shutter + " s · face \(level(e.faceLuminance))"
+            + " frame \(level(e.frameLuminance)) L \(level(e.leftLuminance)) R \(level(e.rightLuminance))" + backlight
     }
 
     private var sunLine: String {
@@ -156,8 +158,8 @@ struct GuideDebugPanel: View {
         guard let advice = lighting.recommendation else { return "Light: weather \(weather) · no advice" }
         let rule = advice.rule
         return "Light: \(advice.scene.rawValue) (weather \(weather)) · f/\(rule.aperture.lowerBound.formatted())–"
-            + "\(rule.aperture.upperBound.formatted()) info · shutter ≥1/\(Int((1 / advice.slowestShutter).rounded()))"
-            + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) info"
+            + "\(rule.aperture.upperBound.formatted()) · shutter ≥1/\(Int((1 / advice.slowestShutter).rounded()))"
+            + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) (all info only)"
     }
 
     private var distanceLine: String {

@@ -199,6 +199,8 @@ struct CameraView: View {
                         InstructionPill(instruction: viewModel.instruction)
                         if let tip = viewModel.lighting.suggestion {
                             LightingTipPill(suggestion: tip)
+                        } else if let backlight = viewModel.lighting.backlightTip {
+                            LightingTipPill(backlight: backlight)
                         } else if let advice = viewModel.lighting.recommendation {
                             LightingAdvicePill(recommendation: advice)
                         }
