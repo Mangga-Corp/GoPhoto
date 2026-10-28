@@ -20,8 +20,8 @@ nonisolated struct BacklightController: Sendable {
         var minFrameLuminance = 0.20
         /// Face brightness the lift aims for (0...1, as encoded in the frame).
         var targetFaceLuminance = 0.42
-        /// Most the people may be lifted, EV.
-        var maxLift = 1.5
+        /// Most the people may be lifted (units of `PersonRelight`; 1 is about 2 stops of light).
+        var maxLift = 1.0
         /// How fast the lift follows the measurement (share of the gap closed per reading).
         var smoothing = 0.5
         /// Seconds without backlight (or without a face) before the lift goes back to 0.
