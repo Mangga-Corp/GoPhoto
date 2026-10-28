@@ -33,6 +33,21 @@ enum PreferenceAnalyzer {
             variants[key]?.cutLevelOf = analysis.cutLevelOf
         }
         analysis.framingVariants = variants.isEmpty ? nil : variants
+        // One analysis per shot size (version 13): the popover offers the sizes with photos.
+        var shots: [String: PresetAnalysis] = [:]
+        let sizes = results.map { shotSize(of: $0) }
+        for shot in PresetAnalysis.ShotSize.allCases {
+            let subset = zip(results, sizes).filter { $0.1 == shot }.map { $0.0 }
+            guard !subset.isEmpty else { continue }
+            var variant = build(profile: profile, results: subset, photoCount: subset.count,
+                                date: date, only: shot.framing)
+            variant.shotSize = shot.rawValue
+            variant.cutLevel = analysis.cutLevel
+            variant.cutLevelCount = analysis.cutLevelCount
+            variant.cutLevelOf = analysis.cutLevelOf
+            shots[shot.rawValue] = variant
+        }
+        analysis.shotVariants = shots.isEmpty ? nil : shots
         analysis.photoFramings = Dictionary(results.map { ($0.id.uuidString, $0.subjectFraming.category.rawValue) },
                                             uniquingKeysWith: { first, _ in first })
         analysis.photoShotSizes = Dictionary(results.compactMap { result in

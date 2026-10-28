@@ -117,7 +117,8 @@ extension PreferencesPopoverViewController: UITableViewDataSource, UITableViewDe
         else { return UITableViewCell() }
         let preference = viewModel.preferences[ip.row]
         cell.configure(name: preference.name, selected: viewModel.isSelected(at: ip.row),
-                       framing: viewModel.effectiveFraming(for: preference))
+                       framing: viewModel.effectiveFraming(for: preference),
+                       shots: preference.analysis?.availableShots.map(\.rawValue) ?? [])
         cell.onEdit = { [weak self] in self?.onEdit?(preference.id) }
         cell.onFraming = { [weak self] framing in self?.viewModel.setFraming(framing) }
         return cell
