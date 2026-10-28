@@ -24,11 +24,15 @@ nonisolated enum PersonRelight {
     /// Long edge of the copy the model looks at; the model itself works at a fixed small size.
     private static let maskSourceLongEdge: CGFloat = 640
     /// Mask edge softness, as a share of the photo's long edge.
-    private static let featherShare: CGFloat = 0.002
+    private static let featherShare: CGFloat = 0.003
     /// Long edge of the photo copy that guides the mask edges.
     private static let guideLongEdge: CGFloat = 1024
-    /// Linear brightness (0...1) the lift is measured at: a dim face sits near 18% grey.
-    private static let referenceLinear = 0.18
+    /// Photographic stops of light for one unit of `lift`: `lift` is measured on the frame's encoded
+    /// brightness, which is roughly the light raised to 1 / 2.2.
+    private static let stopsPerLift = 2.2
+    /// How far the mask is pulled inside the person's outline, in pixels of the guide copy, so the
+    /// bright background right at the edge is not lifted with them (no halo).
+    private static let erosionGuidePixels: CGFloat = 2
 
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
@@ -42,11 +46,18 @@ nonisolated enum PersonRelight {
               let map = try? await segmenter.segment(small),
               let mask = personMask(from: map, guideImage: image, fullSize: image.extent.size) else { return nil }
 
-        let lifted = image.applyingFilter("CIGammaAdjust", parameters: ["inputPower": power(forLift: lift)])
+        // Scaling the light (a plain exposure change) keeps every pixel's colour ratios, so skin and
+        // clothes keep their own colour. Highlights are held back so nothing already bright clips.
+        let lifted = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: lift * stopsPerLift])
+        guard let weight = shadowWeight(of: image),
+              let weighted = CIFilter(name: "CIMultiplyCompositing",
+                                      parameters: [kCIInputImageKey: mask, kCIInputBackgroundImageKey: weight])?.outputImage
+        else { return nil }
+
         let blend = CIFilter.blendWithMask()
         blend.inputImage = lifted
         blend.backgroundImage = image
-        blend.maskImage = mask
+        blend.maskImage = weighted
         guard let output = blend.outputImage?.cropped(to: image.extent) else { return nil }
 
         return context.createCGImage(output, from: image.extent, format: .RGBA8,
@@ -66,11 +77,22 @@ nonisolated enum PersonRelight {
         }.value
     }
 
-    /// Gamma power (applied to linear light) that brightens the reference tone by `lift` EV. A power
-    /// below 1 lifts the shadows and mid-tones and leaves black and white where they are, so a white
-    /// shirt does not clip the way a plain exposure boost would.
-    static func power(forLift lift: Double) -> Double {
-        log(referenceLinear * pow(2, lift)) / log(referenceLinear)
+    /// How much of the lift each pixel takes, from its own brightness: all of it in the shadows and
+    /// mid-tones, fading to none in the highlights.
+    private static func shadowWeight(of image: CIImage) -> CIImage? {
+        let luma = image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+            "inputGVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+            "inputBVector": CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0),
+        ])
+        let curve = CIFilter.toneCurve()
+        curve.inputImage = luma
+        curve.point0 = CGPoint(x: 0, y: 1)
+        curve.point1 = CGPoint(x: 0.15, y: 1)
+        curve.point2 = CGPoint(x: 0.4, y: 0.5)
+        curve.point3 = CGPoint(x: 0.7, y: 0.1)
+        curve.point4 = CGPoint(x: 1, y: 0)
+        return curve.outputImage
     }
 
     private static func smallCopy(of image: CIImage) -> CGImage? {
@@ -106,7 +128,9 @@ nonisolated enum PersonRelight {
         upsample.smallImage = small.samplingLinear().transformed(by: half)
         upsample.spatialSigma = 3
         upsample.lumaSigma = 0.1
-        let refined = (upsample.outputImage ?? small)
+        let eroded = (upsample.outputImage ?? small).applyingFilter("CIMorphologyMinimum",
+                                                                    parameters: [kCIInputRadiusKey: erosionGuidePixels])
+        let refined = eroded
             .samplingLinear()
             .transformed(by: CGAffineTransform(scaleX: fullSize.width / guide.extent.width,
                                                y: fullSize.height / guide.extent.height))
