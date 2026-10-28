@@ -18,7 +18,7 @@ struct CameraView: View {
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
     private static let appMode = 1
-    private static var isTesting: Bool { appMode == 1 }
+    private static var isTesting: Bool { appMode == 2 }
 
     @State private var viewModel = CameraViewModel(
         fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
