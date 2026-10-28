@@ -103,17 +103,6 @@ enum PreferenceAnalyzer {
         let faces = results.compactMap { $0.cameraAngle.horizonCue?.headHeight }.filter { $0 > 0 }
         analysis.faceHeight = faces.isEmpty ? nil : median(faces)
 
-        // Surroundings: how much the environment matters, and how busy the preferred backgrounds are.
-        analysis.environmentProminence = profile.environment?.transferable.environmentProminence.dominant?.rawValue
-        let objectShares = results.compactMap { result -> Double? in
-            guard let seg = result.environment?.segmentation, seg.interpretation.isEligible,
-                  seg.environmentFraction > 0 else { return nil }
-            let objects = seg.environmentalRegions.filter { $0.family.kind == .object }
-                .reduce(0) { $0 + $1.areaFraction }
-            return min(1, objects / seg.environmentFraction)
-        }
-        analysis.preferredObjectShare = objectShares.isEmpty ? nil : median(objectShares)
-
         // Half body: the torso of each photo (neck, neck-to-hip length), for the crop.
         let torsos = results.compactMap { result -> (neck: CGPoint, length: Double)? in
             guard result.subjectFraming.category == .halfBody, let box = result.subjectPositioning.subjectBox,

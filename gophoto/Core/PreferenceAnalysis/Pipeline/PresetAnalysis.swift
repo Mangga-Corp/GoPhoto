@@ -97,17 +97,6 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     var halfBodyTorso: Double?
     var cutBelowHip: Double?
 
-    // Surroundings (used by the automatic lens switch). Optional, no version bump: presets analysed
-    // before these fields existed decode with nil, and the lens switch then stays conservative.
-
-    /// Majority `ProminenceBand.rawValue` of the references ("subjectDominates", "balanced",
-    /// "environmentDominates"): how much the environment matters in the picture. Nil without a
-    /// recurring band.
-    var environmentProminence: String?
-    /// Median share of the references' surroundings taken by countable objects (0...1): how busy
-    /// the user's preferred backgrounds are. Nil when no reference had interpretable surroundings.
-    var preferredObjectShare: Double?
-
     /// The analysis for the mode picked in the preset popover: that shot size's variant (or an
     /// older full / half body variant), or this one when the preset has no photo of it.
     func forFraming(_ framing: String?) -> PresetAnalysis {
