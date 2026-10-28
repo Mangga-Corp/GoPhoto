@@ -24,6 +24,8 @@ final class LightingCoordinator {
     private(set) var sunPosition: SunPosition?
     private(set) var heading: CameraHeading?
     private(set) var weather: LightingWeather?
+    /// Why the weather is missing (debug panel); nil when it loaded or has not been asked yet.
+    private(set) var weatherFailure: String?
     /// Slowest shutter the recommendation asks the camera for; nil when none applies.
     private(set) var slowestShutter: TimeInterval?
 
@@ -64,7 +66,10 @@ final class LightingCoordinator {
             return
         }
         // The heading needs the location permission answered first (true north).
-        let weatherTask = Task { weather = await weatherService.currentWeather(at: location) }
+        let weatherTask = Task {
+            weather = await weatherService.currentWeather(at: location)
+            weatherFailure = weatherService.lastFailure
+        }
         await observeHeading()
         weatherTask.cancel()
     }

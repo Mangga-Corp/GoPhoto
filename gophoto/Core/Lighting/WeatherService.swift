@@ -17,6 +17,8 @@ struct WeatherAttributionInfo: Sendable {
 }
 
 protocol WeatherServiceProtocol: AnyObject {
+    /// Why the last lookup failed, for the debug panel; nil when it worked.
+    var lastFailure: String? { get }
     /// Apple's attribution, or nil when it cannot be loaded (offline, no capability).
     func attribution() async -> WeatherAttributionInfo?
     /// The weather here and now, or nil (offline, no capability, failure).
@@ -25,6 +27,7 @@ protocol WeatherServiceProtocol: AnyObject {
 
 final class WeatherKitService: WeatherServiceProtocol {
 
+    private(set) var lastFailure: String?
     private var cached: (weather: LightingWeather, at: Date, location: CLLocation)?
     /// A reading this young, from this close by, is reused: it saves quota and battery.
     private static let maxAge: TimeInterval = 20 * 60
@@ -42,12 +45,19 @@ final class WeatherKitService: WeatherServiceProtocol {
            cached.location.distance(from: location) < Self.maxDistance {
             return cached.weather
         }
-        guard let current = try? await WeatherKit.WeatherService.shared.weather(for: location, including: .current) else {
+        do {
+            let current = try await WeatherKit.WeatherService.shared.weather(for: location, including: .current)
+            guard let weather = Self.lighting(for: current.condition) else {
+                lastFailure = "condition not mapped: \(current.condition)"
+                return nil
+            }
+            lastFailure = nil
+            cached = (weather, Date(), location)
+            return weather
+        } catch {
+            lastFailure = String(describing: error)
             return nil
         }
-        guard let weather = Self.lighting(for: current.condition) else { return nil }
-        cached = (weather, Date(), location)
-        return weather
     }
 
     /// WeatherKit has about thirty conditions; the lighting rules need five. Snow, wind and the

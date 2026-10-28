@@ -34,6 +34,9 @@ struct GuideDebugPanel: View {
             Text(exposureLine)
             Text(sunLine)
             Text(lightingLine)
+            if let failure = viewModel.lighting.weatherFailure {
+                Text("Weather error: \(failure)").foregroundStyle(.red).lineLimit(4)
+            }
             if viewModel.guideMode.crops, let w = viewModel.evaluation.cropWindow {
                 Text(String(format: "Crop %.0f%% of frame (min %.0f%%) · x%.2f y%.2f",
                             w.width * 100, (viewModel.evaluation.cropMinScale ?? 0) * 100, w.minX, w.minY))
