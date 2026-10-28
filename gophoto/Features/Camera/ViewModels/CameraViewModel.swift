@@ -55,6 +55,7 @@ final class CameraViewModel {
     private(set) var pitch: Double = 0                   // + = phone tilted down
     private(set) var face: CGRect?                       // normalized, origin top-left
     private(set) var personOutline: CGImage?             // body outline, old-look mode only
+    private(set) var exposure: ExposureStatus?           // auto-exposure bias / ISO / shutter (debug panel)
     @ObservationIgnored private var verticalFOV: Double? // of the upright frame, degrees
     @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
 
@@ -299,6 +300,14 @@ final class CameraViewModel {
         personOutline = nil
         face = nil
         instruction = .findPerson
+    }
+
+    /// Listens to the camera's exposure readings until the View's .task is cancelled.
+    func observeExposure() async {
+        for await status in cameraService.exposureStatus() {
+            exposure = status
+        }
+        exposure = nil
     }
 
     private func updateInstruction() {

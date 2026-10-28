@@ -32,6 +32,16 @@ nonisolated enum CameraPermission: Sendable {
     case restricted   // blocked by Screen Time / device management → user can't fix it
 }
 
+/// What the camera's auto-exposure is doing now (debug panel).
+nonisolated struct ExposureStatus: Sendable, Equatable {
+    /// Exposure bias in EV, ISO, and shutter time in seconds.
+    let bias: Float
+    let iso: Float
+    let shutter: Double
+    /// The backlight rule is currently raising the bias.
+    let isBacklit: Bool
+}
+
 // MARK: - Errors
 
 nonisolated enum CameraError: LocalizedError {
@@ -64,6 +74,8 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     /// file is processed: the UI flashes there. Returns once the file is ready.
     func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
+    /// Exposure bias, ISO and shutter, about twice a second while someone listens.
+    func exposureStatus() -> AsyncStream<ExposureStatus>
     /// Turns the body outline (old-look guide mode) on or off.
     func setOutlineEnabled(_ enabled: Bool)
     /// Take photos at the camera's largest size (mode F crops them).
@@ -111,7 +123,16 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// Re-aim only when the subject moved this far (frame fraction), at most this often, so the
     /// brightness doesn't pump as the face box jitters.
     private static let meteringMinMove: CGFloat = 0.05
-    private static let meteringMinInterval: TimeInterval = 0.5                                                      
+    private static let meteringMinInterval: TimeInterval = 0.5
+
+    // Backlight (X1), all on the video queue except the camera calls: the face is measured against
+    // the frame about twice a second, and the controller answers with the exposure bias.
+    private let luminanceMeter = LuminanceMeter()
+    private var backlight = BacklightController()
+    private var luminanceMeasuredAt: TimeInterval = 0
+    private var biasRange: ClosedRange<Double> = 0...0
+    private var statusContinuation: AsyncStream<ExposureStatus>.Continuation?
+    private static let luminanceInterval: TimeInterval = 0.5
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> CameraPermission {
@@ -151,6 +172,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             sessionQueue.async {
                 if self.session.isRunning { self.session.stopRunning() }
+                self.videoQueue.async { self.backlight.reset() }
+                self.applyExposure(bias: 0)       // the next start begins neutral
                 continuation.resume()
             }
         }
@@ -199,6 +222,17 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         }
     }
 
+    /// Stream of exposure readings. Starts empty; the camera feeds it from the video queue.
+    func exposureStatus() -> AsyncStream<ExposureStatus> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            videoQueue.async { self.statusContinuation = continuation }
+
+            continuation.onTermination = { _ in
+                self.videoQueue.async { self.statusContinuation = nil }
+            }
+        }
+    }
+
     private func configureSession() throws {
         guard !isConfigured else { return }
 
@@ -214,7 +248,11 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         self.device = device
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
         let fov = Double(device.activeFormat.videoFieldOfView)
-        videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
+        let biasRange = Double(device.minExposureTargetBias)...Double(device.maxExposureTargetBias)
+        videoQueue.async {
+            self.verticalFOV = fov > 0 ? fov : nil
+            self.biasRange = biasRange
+        }
         guard session.canAddInput(input) else { throw CameraError.cannotAddInput }
         session.addInput(input)
 
@@ -309,6 +347,51 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         detection?.photoMegapixels = photoMegapixels
         continuation.yield(detection)
         updateMetering(for: detection)
+        updateBacklight(face: detection?.face, pixelBuffer: pixelBuffer)
+    }
+
+    /// Backlight rule (video queue): face much darker than the frame → raise the exposure bias
+    /// until the face is bright enough. Throttled; a face-less frame lets the bias fall back to 0.
+    private func updateBacklight(face: CGRect?, pixelBuffer: CVPixelBuffer) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - luminanceMeasuredAt >= Self.luminanceInterval,
+              let reading = luminanceMeter.measure(pixelBuffer, face: face) else { return }
+        luminanceMeasuredAt = now
+        let bias = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame,
+                                    biasRange: biasRange, now: now)
+        let isBacklit = backlight.isBacklit
+        sessionQueue.async {
+            self.applyExposure(bias: bias)
+            self.publishStatus(isBacklit: isBacklit)
+        }
+    }
+
+    /// Sets the exposure bias; auto-exposure keeps running. While the bias is raised the shutter
+    /// stays at 1/60 s or faster, so the missing light comes from ISO. Session queue.
+    private func applyExposure(bias: Double) {
+        guard let device else { return }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            if abs(device.exposureTargetBias - Float(bias)) > 0.01 {
+                device.setExposureTargetBias(Float(bias))
+            }
+            let format = device.activeFormat
+            let cap = bias > 0
+                ? CMTime(seconds: BacklightController.slowestShutter, preferredTimescale: 1000)
+                : format.maxExposureDuration
+            let limited = CMTimeMaximum(format.minExposureDuration, CMTimeMinimum(cap, format.maxExposureDuration))
+            if device.activeMaxExposureDuration != limited { device.activeMaxExposureDuration = limited }
+        } catch {
+            // Another client holds the configuration: try again at the next reading.
+        }
+    }
+
+    private func publishStatus(isBacklit: Bool) {
+        guard let device else { return }
+        let status = ExposureStatus(bias: device.exposureTargetBias, iso: device.iso,
+                                    shutter: device.exposureDuration.seconds, isBacklit: isBacklit)
+        videoQueue.async { self.statusContinuation?.yield(status) }
     }
 
     /// Aims exposure and focus at the subject's face (else the top of the person's box, where
