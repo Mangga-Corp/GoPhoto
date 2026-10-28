@@ -4,7 +4,7 @@
 //
 //  Gathers the light-related inputs (sun, compass, weather, brightness, the user's preference) and
 //  decides what the photographer sees: at most one sun tip, and the lighting recommendation for the
-//  weather. It never touches the camera: the exposure bias belongs to `CameraService`, and the
+//  weather. It never touches the camera: the exposure belongs to `CameraService`, and the
 //  recommended shutter cap is handed to the camera by the view model.
 //
 

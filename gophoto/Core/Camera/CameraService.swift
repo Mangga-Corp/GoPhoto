@@ -34,11 +34,13 @@ nonisolated enum CameraPermission: Sendable {
 
 /// What the camera's auto-exposure is doing now (debug panel).
 nonisolated struct ExposureStatus: Sendable, Equatable {
-    /// Exposure bias in EV, ISO, and shutter time in seconds.
-    let bias: Float
+    /// How much the people will be brightened after the shot, EV (0 = not backlit), ISO, and
+    /// shutter time in seconds.
+    let lift: Double
+
     let iso: Float
     let shutter: Double
-    /// The backlight rule is currently raising the bias.
+    /// The backlight rule currently sees a backlit person.
     let isBacklit: Bool
     /// How bright the face (nil: none found) and the whole frame are, 0...1.
     let faceLuminance: Double?
@@ -74,13 +76,13 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     func start() async
     func stop() async
     /// Shutter no slower than this many seconds (nil: no limit). Auto-exposure keeps running and
-    /// ISO makes up the light. The exposure bias is not set from here: the backlight rule owns it.
+    /// ISO makes up the light. The exposure bias is never changed: backlit people are brightened after the shot.
     func setSlowestShutter(_ seconds: TimeInterval?)
     /// Takes a photo. `onShutter` runs (any thread) at the moment the photo is taken, before the
     /// file is processed: the UI flashes there. Returns once the file is ready.
     func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
-    /// Exposure bias, ISO and shutter, about twice a second while someone listens.
+    /// Backlight lift, ISO and shutter, about twice a second while someone listens.
     func exposureStatus() -> AsyncStream<ExposureStatus>
     /// Turns the body outline (old-look guide mode) on or off.
     func setOutlineEnabled(_ enabled: Bool)
@@ -132,12 +134,10 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private static let meteringMinInterval: TimeInterval = 0.5
 
     // Backlight (X1), all on the video queue except the camera calls: the face is measured against
-    // the frame about twice a second, and the controller answers with the exposure bias.
+    // the frame about twice a second, and the controller answers with how much to brighten the people.
     private let luminanceMeter = LuminanceMeter()
     private var backlight = BacklightController()
     private var luminanceMeasuredAt: TimeInterval = 0
-    private var biasRange: ClosedRange<Double> = 0...0
-    private var lastBias = 0.0                     // session queue copy of the applied bias
     private var slowestShutter: TimeInterval?      // session queue: the lighting rule's cap
     private var statusContinuation: AsyncStream<ExposureStatus>.Continuation?
     private static let luminanceInterval: TimeInterval = 0.5
@@ -181,7 +181,6 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             sessionQueue.async {
                 if self.session.isRunning { self.session.stopRunning() }
                 self.videoQueue.async { self.backlight.reset() }
-                self.applyExposure(bias: 0)       // the next start begins neutral
                 continuation.resume()
             }
         }
@@ -215,7 +214,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         sessionQueue.async {
             guard self.slowestShutter != seconds else { return }
             self.slowestShutter = seconds
-            self.applyExposure(bias: self.lastBias)
+            self.applyShutterCap()
         }
     }
 
@@ -264,11 +263,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         self.device = device
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
         let fov = Double(device.activeFormat.videoFieldOfView)
-        let biasRange = Double(device.minExposureTargetBias)...Double(device.maxExposureTargetBias)
-        videoQueue.async {
-            self.verticalFOV = fov > 0 ? fov : nil
-            self.biasRange = biasRange
-        }
+        videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
         guard session.canAddInput(input) else { throw CameraError.cannotAddInput }
         session.addInput(input)
 
@@ -366,47 +361,39 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         updateBacklight(face: detection?.face, pixelBuffer: pixelBuffer)
     }
 
-    /// Backlight rule (video queue): face much darker than the frame → raise the exposure bias
-    /// until the face is bright enough. Throttled; a face-less frame lets the bias fall back to 0.
+    /// Backlight rule (video queue): measures the face against the frame and keeps the lift the
+    /// people get after the shot. Throttled; a face-less frame lets the lift fall back to 0.
     private func updateBacklight(face: CGRect?, pixelBuffer: CVPixelBuffer) {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - luminanceMeasuredAt >= Self.luminanceInterval,
               let reading = luminanceMeter.measure(pixelBuffer, face: face) else { return }
         luminanceMeasuredAt = now
-        let bias = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame,
-                                    biasRange: biasRange, now: now)
+        let lift = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame, now: now)
         let isBacklit = backlight.isBacklit
         sessionQueue.async {
-            self.applyExposure(bias: bias)
-            self.publishStatus(isBacklit: isBacklit, reading: reading)
+            self.publishStatus(lift: lift, isBacklit: isBacklit, reading: reading)
         }
     }
 
-    /// Sets the exposure bias and the shutter cap; auto-exposure keeps running. While the bias is
-    /// raised the shutter stays at 1/60 s or faster, so the missing light comes from ISO; the
-    /// lighting rule's own cap applies too, the faster of the two wins. Session queue.
-    private func applyExposure(bias: Double) {
-        lastBias = bias
+    /// Keeps the shutter no slower than the lighting rule's cap; auto-exposure keeps running and
+    /// ISO makes up the light. Session queue.
+    private func applyShutterCap() {
         guard let device else { return }
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if abs(device.exposureTargetBias - Float(bias)) > 0.01 {
-                device.setExposureTargetBias(Float(bias))
-            }
             let format = device.activeFormat
-            let caps = [bias > 0 ? ExposureLimits.slowestShutter : nil, slowestShutter].compactMap { $0 }
-            let cap = caps.min().map { CMTime(seconds: $0, preferredTimescale: 1000) } ?? format.maxExposureDuration
+            let cap = slowestShutter.map { CMTime(seconds: $0, preferredTimescale: 1000) } ?? format.maxExposureDuration
             let limited = CMTimeMaximum(format.minExposureDuration, CMTimeMinimum(cap, format.maxExposureDuration))
             if device.activeMaxExposureDuration != limited { device.activeMaxExposureDuration = limited }
         } catch {
-            // Another client holds the configuration: try again at the next reading.
+            // Another client holds the configuration: try again at the next change.
         }
     }
 
-    private func publishStatus(isBacklit: Bool, reading: LuminanceMeter.Reading) {
+    private func publishStatus(lift: Double, isBacklit: Bool, reading: LuminanceMeter.Reading) {
         guard let device else { return }
-        let status = ExposureStatus(bias: device.exposureTargetBias, iso: device.iso,
+        let status = ExposureStatus(lift: lift, iso: device.iso,
                                     shutter: device.exposureDuration.seconds, isBacklit: isBacklit,
                                     faceLuminance: reading.face, frameLuminance: reading.frame)
         videoQueue.async { self.statusContinuation?.yield(status) }
