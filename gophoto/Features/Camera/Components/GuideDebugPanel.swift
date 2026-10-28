@@ -139,7 +139,7 @@ struct GuideDebugPanel: View {
     private var exposureLine: String {
         guard let e = viewModel.exposure else { return "Exposure: —" }
         let shutter = e.shutter > 0 ? "1/\(Int((1 / e.shutter).rounded()))" : "—"
-        return String(format: "Exposure bias %+.2f EV · ISO %.0f · ", e.bias, e.iso) + shutter + " s"
+        return String(format: "Person lift %+.2f EV · ISO %.0f · ", e.lift, e.iso) + shutter + " s"
             + (e.isBacklit ? " · backlit" : "")
     }
 

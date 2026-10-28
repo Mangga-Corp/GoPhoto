@@ -8,7 +8,7 @@
 //  What can really be applied: an iPhone's aperture is fixed, so the f-numbers here are
 //  guidance only. The only setting the app applies is the slowest shutter (a cap on auto
 //  exposure, so ISO makes up the difference). The ISO range is guidance too. The exposure bias
-//  belongs to the backlight rule (`BacklightController`) and is never set from here.
+//  is never changed: backlit people are brightened after the shot (`BacklightController`).
 //
 
 import Foundation
