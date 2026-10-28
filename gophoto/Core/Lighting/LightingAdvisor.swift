@@ -113,15 +113,15 @@ nonisolated enum LightingAdvisor {
 
     // MARK: Rules
     //
-    // Shutter: a person who moves a little blurs below about 1/125 s, and hand shake adds to it,
-    // so people rules start at 1/125 (not the 1/60 that suits a still scene). Bright scenes can
-    // go far above it; dim ones (rain, mist, night) are held at the floor and ISO pays for it.
+    // Shutter: the slowest allowed is one shared floor (1/60 s): slower blurs a moving person, but
+    // a higher floor can starve dim scenes of light. The fastest values are what the light
+    // usually gives, shown as guidance.
     // Aperture: portraits want subject separation, so the wide end of the lens is the aim; this is
     // guidance because the phone's aperture is fixed. ISO: base ISO when bright, up when dim.
 
     static let fallback = LightingRule(
         title: "Even light",
-        aperture: 1.8...4, slowestShutter: 1.0 / 125, fastestShutter: 1.0 / 1000, iso: 50...800,
+        aperture: 1.8...4, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 1000, iso: 50...800,
         ideas: [
             PhotoIdea(text: "Face the light so it falls softly on their face", styles: [.bright, .balanced]),
             PhotoIdea(text: "Look for a plain background to keep attention on them", styles: [.bright, .balanced, .moody]),
@@ -130,7 +130,7 @@ nonisolated enum LightingAdvisor {
     static let rules: [LightingScene: LightingRule] = [
         .sunny: LightingRule(
             title: "Sunny",
-            aperture: 1.8...5.6, slowestShutter: 1.0 / 250, fastestShutter: 1.0 / 4000, iso: 50...200,
+            aperture: 1.8...5.6, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 4000, iso: 50...200,
             ideas: [
                 PhotoIdea(text: "Open shade or a wall's shadow for soft, even skin", styles: [.bright, .balanced]),
                 PhotoIdea(text: "Shadow play: leaf or fence patterns across the face", styles: [.moody]),
@@ -139,7 +139,7 @@ nonisolated enum LightingAdvisor {
             ]),
         .overcast: LightingRule(
             title: "Overcast",
-            aperture: 1.8...4, slowestShutter: 1.0 / 125, fastestShutter: 1.0 / 1000, iso: 100...400,
+            aperture: 1.8...4, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 1000, iso: 100...400,
             ideas: [
                 PhotoIdea(text: "Soft, even light: no squinting, flattering skin", styles: [.bright, .balanced]),
                 PhotoIdea(text: "Bold colours in clothes pop against the grey sky", styles: [.bright, .balanced]),
@@ -147,7 +147,7 @@ nonisolated enum LightingAdvisor {
             ]),
         .rainy: LightingRule(
             title: "Rainy",
-            aperture: 1.8...4, slowestShutter: 1.0 / 125, fastestShutter: 1.0 / 800, iso: 200...800,
+            aperture: 1.8...4, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 800, iso: 200...800,
             ideas: [
                 PhotoIdea(text: "Reflections in puddles beside them", styles: [.moody, .balanced]),
                 PhotoIdea(text: "Raindrops on a window or umbrella in the frame", styles: [.moody, .balanced]),
@@ -155,7 +155,7 @@ nonisolated enum LightingAdvisor {
             ]),
         .misty: LightingRule(
             title: "Misty",
-            aperture: 1.8...4, slowestShutter: 1.0 / 125, fastestShutter: 1.0 / 500, iso: 100...800,
+            aperture: 1.8...4, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 500, iso: 100...800,
             ideas: [
                 PhotoIdea(text: "Fading layers: let the mist soften the background", styles: [.moody, .balanced]),
                 PhotoIdea(text: "Glowing street lights behind them", styles: [.moody]),
@@ -163,14 +163,14 @@ nonisolated enum LightingAdvisor {
             ]),
         .heavyRain: LightingRule(
             title: "Heavy rain",
-            aperture: 1.8...2.8, slowestShutter: 1.0 / 100, fastestShutter: 1.0 / 500, iso: 400...1600,
+            aperture: 1.8...2.8, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 500, iso: 400...1600,
             ideas: [
                 PhotoIdea(text: "Keep the phone dry: shoot from a doorway or under cover", styles: [.bright, .balanced, .moody]),
                 PhotoIdea(text: "Window drops with them blurred behind", styles: [.moody, .balanced]),
             ]),
         .goldenHour: LightingRule(
             title: "Golden hour",
-            aperture: 1.8...4, slowestShutter: 1.0 / 125, fastestShutter: 1.0 / 1000, iso: 50...400,
+            aperture: 1.8...4, slowestShutter: ExposureLimits.slowestShutter, fastestShutter: 1.0 / 1000, iso: 50...400,
             ideas: [
                 PhotoIdea(text: "Warm side light: stand so the sun is beside them", styles: [.bright, .balanced]),
                 PhotoIdea(text: "Sun behind them for a glowing rim around the hair", styles: [.bright, .moody]),
