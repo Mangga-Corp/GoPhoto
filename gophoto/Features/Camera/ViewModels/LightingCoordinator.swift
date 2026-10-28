@@ -53,16 +53,20 @@ final class LightingCoordinator {
         self.sunService = sunService
     }
 
-    /// Finds where the phone is (asks for permission the first time) and the weather there.
-    /// Nothing is stored. Without permission or network the rules fall back on what is known.
-    func refreshLocation() async {
+    /// Runs while the camera is on screen: finds where the phone is (asks for permission the first
+    /// time), then follows the camera heading while the weather loads. Nothing is stored. Without
+    /// permission or network the rules fall back on what is known.
+    func run() async {
         location = await locationService.currentLocation()
         guard let location else {
             sunPosition = nil
             weather = nil
             return
         }
-        weather = await weatherService.currentWeather(at: location)
+        // The heading needs the location permission answered first (true north).
+        let weatherTask = Task { weather = await weatherService.currentWeather(at: location) }
+        await observeHeading()
+        weatherTask.cancel()
     }
 
     /// The user's photo preference (`PresetAnalysis.lightLevel`); nil when not analysed yet.
@@ -71,7 +75,7 @@ final class LightingCoordinator {
     }
 
     /// Follows where the camera points until the View's .task is cancelled.
-    func observeHeading() async {
+    private func observeHeading() async {
         for await next in headingService.headingUpdates() {
             heading = next
             lastHeadingAt = ProcessInfo.processInfo.systemUptime
