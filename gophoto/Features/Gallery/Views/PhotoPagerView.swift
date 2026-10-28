@@ -27,6 +27,8 @@ struct PhotoPagerView: View {
     @State private var baseline: PhotoEnhancer.Settings?
     @State private var isSavingEdit = false
     @State private var editMessage: String?
+    /// Edit mode (after tapping Edit): the look picker replaces the photo strip.
+    @State private var isEditing = false
     @Environment(\.dismiss) private var dismiss
 
     /// - Parameter startID: assetID of the photo that was tapped in the grid
@@ -72,17 +74,38 @@ struct PhotoPagerView: View {
                               preview: SharePreview("Photo", image: Image(systemName: "photo")))
                 }
             }
-            ToolbarSpacer(.flexible, placement: .bottomBar)
-            ToolbarItem(placement: .bottomBar) {
-                Button("Adjust", systemImage: "slider.horizontal.3") {
-                    Task { await startEditing() }
-                }.disabled(adjustments != nil || isDeleting)
+            if !isEditing {
+                // Viewing: Edit opens the looks; Delete as before.
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Edit", systemImage: "pencil") {
+                        withAnimation(.snappy) { isEditing = true }
+                    }.disabled(isDeleting)
+                }
+                ToolbarItem(placement: .bottomBar){
+                    Button("Delete", systemImage: "trash", role: .destructive){
+                        Task{await deleteCurrent()}
+                    }.disabled(isDeleting)
+                }
+            } else if adjustments == nil {
+                // Editing, looks: Cancel, Adjust (sliders from the look), Save the look.
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Cancel") { finishEditing() }
+                        .disabled(isSavingEdit)
+                }
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Adjust", systemImage: "slider.horizontal.3") {
+                        Task { await startEditing() }
+                    }.disabled(isSavingEdit)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Save") { Task { await saveLook() } }
+                        .bold()
+                        .disabled(selectedLook == nil || isSavingEdit)
+                }
             }
-            ToolbarItem(placement: .bottomBar){
-                Button("Delete", systemImage: "trash", role: .destructive){
-                    Task{await deleteCurrent()}
-                }.disabled(isDeleting || adjustments != nil)
-            }
+            // Sliders open: their panel has its own Cancel / Save.
         }
         .safeAreaInset(edge: .bottom){
             VStack(spacing: 0) {
@@ -92,10 +115,12 @@ struct PhotoPagerView: View {
                                     isSaving: isSavingEdit,
                                     onCancel: stopEditing,
                                     onSave: { Task { await saveEdit() } })
-                } else {
+                } else if isEditing {
                     LookPickerView(assetID: currentID,
                                    selection: $selectedLook,
                                    loadThumbnail: loadThumbnail)
+                        .padding(.bottom, 8)
+                } else {
                     PhotoStripView(photos: photos,
                                    currentID: $currentID,
                                    loadThumbnail: loadThumbnail,)
@@ -104,8 +129,7 @@ struct PhotoPagerView: View {
             .background(.bar)
         }
         .onChange(of: currentID) {
-            selectedLook = nil
-            stopEditing()
+            finishEditing()
         }
         .alert(editMessage ?? "", isPresented: Binding(get: { editMessage != nil },
                                                        set: { if !$0 { editMessage = nil } })) {
@@ -135,6 +159,39 @@ struct PhotoPagerView: View {
         isSavingEdit = false
     }
 
+    /// Leaves edit mode: no look, no sliders, back to the photo strip.
+    private func finishEditing() {
+        stopEditing()
+        selectedLook = nil
+        withAnimation(.snappy) { isEditing = false }
+    }
+
+    /// Saves the selected look as a new photo (the original is unchanged): its settings are
+    /// measured on a screen-sized copy, like the sliders, and applied to the full photo.
+    private func saveLook() async {
+        guard let look = selectedLook else { return }
+        let id = currentID
+        isSavingEdit = true
+        guard let image = await loadImage(id, CGSize(width: 1024, height: 1024)) else {
+            isSavingEdit = false
+            editMessage = "The photo could not be loaded."
+            return
+        }
+        let settings = await Task.detached(priority: .userInitiated) {
+            PhotoEnhancer().baselineSettings(for: image, look: look)
+        }.value
+        guard id == currentID, let settings else { isSavingEdit = false; return }
+        let presetID = photos.first(where: { $0.assetID == id })?.presetID
+        let error = await onSaveEdit(id, presetID, settings)
+        isSavingEdit = false
+        if let error {
+            editMessage = error
+        } else {
+            finishEditing()
+            editMessage = "Saved to your gallery as a new photo. The original is unchanged."
+        }
+    }
+
     private func saveEdit() async {
         guard let settings = adjustments else { return }
         let id = currentID
@@ -145,7 +202,7 @@ struct PhotoPagerView: View {
         if let error {
             editMessage = error
         } else {
-            stopEditing()
+            finishEditing()
             editMessage = "Saved to your gallery as a new photo. The original is unchanged."
         }
     }

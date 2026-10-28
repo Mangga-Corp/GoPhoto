@@ -15,19 +15,24 @@ final class PreferencesViewModel {
     private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
     private(set) var selectedID: UUID?
-    /// Framing picked in the preset popover (`FramingCategory.rawValue`: "fullBody" / "halfBody"),
-    /// or nil for the preset's majority. Saved across launches.
+    /// Shot size picked in the preset popover (`PresetAnalysis.ShotSize.rawValue`: "full" /
+    /// "threeQuarter" / "half" / "quarter"), or nil for the preset's default. Saved across launches.
     private(set) var framing: String? = UserDefaults.standard.string(forKey: PreferencesViewModel.framingKey)
-    private static let framingKey = "presetFraming"
+    private static let framingKey = "presetShotSize"
 
     func setFraming(_ framing: String?) {
         self.framing = framing
         UserDefaults.standard.set(framing, forKey: Self.framingKey)
     }
 
-    /// The framing the camera uses for a preset: the picked one, else the preset's majority.
+    /// The shot size the camera uses for a preset: the picked one when the preset has photos of
+    /// it, else the size with the most photos. Older analyses: the picked or majority framing.
     func effectiveFraming(for preference: Preference?) -> String? {
-        framing ?? preference?.analysis?.framing
+        guard let analysis = preference?.analysis else { return framing }
+        let shots = analysis.availableShots
+        if shots.isEmpty { return framing ?? analysis.framing }
+        if let framing, shots.contains(where: { $0.rawValue == framing }) { return framing }
+        return analysis.defaultShot?.rawValue
     }
 
     init(storage: PreferencesStorage = PreferencesStorage()) {
@@ -116,6 +121,13 @@ final class PreferencesViewModel {
     /// Latest analysis run per preset, kept in memory for the results screen (not saved).
     private var sessions: [UUID: AnalysisSession] = [:]
     private var analyzingIDs: Set<UUID> = []
+    /// The newest analysis task per preset, so a screen can wait for one already running.
+    private var analysisTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
+    func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
+        analyzingIDs.contains(id) ? analysisTasks[id] : nil
+    }
 
     func session(for id: UUID) -> AnalysisSession? { sessions[id] }
     func isAnalyzing(_ id: UUID) -> Bool { analyzingIDs.contains(id) }
@@ -141,6 +153,7 @@ final class PreferencesViewModel {
             if let analysis { self.setAnalysis(analysis, for: id) }
         }
         analysisChain = task
+        analysisTasks[id] = task
         return task
     }
 
