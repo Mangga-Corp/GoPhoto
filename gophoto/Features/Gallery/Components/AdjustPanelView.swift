@@ -89,9 +89,6 @@ struct AdjustPanelView: View {
     @Binding var settings: PhotoEnhancer.Settings
     /// What AI Enhance chose for this photo; nil while it is still being measured.
     let baseline: PhotoEnhancer.Settings?
-    let isSaving: Bool
-    let onCancel: () -> Void
-    let onSave: () -> Void
 
     @State private var selected: Adjustment = .strength
 
@@ -99,49 +96,47 @@ struct AdjustPanelView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(Adjustment.allCases) { item in
-                        Button {
-                            selected = item
-                        } label: {
-                            Label(item.title, systemImage: item.icon)
-                                .font(.caption)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(selected == item ? Color.accentColor.opacity(0.2) : Color.clear, in: Capsule())
-                                .overlay(Capsule().stroke(selected == item ? Color.accentColor : .secondary.opacity(0.4)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selected == item ? .isSelected : [])
-                    }
+            HStack {
+                Text(selected.title).font(.headline)
+                Spacer()
+                Button("Revert to AI") {
+                    if let baseline { settings = baseline }
                 }
-                .padding(.horizontal, 16)
+                .font(.subheadline)
+                .disabled(!isChanged)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 16)
 
             Slider(value: binding(for: selected), in: selected.range)
                 .padding(.horizontal, 16)
                 .disabled(baseline == nil)
                 .accessibilityLabel(selected.title)
 
-            HStack {
-                Button("Cancel", action: onCancel)
-                Spacer()
-                Button("Revert to AI") {
-                    if let baseline { settings = baseline }
+            ScrollView(.horizontal) {
+                HStack(spacing: 4) {
+                    ForEach(Adjustment.allCases) { item in
+                        let isSelected = selected == item
+                        Button {
+                            selected = item
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: item.icon)
+                                    .font(.title3)
+                                    .frame(width: 44, height: 44)
+                                    .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: Circle())
+                                Text(item.title).font(.caption2)
+                            }
+                            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                            .frame(minWidth: 64)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
                 }
-                .disabled(!isChanged)
-                Spacer()
-                Button(action: onSave) {
-                    if isSaving { ProgressView() } else { Text("Save").bold() }
-                }
-                .disabled(baseline == nil || isSaving)
+                .padding(.horizontal, 12)
             }
-            .padding(.horizontal, 16)
+            .scrollIndicators(.hidden)
         }
-        .padding(.vertical, 8)
-        .disabled(isSaving)
     }
 
     private func binding(for item: Adjustment) -> Binding<Float> {
