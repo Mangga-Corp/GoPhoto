@@ -324,7 +324,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             }
         }
 
-        // Allow the largest photo (mode F crops it); normal shots stay near 12 MP.
+        // Crop-guide modes capture at the largest supported dimensions; saved framing stays untouched.
         let sizes = device.activeFormat.supportedMaxPhotoDimensions
         func pixels(_ d: CMVideoDimensions) -> Int { Int(d.width) * Int(d.height) }
         if let largest = sizes.max(by: { pixels($0) < pixels($1) }) {

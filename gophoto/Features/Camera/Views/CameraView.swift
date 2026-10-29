@@ -14,7 +14,7 @@ import UIKit
 
 struct CameraView: View {
     /// Which camera to build. Change this number:
-    /// 1 = testing: clean camera for testers. Guide B + crop, grid on, 4:3. No pose guide,
+    /// 1 = testing: clean camera for testers. Guide B crop-framing mode, grid on, 4:3. No pose guide,
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
     private static let appMode = 1

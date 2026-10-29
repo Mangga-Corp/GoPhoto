@@ -646,16 +646,6 @@ final class CameraViewModel {
         guard state == .running, !isCapturing else { return }
         isCapturing = true
 
-        // Mode F: remember where the person is and how the phone is turned at the shutter.
-        // Half body (preset cut at the bottom): the crop follows the torso, see `WideCrop.TorsoTarget`.
-        let torsoTarget: WideCrop.TorsoTarget? = analysis?.clippedBottom == true
-            ? analysis.flatMap { a in
-                a.halfBodyNeck.flatMap { neck in a.halfBodyTorso.map { WideCrop.TorsoTarget(neck: neck, torso: $0) } }
-            }
-            : nil
-        let cropPlan: (person: CGRect, target: CGRect, torso: WideCrop.TorsoTarget?, roll: Double, megapixels: Double?)? =
-            guideMode.crops ? personBox.map { ($0, target.rect, torsoTarget, roll, photoMegapixels) } : nil
-
         let photo: CapturedPhoto
         let shutterAt = Date()
         do {
@@ -673,47 +663,25 @@ final class CameraViewModel {
         let captureSeconds = Date().timeIntervalSince(shutterAt)
         lastShotTiming = String(format: "shutter %.2fs · file %.2fs · processing…", shutterSeconds, captureSeconds)
 
-        // One photo per shot, made in the background so the shutter is free: crop modes crop
-        // (from the full 4:3 frame, where the plan's coordinates are), other ratios crop to
-        // 1:1 / 16:9. No auto enhance: filters are applied later from the gallery by the user.
-        // Without a crop the camera's file is saved as is (no re-encode).
-        let original = photo.data
-        let aspect = captureAspect
-        let ratio = aspect.ratio
+        // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
+        let capturedData = photo.data
         Task { [weak self] in
-            let (finished, cropSeconds) = await Task.detached(priority: .userInitiated) {
-                () -> (Data, Double?) in
-                let cropStart = Date()
-                if let plan = cropPlan {
-                    let cropped = WideCrop.crop(original, person: plan.person, target: plan.target,
-                                                torsoTarget: plan.torso, rollDegrees: plan.roll,
-                                                photoMegapixels: plan.megapixels) ?? original
-                    return (cropped, Date().timeIntervalSince(cropStart))
-                }
-                if aspect != .fourThree {
-                    let cropped = CapturedPhotoEnhancing.cropped(original, aspect: ratio) ?? original
-                    return (cropped, Date().timeIntervalSince(cropStart))
-                }
-                return (original, nil)
-            }.value
             guard let self else { return }
             let saveStart = Date()
             do {
-                if let assetID = try await self.photoLibraryService.save(imageData: finished) {
+                if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
                     self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
                 }
             } catch {
                 self.errorMessage = error.localizedDescription
             }
-            let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
-            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + crop
-                + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
+            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs · save %.2fs",
+                                         self.shutterSeconds, captureSeconds, Date().timeIntervalSince(saveStart))
         }
     }
       
 
-    /// Saves the reviewed photo: the enhanced version (the original if the enhance failed),
-    /// plus the cropped version in crop modes. Closes the review when done.
+    /// Saves the reviewed photo: the enhanced version (the original if the enhance failed).
     func saveReview() async {
         guard let review, !review.isEnhancing, !isSavingReview else { return }
         isSavingReview = true
@@ -728,16 +696,6 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
-            }
-            // Crop modes (testing): also save the cropped, straightened version next to it.
-            if let plan = review.cropPlan {
-                let cropped = await Task.detached(priority: .userInitiated) {
-                    WideCrop.crop(data, person: plan.person, target: plan.target,
-                                  rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
-                }.value
-                if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
-                    galleryStore.addCaptured(assetID: assetID, presetID: nil)
-                }
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {
