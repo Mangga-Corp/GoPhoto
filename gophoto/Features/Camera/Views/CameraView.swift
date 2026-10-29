@@ -4,10 +4,6 @@
 //
 //  Created by Brian Juniarta Darmadi on 10/10/26.
 //
-//
-//  CameraView.swift
-//  gophoto
-//
 
 import SwiftUI
 import UIKit
@@ -18,7 +14,7 @@ struct CameraView: View {
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
     private static let appMode = 1
-    private static var isTesting: Bool { appMode == 2 }
+    private static var isTesting: Bool { appMode == 1 }
 
     @State private var viewModel = CameraViewModel(
         fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
@@ -38,7 +34,7 @@ struct CameraView: View {
     @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
-    
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -113,131 +109,12 @@ struct CameraView: View {
         VStack(spacing: 0) {
             topBar
 
-            CameraPreviewView(session: viewModel.session)
-                .overlay {
-                    // Step modes (B, C): rings only for left/right and the final "ready" state.
-                    if viewModel.guideMode.crops {
-                        if showsDebug {
-                            // Debug: the crop window itself (outside dimmed, green when ready).
-                            CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
-                                               isReady: viewModel.isReady)
-                        }
-                        // Otherwise no frame at all: the crop is not shown to the photographer.
-                    } else if viewModel.guideMode == .currentOldLook {
-                        GuideFramesOverlay(target: viewModel.target.rect,
-                                           personOutline: viewModel.personOutline,
-                                           isAligned: viewModel.isReady)
-                    } else if showsRing {
-                        GuideRingOverlay(target: viewModel.target.rect,
-                                         person: viewModel.personBox,
-                                         isAligned: viewModel.isReady)      // green = ready
-                    }
-                }
-                .overlay {
-                    // Ratio mask + thirds grid, under the guide visuals.
-                    CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
-                }
-                .overlay {
-                    HorizonLevelView(state: viewModel.horizon)
-                }
-                .overlay {
-                    if !showsStepBar {
-                        DirectionArrowOverlay(instruction: viewModel.instruction)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
-                        HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
-                            .padding(.bottom, 12)
-                    } else if activeStep == .distance {
-                        DistanceBar(sizeRatio: viewModel.barSizeRatio, tolerance: GuideFlow.sizeEnter,
-                                    isOK: viewModel.evaluation.checks[.distance] == .ok)
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 12)
-                    }
-                }
-                .overlay {
-                    // Mode C: camera height as two rings on the subject's eyes, not a bar.
-                    if activeStep == .height, viewModel.evaluation.heightUsesRings,
-                       let rings = viewModel.heightRings {
-                        HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
-                                          // "Don't tilt" only once the tilt is set (C); in B it comes after.
-                                          tiltError: viewModel.guideMode.tiltBeforeHeight ? viewModel.pitchError : nil,
-                                          isOK: viewModel.evaluation.checks[.height] == .ok)
-                    }
-                }
-                .overlay(alignment: .top) {
-                    if let banner = stepBanner {
-                        Text(banner)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(Color.green, in: Capsule())
-                            .padding(.top, 96)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
-                .overlay(alignment: .trailing) {
-                    if activeStep == .height, !viewModel.evaluation.heightUsesRings {
-                        // Phone icon above the zone = camera too high.
-                        GuideVerticalBar(value: viewModel.barHeightError.map { $0 / Self.barRange },
-                                         zone: GuideFlow.heightEnter / Self.barRange,
-                                         symbol: "iphone", caption: "Height",
-                                         isOK: viewModel.evaluation.checks[.height] == .ok)
-                            .padding(.trailing, 12)
-                    } else if activeStep == .tilt {
-                        // Aim point below the zone = phone tilted down too much.
-                        GuideVerticalBar(value: viewModel.barTiltError.map { -$0 / Self.barRange },
-                                         zone: GuideFlow.tiltEnter / Self.barRange,
-                                         symbol: "scope", caption: "Tilt",
-                                         isOK: viewModel.evaluation.checks[.tilt] == .ok)
-                            .padding(.trailing, 12)
-                    }
-                }
-                .overlay(alignment: .top) {
-                    InstructionPill(instruction: viewModel.instruction)
-                        .padding(.top, 12)
-                }
-                .overlay(alignment: .top) {
-                    if let status = viewModel.adaptiveFOVStatusText {
-                        AdaptiveFOVStatus(text: status)
-                            .padding(.top, 48)
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    }
-                }
-                .overlay(alignment: .top) {
-                    if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
-                        GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
-                            .padding(.top, 56)   // below the instruction pill
-                    }
-                    .padding(.top, 12)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    // Optional side-view pose guide (A / B), picked next to the ladybug.
-                    if activePoseGuide != .off {
-                        PoseGuidePanel(style: activePoseGuide, state: viewModel.poseGuide)
-                            .padding(8)
-                            .padding(.bottom, activeStep == .distance ? 48 : 0)   // clear of the distance bar
-                    }
-                }
-                .overlay(alignment: .bottomLeading) {
-                    if showsDebug {
-                        GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
-                            .padding(8)
-                    }
-                }
-                .overlay {
-                    Color.black
-                        .opacity(isFlashing ? 1 : 0)
-                        .allowsHitTesting(false)
-                }
-                .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                .layoutPriority(1)
+            cameraPreview
 
             shutterButton
                 .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
-                .overlay(alignment: .leading){
-                    GalleryShortcutButton {isShowingGallery = true}
+                .overlay(alignment: .leading) {
+                    GalleryShortcutButton { isShowingGallery = true }
                         .matchedTransitionSource(id: "gallery", in: galleryZoom)
                         .padding(.leading, 24)
                 }
@@ -277,6 +154,156 @@ struct CameraView: View {
         .sensoryFeedback(.impact(flexibility: .rigid, intensity: 1.0), trigger: viewModel.captureCount)
     }
 
+    /// The live preview with every guide layer on top. Each layer is its own property so the
+    /// compiler can type-check them one by one instead of one huge overlay chain.
+    private var cameraPreview: some View {
+        CameraPreviewView(session: viewModel.session)
+            .overlay { guideVisuals }
+            .overlay { gridOverlay }
+            .overlay { HorizonLevelView(state: viewModel.horizon) }
+            .overlay { directionArrow }
+            .overlay(alignment: .bottom) { bottomStepCard }
+            .overlay { heightRings }
+            .overlay(alignment: .top) { stepBannerView }
+            .overlay(alignment: .trailing) { sideBar }
+            .overlay(alignment: .top) { instructionPill }
+            .overlay(alignment: .top) { fovStatus }
+            .overlay(alignment: .top) { checklist }
+            .overlay(alignment: .bottomTrailing) { poseGuide }
+            .overlay(alignment: .bottomLeading) { debugPanel }
+            .overlay { flashOverlay }
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .layoutPriority(1)
+    }
+
+    // MARK: Preview layers
+
+    /// Step modes (B, C): rings only for left/right and the final "ready" state.
+    @ViewBuilder private var guideVisuals: some View {
+        if viewModel.guideMode.crops {
+            if showsDebug {
+                // Debug: the crop window itself (outside dimmed, green when ready).
+                CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
+                                   isReady: viewModel.isReady)
+            }
+            // Otherwise no frame at all: the crop is not shown to the photographer.
+        } else if viewModel.guideMode == .currentOldLook {
+            GuideFramesOverlay(target: viewModel.target.rect,
+                               personOutline: viewModel.personOutline,
+                               isAligned: viewModel.isReady)
+        } else if showsRing {
+            GuideRingOverlay(target: viewModel.target.rect,
+                             person: viewModel.personBox,
+                             isAligned: viewModel.isReady)      // green = ready
+        }
+    }
+
+    /// Ratio mask + thirds grid, under the guide visuals.
+    private var gridOverlay: some View {
+        CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
+    }
+
+    @ViewBuilder private var directionArrow: some View {
+        if !showsStepBar {
+            DirectionArrowOverlay(instruction: viewModel.instruction)
+        }
+    }
+
+    @ViewBuilder private var bottomStepCard: some View {
+        if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
+            HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
+                .padding(.bottom, 12)
+        } else if activeStep == .distance {
+            DistanceBar(sizeRatio: viewModel.barSizeRatio, tolerance: GuideFlow.sizeEnter,
+                        isOK: viewModel.evaluation.checks[.distance] == .ok)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+        }
+    }
+
+    /// Mode C: camera height as two rings on the subject's eyes, not a bar.
+    @ViewBuilder private var heightRings: some View {
+        if activeStep == .height, viewModel.evaluation.heightUsesRings,
+           let rings = viewModel.heightRings {
+            HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
+                              // "Don't tilt" only once the tilt is set (C); in B it comes after.
+                              tiltError: viewModel.guideMode.tiltBeforeHeight ? viewModel.pitchError : nil,
+                              isOK: viewModel.evaluation.checks[.height] == .ok)
+        }
+    }
+
+    @ViewBuilder private var stepBannerView: some View {
+        if let banner = stepBanner {
+            Text(banner)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.green, in: Capsule())
+                .padding(.top, 96)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder private var sideBar: some View {
+        if activeStep == .height, !viewModel.evaluation.heightUsesRings {
+            // Phone icon above the zone = camera too high.
+            GuideVerticalBar(value: viewModel.barHeightError.map { $0 / Self.barRange },
+                             zone: GuideFlow.heightEnter / Self.barRange,
+                             symbol: "iphone", caption: "Height",
+                             isOK: viewModel.evaluation.checks[.height] == .ok)
+                .padding(.trailing, 12)
+        } else if activeStep == .tilt {
+            // Aim point below the zone = phone tilted down too much.
+            GuideVerticalBar(value: viewModel.barTiltError.map { -$0 / Self.barRange },
+                             zone: GuideFlow.tiltEnter / Self.barRange,
+                             symbol: "scope", caption: "Tilt",
+                             isOK: viewModel.evaluation.checks[.tilt] == .ok)
+                .padding(.trailing, 12)
+        }
+    }
+
+    private var instructionPill: some View {
+        InstructionPill(instruction: viewModel.instruction)
+            .padding(.top, 12)
+    }
+
+    @ViewBuilder private var fovStatus: some View {
+        if let status = viewModel.adaptiveFOVStatusText {
+            AdaptiveFOVStatus(text: status)
+                .padding(.top, 48)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+    }
+
+    @ViewBuilder private var checklist: some View {
+        if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
+            GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
+                .padding(.top, 56)   // below the instruction pill
+        }
+    }
+
+    /// Optional side-view pose guide (A / B), picked next to the ladybug.
+    @ViewBuilder private var poseGuide: some View {
+        if activePoseGuide != .off {
+            PoseGuidePanel(style: activePoseGuide, state: viewModel.poseGuide)
+                .padding(8)
+                .padding(.bottom, activeStep == .distance ? 48 : 0)   // clear of the distance bar
+        }
+    }
+
+    @ViewBuilder private var debugPanel: some View {
+        if showsDebug {
+            GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
+                .padding(8)
+        }
+    }
+
+    private var flashOverlay: some View {
+        Color.black
+            .opacity(isFlashing ? 1 : 0)
+            .allowsHitTesting(false)
+    }
+
     // MARK: Step visuals (modes B and C)
 
     /// Degrees at the ends of the height and tilt bars.
@@ -294,6 +321,8 @@ struct CameraView: View {
         viewModel.guideMode.steps.isEmpty || activeStep == .horizontal || activeStep == .vertical
             || viewModel.isReady
     }
+
+    // MARK: Top bar, shutter, permission
 
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
     private var topBar: some View {
