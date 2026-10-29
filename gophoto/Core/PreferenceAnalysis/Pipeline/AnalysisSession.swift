@@ -66,7 +66,10 @@ final class AnalysisSession: ObservableObject {
         start(photos: references)
         await runTask?.value
         guard phase == .completed, let profile else { return nil }
-        return PreferenceAnalyzer.make(profile: profile, results: results, photoCount: photos.count)
+        var analysis = PreferenceAnalyzer.make(profile: profile, results: results, photoCount: photos.count)
+        let images = photos.map(\.image)
+        analysis.lightLevel = await Task.detached(priority: .utility) { PhotoLightLevel.median(of: images) }.value
+        return analysis
     }
 
     /// Starts analysing `photos` unless this exact selection is already running or finished.

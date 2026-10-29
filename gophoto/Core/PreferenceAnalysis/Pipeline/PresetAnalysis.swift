@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 13
+    static let currentVersion = 14
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -96,6 +96,10 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     var halfBodyNeck: CGPoint?
     var halfBodyTorso: Double?
     var cutBelowHip: Double?
+
+    /// How bright the reference photos are (version 14): median mean luminance, 0...1. Whole
+    /// preset only (not in the framing / shot variants). Personalises the lighting tips.
+    var lightLevel: Double?
 
     /// The analysis for the mode picked in the preset popover: that shot size's variant (or an
     /// older full / half body variant), or this one when the preset has no photo of it.
