@@ -195,6 +195,13 @@ struct CameraView: View {
                         .padding(.top, 12)
                 }
                 .overlay(alignment: .top) {
+                    if let status = viewModel.adaptiveFOVStatusText {
+                        AdaptiveFOVStatus(text: status)
+                            .padding(.top, 48)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+                }
+                .overlay(alignment: .top) {
                     if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
                         GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
                             .padding(.top, 56)   // below the instruction pill
@@ -232,6 +239,8 @@ struct CameraView: View {
         }
         .task { await viewModel.observeTilt() }
         .task { await viewModel.observePerson() }
+        .task { await viewModel.observeEnvironment() }
+        .task { await viewModel.observeZoom() }
         // A step just finished: tap + short banner so the change of task is obvious
         // (e.g. tilt is done, now move the phone up/down and keep the angle).
         .onChange(of: viewModel.evaluation.activeStep) { old, new in
@@ -328,6 +337,16 @@ struct CameraView: View {
                 .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             }
             Spacer()
+            if let zoom = viewModel.currentZoomLabel {
+                Text(zoom)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.35), in: Capsule())
+                    .accessibilityLabel("Current camera zoom \(zoom)")
+                    .padding(.trailing, 4)
+            }
             AIPreferencesButton()
                 .padding(.horizontal, 16)
                 .frame(height: 44)

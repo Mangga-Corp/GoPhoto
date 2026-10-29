@@ -64,10 +64,21 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     /// file is processed: the UI flashes there. Returns once the file is ready.
     func capturePhoto(onShutter: @escaping @Sendable () -> Void) async throws -> CapturedPhoto
     func personDetections() -> AsyncStream<PersonDetection?>
+    func environmentUpdates() -> AsyncStream<LiveEnvironmentSignal?>
+    func zoomUpdates() -> AsyncStream<Double?>
     /// Turns the body outline (old-look guide mode) on or off.
     func setOutlineEnabled(_ enabled: Bool)
     /// Take photos at the camera's largest size (mode F crops them).
     func setHighResolution(_ enabled: Bool)
+    /// Current video zoom factor, or nil when the camera is not configured.
+    var currentZoom: Double? { get }
+    /// Smallest zoom factor the active format supports, or nil when unavailable.
+    var minAvailableZoom: Double? { get }
+    /// Largest zoom factor the active format supports, or nil when unavailable.
+    var maxAvailableZoom: Double? { get }
+    /// Requests a zoom factor, clamped to device limits and GoPhoto's automatic zoom cap.
+    /// Returns the actual applied factor.
+    func applyZoom(_ factor: Double) async -> Double
 }
 
 // MARK: - Real implementation
@@ -89,6 +100,12 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private let videoQueue = DispatchQueue(label: "gophoto.camera.video")
     private let personDetector = PersonDetector()
     private var personContinuation: AsyncStream<PersonDetection?>.Continuation?
+    private var environmentContinuation: AsyncStream<LiveEnvironmentSignal?>.Continuation?
+    private var zoomContinuation: AsyncStream<Double?>.Continuation?
+    private let liveEnvironmentAnalyzer = LiveEnvironmentAnalyzer()
+    private var environmentInferenceInFlight = false
+    private var lastEnvironmentInferenceTime: TimeInterval = 0
+    private var lastEnvironmentErrorLogTime: TimeInterval = 0
     private var frameCount = 0
     /// True from the shutter until the photo arrives (videoQueue): person detection pauses so the
     /// camera's photo pipeline gets the processor. The guide keeps its last values meanwhile.
@@ -104,6 +121,11 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private var highResolution = false
     /// The camera (session queue), for the exposure and focus points.
     private var device: AVCaptureDevice?
+    /// Current zoom factor on the active device.
+    private var _currentZoom: Double = 1.0
+    /// Supported zoom range for the active format.
+    private var _minAvailableZoom: Double = 1.0
+    private var _maxAvailableZoom: Double = 1.0
     /// Where exposure and focus last aimed (video queue), upright frame, origin top-left;
     /// nil = the camera's default (frame centre).
     private var meteringPoint: CGPoint?
@@ -142,6 +164,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             sessionQueue.async {
                 if !self.session.isRunning { self.session.startRunning() }
+                self.zoomContinuation?.yield(self.device == nil ? nil : self._currentZoom)
                 continuation.resume()
             }
         }
@@ -151,6 +174,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             sessionQueue.async {
                 if self.session.isRunning { self.session.stopRunning() }
+                self.zoomContinuation?.yield(nil)
                 continuation.resume()
             }
         }
@@ -188,6 +212,59 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         videoQueue.async { self.personDetector.includeOutline = enabled }
     }
 
+    // MARK: - Zoom control
+
+    var currentZoom: Double? {
+        sessionQueue.sync { device == nil ? nil : _currentZoom }
+    }
+
+    var minAvailableZoom: Double? {
+        sessionQueue.sync { device == nil ? nil : _minAvailableZoom }
+    }
+
+    var maxAvailableZoom: Double? {
+        sessionQueue.sync { device == nil ? nil : _maxAvailableZoom }
+    }
+
+    func zoomUpdates() -> AsyncStream<Double?> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            sessionQueue.async {
+                self.zoomContinuation = continuation
+                continuation.yield(self.device == nil ? nil : self._currentZoom)
+            }
+            continuation.onTermination = { _ in
+                self.sessionQueue.async { self.zoomContinuation = nil }
+            }
+        }
+    }
+
+    func applyZoom(_ factor: Double) async -> Double {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                guard let device = self.device else {
+                    continuation.resume(returning: self._currentZoom)
+                    return
+                }
+                let automaticMaximum = min(self._maxAvailableZoom, AdaptiveFOV.maximumAutomaticZoom)
+                guard self._minAvailableZoom <= automaticMaximum else {
+                    continuation.resume(returning: self._currentZoom)
+                    return
+                }
+                let clamped = max(self._minAvailableZoom, min(automaticMaximum, factor))
+                do {
+                    try device.lockForConfiguration()
+                    defer { device.unlockForConfiguration() }
+                    device.videoZoomFactor = clamped
+                    self._currentZoom = Double(device.videoZoomFactor)
+                    self.zoomContinuation?.yield(self._currentZoom)
+                } catch {
+                    NSLog("GoPhoto camera zoom could not be applied: %@", error.localizedDescription)
+                }
+                continuation.resume(returning: self._currentZoom)
+            }
+        }
+    }
+
     // Stream of "where is the person" (nil = nobody). Detection only runs while someone listens.
     func personDetections() -> AsyncStream<PersonDetection?> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -195,6 +272,15 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
 
             continuation.onTermination = { _ in
                 self.videoQueue.async { self.personContinuation = nil }
+            }
+        }
+    }
+
+    func environmentUpdates() -> AsyncStream<LiveEnvironmentSignal?> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            videoQueue.async { self.environmentContinuation = continuation }
+            continuation.onTermination = { _ in
+                self.videoQueue.async { self.environmentContinuation = nil }
             }
         }
     }
@@ -212,6 +298,10 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         }
         let input = try AVCaptureDeviceInput(device: device)
         self.device = device
+        _minAvailableZoom = device.minAvailableVideoZoomFactor
+        _maxAvailableZoom = device.maxAvailableVideoZoomFactor
+        _currentZoom = Double(device.videoZoomFactor)
+        zoomContinuation?.yield(_currentZoom)
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
         let fov = Double(device.activeFormat.videoFieldOfView)
         videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
@@ -304,11 +394,45 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         guard frameCount.isMultiple(of: 2),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
+        scheduleEnvironmentAnalysis(from: pixelBuffer)
         var detection = personDetector.detect(in: pixelBuffer)
         detection?.verticalFOV = verticalFOV
         detection?.photoMegapixels = photoMegapixels
         continuation.yield(detection)
         updateMetering(for: detection)
+    }
+
+    /// Runs semantic scene analysis no more than once per second and never concurrently.
+    private func scheduleEnvironmentAnalysis(from pixelBuffer: CVPixelBuffer) {
+        guard environmentContinuation != nil, !environmentInferenceInFlight else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastEnvironmentInferenceTime >= 1 else { return }
+        lastEnvironmentInferenceTime = now
+        environmentInferenceInFlight = true
+        guard let image = FrameDownscaler.cgImage(from: pixelBuffer, longEdge: 640) else {
+            environmentInferenceInFlight = false
+            environmentContinuation?.yield(nil)
+            return
+        }
+        let analyzer = liveEnvironmentAnalyzer
+        Task {
+            do {
+                let signal = try await analyzer.analyze(image, sampledAt: now)
+                self.videoQueue.async {
+                    self.environmentContinuation?.yield(signal)
+                    self.environmentInferenceInFlight = false
+                }
+            } catch {
+                self.videoQueue.async {
+                    if now - self.lastEnvironmentErrorLogTime >= 30 {
+                        NSLog("GoPhoto live environment analysis failed: %@", error.localizedDescription)
+                        self.lastEnvironmentErrorLogTime = now
+                    }
+                    self.environmentContinuation?.yield(nil)
+                    self.environmentInferenceInFlight = false
+                }
+            }
+        }
     }
 
     /// Aims exposure and focus at the subject's face (else the top of the person's box, where
