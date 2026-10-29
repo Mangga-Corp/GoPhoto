@@ -197,10 +197,8 @@ struct CameraView: View {
                 .overlay(alignment: .top) {
                     VStack(spacing: 8) {
                         InstructionPill(instruction: viewModel.instruction)
-                        if let tip = viewModel.lighting.suggestion {
-                            LightingTipPill(suggestion: tip)
-                        } else if let backlight = viewModel.lighting.backlightTip {
-                            LightingTipPill(backlight: backlight)
+                        if let tip = viewModel.lighting.tip {
+                            LightingTipPill(tip: tip)
                         } else if let advice = viewModel.lighting.recommendation {
                             LightingAdvicePill(recommendation: advice)
                         }

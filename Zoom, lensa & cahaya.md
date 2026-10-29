@@ -50,23 +50,25 @@ Prinsipnya: ukuran orang di frame tetap, fotografer mundur, zoom dinaikkan. Back
 
 ## Tiket: cahaya & matahari
 
-Titik exposure sudah di wajah (sudah jalan). X1 menambah terang kalau wajah masih gelap; S1 mencegah backlight sejak awal dengan memberi tahu posisi berdiri.
+Titik exposure sudah di wajah (sudah jalan). X1 memberi tahu ke mana harus pindah kalau wajah masih gelap karena backlight; S1 mencegah backlight sejak awal dengan memberi tahu posisi berdiri dari arah matahari. Keduanya hanya saran: app tidak mengubah exposure kamera dan tidak mengedit foto, karena kamera tidak bisa menerangkan wajah backlit tanpa membakar background (percobaan bias exposure, relight person matte, dan bracket sudah dicoba lalu dibuang).
 
-### X1 · ISO & shutter otomatis saat backlight
+### X1 · Saran pindah posisi saat backlight
 
 **Type:** Story · **Priority:** High · **Estimate:** 3
 
-**Story:** Sebagai orang yang difoto, saya ingin wajah saya tetap terang walau membelakangi langit, supaya foto tidak perlu diedit.
+**Story:** Sebagai orang yang difoto, saya ingin fotografer diberi tahu ke mana harus bergeser saat wajah saya gelap karena membelakangi cahaya, supaya foto bagus tanpa diedit.
 
 **Acceptance Criteria**
 
-- Given wajah terdeteksi dan terang rata-rata wajah jauh di bawah terang frame (backlight), When kamera menyesuaikan, Then bias exposure naik bertahap (maks +1 EV) sampai terang wajah mendekati target.
-- Given bias naik, When kamera mengatur shutter, Then shutter tidak lebih lambat dari ± 1/60 detik; kekurangan cahaya ditutup dengan ISO.
-- Given backlight hilang atau orang tidak terdeteksi, When 1 detik berlalu, Then bias kembali ke 0.
-- Given langit jadi putih karena bias, When hasil dinilai, Then itu diterima: wajah jadi prioritas.
-- Given debug nyala, When kamera berjalan, Then panel menampilkan bias, ISO, dan shutter saat ini.
+- Given wajah terdeteksi, frame cukup terang (≥ 0,20), dan terang wajah < 70% terang frame selama 1 detik (backlight), When app menilai, Then muncul satu tip pindah posisi.
+- Given satu sisi background lebih terang ≥ 15% dari sisi lain, When tip muncul, Then tip menyuruh bergeser ke sisi terang itu ("Backlit. Step to your left/right, they turn to face you.").
+- Given kedua sisi background hampir sama terang (< 15%), When tip muncul, Then tip menyuruh tukar posisi ("Backlit. Swap places so the light is behind you.").
+- Given wajah naik ke ≥ 85% terang frame, atau backlight/wajah hilang selama 1 detik, When app menilai, Then tip hilang (hysteresis 70%/85% mencegah berkedip).
+- Given ruangan gelap (frame < 0,20), When app menilai, Then tidak ada tip (gelap bukan backlight).
+- Given tip backlight dan tip matahari (S1) aktif bersamaan, When tip dipilih, Then hanya satu tampil dengan prioritas: geser kiri/kanan, lalu "swap places" matahari, lalu "swap places" backlight, lalu "harsh sun", lalu "golden hour".
+- Given debug nyala, When kamera berjalan, Then panel menampilkan status backlit dan tip saat ini.
 
-**Tech notes:** ukur terang wajah vs frame dari pixel buffer di `videoQueue` (rata-rata area, misal `CIAreaAverage` di frame kecil, tiap ± 0,5 detik); `exposureTargetBias` lewat `setExposureTargetBias` dalam batas `minExposureTargetBias`…`maxExposureTargetBias`; batas shutter dari A2. Hindari mode exposure custom penuh agar auto-exposure tetap jalan.
+**Tech notes:** `BacklightController` (logika murni) dan `LuminanceMeter` mengukur terang wajah, frame, dan background kiri/kanan dari pixel buffer di `videoQueue`. `LightTip.choose` memilih satu tip dari `BacklightController` dan `SunGuidance`; `LightingCoordinator` menyimpannya di satu properti `tip`. Tidak ada perubahan pada `AVCaptureDevice`.
 
 ### S1 · Posisi berdiri dari arah matahari (SunKit)
 
@@ -78,7 +80,7 @@ Titik exposure sudah di wajah (sudah jalan). X1 menambah terang kalau wajah masi
 
 - Given izin lokasi diberikan, siang hari, dan frame sangat terang (outdoor), When kamera menghadap ± 45° ke arah matahari dan wajah lebih gelap dari background, Then muncul kalimat: "Swap places so the sun is behind you."
 - Given matahari tinggi (> 60° di atas horizon), When ada orang di frame, Then muncul saran: "Harsh sun overhead. Find some shade."
-- Given matahari di samping kamera (45°–135°), When ada orang di frame, Then tidak ada saran (cahaya samping bagus).
+- Given matahari di samping kamera (45°–135°), When ada orang di frame, Then tidak ada saran matahari (cahaya samping bagus).
 - Given izin lokasi ditolak, malam hari, atau indoor (frame tidak terang), When kamera berjalan, Then fitur diam dan tidak ada saran.
 - Given saran sudah muncul, When posisi berubah sesuai saran, Then saran hilang.
 - Given 30 menit sebelum matahari terbenam (golden hour), When kamera dibuka, Then app boleh memberi tahu "Golden hour" sekali.
