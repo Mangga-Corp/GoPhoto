@@ -30,6 +30,7 @@ final class CameraViewModel {
     private(set) var errorMessage: String?
     private(set) var horizon: HorizonState = .hidden
     private(set) var captureCount = 0
+    private(set) var currentZoomLabel: String?
     /// Where the last shot's time went (debug panel): capture, crop, enhance, save, in seconds.
     private(set) var lastShotTiming: String?
 
@@ -75,9 +76,30 @@ final class CameraViewModel {
             cameraService.setOutlineEnabled(guideMode == .currentOldLook)
             cameraService.setHighResolution(guideMode.crops)
             progress = GuideProgress()
+            adaptiveFOVReset()
             updateInstruction()
         }
     }
+
+    // MARK: Adaptive FOV state
+
+    @ObservationIgnored private var adaptiveFOVTargetZoom: Double? = nil
+    @ObservationIgnored private var adaptiveFOVLastAppliedZoom: Double? = nil
+    @ObservationIgnored private var adaptiveFOVLastChangeTime: TimeInterval? = nil
+    @ObservationIgnored private var adaptiveFOVHoldSince: TimeInterval? = nil
+    @ObservationIgnored private var adaptiveFOVWasHold: Bool = false
+    @ObservationIgnored private var adaptiveFOVResumeUntil: TimeInterval? = nil
+    @ObservationIgnored private var lastNonNilDetectionTime: TimeInterval = 0
+    @ObservationIgnored private var adaptiveFOVZoomInFlight = false
+    @ObservationIgnored private var liveEnvironmentSignal: LiveEnvironmentSignal?
+
+    private static let adaptiveFOVMaxRatePerSecond: Double = 0.5
+    private static let adaptiveFOVHysteresisDeadband: Double = 0.10
+    private static let adaptiveFOVDetectionFreezeDelay: TimeInterval = 1.5
+    private static let adaptiveFOVResumeDelay: TimeInterval = 0.5
+    @ObservationIgnored private var adaptiveFOVStatusTask: Task<Void, Never>? = nil
+    private(set) var adaptiveFOVStatusText: String? = nil
+
     /// Steps, checks and measurements of the current frame (modes B and C fill the checks).
     private(set) var evaluation = GuideEvaluation()
     @ObservationIgnored private var progress = GuideProgress()
@@ -296,6 +318,7 @@ final class CameraViewModel {
             if let mp = detection?.photoMegapixels { photoMegapixels = mp }
             recordDetection()
             updateInstruction()
+            evaluateAdaptiveFOV()
         }
         personBox = nil
         personOutline = nil
@@ -303,14 +326,25 @@ final class CameraViewModel {
         instruction = .findPerson
     }
 
-    /// Listens to the camera's exposure readings until the View's .task is cancelled.
-    func observeExposure() async {
-        for await status in cameraService.exposureStatus() {
-            exposure = status
-            lighting.ingest(status, hasPerson: personBox != nil)
+    func observeEnvironment() async {
+        for await signal in cameraService.environmentUpdates() {
+            liveEnvironmentSignal = signal
+            evaluateAdaptiveFOV()
         }
-        exposure = nil
-        lighting.reset()
+        liveEnvironmentSignal = nil
+    }
+
+    func observeZoom() async {
+        for await zoom in cameraService.zoomUpdates() {
+            let label = zoom.flatMap { value -> String? in
+                guard value.isFinite, value > 0 else { return nil }
+                return String(format: "%.1f×", value)
+            }
+            if label != currentZoomLabel {
+                currentZoomLabel = label
+            }
+        }
+        currentZoomLabel = nil
     }
 
     private func updateInstruction() {
@@ -377,6 +411,219 @@ final class CameraViewModel {
         }
     }
 
+    // MARK: - Adaptive FOV
+
+    private func adaptiveFOVReset() {
+        adaptiveFOVTargetZoom = nil
+        adaptiveFOVLastAppliedZoom = nil
+        adaptiveFOVLastChangeTime = nil
+        adaptiveFOVHoldSince = nil
+        adaptiveFOVWasHold = false
+        adaptiveFOVResumeUntil = nil
+        lastNonNilDetectionTime = 0
+        adaptiveFOVStatusText = nil
+        adaptiveFOVStatusTask?.cancel()
+        adaptiveFOVStatusTask = nil
+    }
+
+    private func adaptiveFOVShowStatus(_ text: String) {
+        if adaptiveFOVStatusText != text {
+            adaptiveFOVStatusText = text
+        }
+    }
+
+    private func adaptiveFOVHideStatus(after delay: TimeInterval = 1.5) {
+        adaptiveFOVStatusTask?.cancel()
+        adaptiveFOVStatusTask = nil
+        guard delay > 0 else {
+            adaptiveFOVStatusText = nil
+            return
+        }
+        adaptiveFOVStatusTask = Task {
+            try? await Task.sleep(for: .seconds(delay))
+            // Only clear if no new status was set while waiting.
+            if adaptiveFOVStatusTask?.isCancelled == false {
+                adaptiveFOVStatusText = nil
+            }
+        }
+    }
+
+    private func adaptiveFOVMayAct() -> Bool {
+        switch guideMode {
+        case .current, .currentOldLook, .noAngle:
+            switch instruction {
+            case .moveCloser, .moveFarther, .holdStill:
+                return true
+            default:
+                return false
+            }
+        default:
+            if let activeStep = evaluation.activeStep {
+                return activeStep == .distance
+            }
+            if !isPhoneStill {
+                return false
+            }
+            return true
+        }
+    }
+
+    private func adaptiveFOVApplyHysteresis(_ decision: AdaptiveFOV.Decision) -> AdaptiveFOV.Decision {
+        let now = ProcessInfo.processInfo.systemUptime
+        switch decision {
+        case .hold:
+            adaptiveFOVWasHold = true
+            adaptiveFOVHoldSince = now
+            return decision
+        case .narrow, .widen:
+            guard adaptiveFOVWasHold, let holdSince = adaptiveFOVHoldSince,
+                  let currentZoom = cameraService.currentZoom else {
+                adaptiveFOVWasHold = false
+                adaptiveFOVHoldSince = nil
+                return decision
+            }
+            let targetZoom: Double
+            if case let .narrow(tz, _) = decision { targetZoom = tz }
+            else if case let .widen(tz, _) = decision { targetZoom = tz }
+            else { return decision }
+            let requiredDelta = Self.adaptiveFOVHysteresisDeadband * currentZoom
+            if abs(targetZoom - currentZoom) < requiredDelta {
+                return .hold(reason: "hysteresis")
+            }
+            adaptiveFOVWasHold = false
+            adaptiveFOVHoldSince = nil
+            return decision
+        }
+    }
+
+    private func adaptiveFOVClampRate(_ targetZoom: Double, now: TimeInterval) -> Double {
+        guard let lastChangeTime = adaptiveFOVLastChangeTime,
+              let lastApplied = adaptiveFOVLastAppliedZoom else {
+            return targetZoom
+        }
+        let elapsed = now - lastChangeTime
+        let maxDelta = Self.adaptiveFOVMaxRatePerSecond * elapsed
+        let delta = targetZoom - lastApplied
+        if abs(delta) <= maxDelta {
+            return targetZoom
+        } else {
+            return lastApplied + (delta > 0 ? maxDelta : -maxDelta)
+        }
+    }
+
+    private func evaluateAdaptiveFOV() {
+        let now = ProcessInfo.processInfo.systemUptime
+
+        guard !adaptiveFOVZoomInFlight else { return }
+
+        if personBox != nil {
+            lastNonNilDetectionTime = now
+            if adaptiveFOVResumeUntil != nil {
+                adaptiveFOVResumeUntil = nil
+            }
+        }
+
+        if now - lastNonNilDetectionTime > Self.adaptiveFOVDetectionFreezeDelay {
+            adaptiveFOVResumeUntil = now + Self.adaptiveFOVResumeDelay
+            adaptiveFOVHideStatus(after: 0)
+            return
+        }
+
+        if let resumeUntil = adaptiveFOVResumeUntil, now < resumeUntil {
+            return
+        }
+
+        guard let currentZoom = cameraService.currentZoom,
+              let minZoom = cameraService.minAvailableZoom,
+              let maxZoom = cameraService.maxAvailableZoom,
+              currentZoom > 0, minZoom > 0, maxZoom >= minZoom,
+              minZoom <= AdaptiveFOV.maximumAutomaticZoom,
+              let person = personBox,
+              target.rect.height > 0 else {
+            adaptiveFOVHideStatus(after: 0)
+            return
+        }
+
+        guard adaptiveFOVMayAct() else {
+            adaptiveFOVHideStatus(after: 0.5)
+            return
+        }
+
+        let input = AdaptiveFOV.Input(
+            personBox: person,
+            face: face,
+            targetRect: target.rect,
+            currentZoom: currentZoom,
+            minZoom: minZoom,
+            maxZoom: maxZoom,
+            framing: analysis?.framing,
+            targetFaceHeight: analysis.map { $0.faceHeight } ?? nil,
+            clippedTop: analysis?.clippedTop ?? false,
+            clippedBottom: analysis?.clippedBottom ?? false,
+            distanceFactor: guideMode.distanceFactor,
+            environment: liveEnvironmentSignal,
+            preserveEnvironmentContext: shouldPreserveEnvironmentContext,
+            now: now
+        )
+        var decision = AdaptiveFOV.evaluate(input)
+        decision = adaptiveFOVApplyHysteresis(decision)
+
+        let proposedTarget: Double
+        switch decision {
+        case .narrow(let tz, _):
+            proposedTarget = tz
+        case .widen(let tz, _):
+            proposedTarget = tz
+        case .hold:
+            adaptiveFOVHideStatus(after: 1.5)
+            return
+        }
+        let effectiveMaxZoom = min(maxZoom, AdaptiveFOV.maximumAutomaticZoom)
+        let rateLimitedTarget = adaptiveFOVClampRate(proposedTarget, now: now)
+        let clampedTarget = max(minZoom, min(effectiveMaxZoom, rateLimitedTarget))
+
+        if let lastApplied = adaptiveFOVLastAppliedZoom,
+           abs(clampedTarget - lastApplied) < 0.01 {
+            adaptiveFOVHideStatus(after: 1.5)
+            return
+        }
+
+        let directionText: String
+        if clampedTarget > currentZoom {
+            directionText = "Zooming in…"
+        } else if clampedTarget < currentZoom {
+            directionText = "Zooming out…"
+        } else {
+            adaptiveFOVHideStatus(after: 0)
+            return
+        }
+        adaptiveFOVShowStatus(directionText)
+
+        adaptiveFOVZoomInFlight = true
+        adaptiveFOVTargetZoom = clampedTarget
+        Task {
+            let applied = await self.cameraService.applyZoom(clampedTarget)
+            self.adaptiveFOVLastAppliedZoom = applied
+            self.adaptiveFOVLastChangeTime = ProcessInfo.processInfo.systemUptime
+            self.adaptiveFOVZoomInFlight = false
+            self.adaptiveFOVTargetZoom = nil
+            // Keep the status visible briefly after the zoom settles so the user can
+            // perceive the change, then fade it out.
+            self.adaptiveFOVHideStatus(after: 1.2)
+        }
+    }
+
+    private var shouldPreserveEnvironmentContext: Bool {
+        guard let id = preferences.selectedPreference?.id,
+              let environment = preferences.session(for: id)?.profile?.environment else { return false }
+        let finding = environment.transferable.environmentProminence
+        guard finding.validObservationCount >= 2,
+              finding.strength >= .moderate,
+              finding.dominantShare >= 0.6,
+              let dominant = finding.dominant else { return false }
+        return dominant != .subjectDominates
+    }
+
     func stopCamera() async {
         lighting.reset()
         await cameraService.stop()
@@ -403,16 +650,6 @@ final class CameraViewModel {
         guard state == .running, !isCapturing else { return }
         isCapturing = true
 
-        // Mode F: remember where the person is and how the phone is turned at the shutter.
-        // Half body (preset cut at the bottom): the crop follows the torso, see `WideCrop.TorsoTarget`.
-        let torsoTarget: WideCrop.TorsoTarget? = analysis?.clippedBottom == true
-            ? analysis.flatMap { a in
-                a.halfBodyNeck.flatMap { neck in a.halfBodyTorso.map { WideCrop.TorsoTarget(neck: neck, torso: $0) } }
-            }
-            : nil
-        let cropPlan: (person: CGRect, target: CGRect, torso: WideCrop.TorsoTarget?, roll: Double, megapixels: Double?)? =
-            guideMode.crops ? personBox.map { ($0, target.rect, torsoTarget, roll, photoMegapixels) } : nil
-
         let photo: CapturedPhoto
         let shutterAt = Date()
         do {
@@ -430,47 +667,25 @@ final class CameraViewModel {
         let captureSeconds = Date().timeIntervalSince(shutterAt)
         lastShotTiming = String(format: "shutter %.2fs · file %.2fs · processing…", shutterSeconds, captureSeconds)
 
-        // One photo per shot, made in the background so the shutter is free: crop modes crop
-        // (from the full 4:3 frame, where the plan's coordinates are), other ratios crop to
-        // 1:1 / 16:9. No auto enhance: filters are applied later from the gallery by the user.
-        // Without a crop the camera's file is saved as is (no re-encode).
-        let original = photo.data
-        let aspect = captureAspect
-        let ratio = aspect.ratio
+        // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
+        let capturedData = photo.data
         Task { [weak self] in
-            let (finished, cropSeconds) = await Task.detached(priority: .userInitiated) {
-                () -> (Data, Double?) in
-                let cropStart = Date()
-                if let plan = cropPlan {
-                    let cropped = WideCrop.crop(original, person: plan.person, target: plan.target,
-                                                torsoTarget: plan.torso, rollDegrees: plan.roll,
-                                                photoMegapixels: plan.megapixels) ?? original
-                    return (cropped, Date().timeIntervalSince(cropStart))
-                }
-                if aspect != .fourThree {
-                    let cropped = CapturedPhotoEnhancing.cropped(original, aspect: ratio) ?? original
-                    return (cropped, Date().timeIntervalSince(cropStart))
-                }
-                return (original, nil)
-            }.value
             guard let self else { return }
             let saveStart = Date()
             do {
-                if let assetID = try await self.photoLibraryService.save(imageData: finished) {
+                if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
                     self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
                 }
             } catch {
                 self.errorMessage = error.localizedDescription
             }
-            let crop = cropSeconds.map { String(format: " · crop %.2fs", $0) } ?? ""
-            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs", self.shutterSeconds, captureSeconds) + crop
-                + String(format: " · save %.2fs", Date().timeIntervalSince(saveStart))
+            self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs · save %.2fs",
+                                         self.shutterSeconds, captureSeconds, Date().timeIntervalSince(saveStart))
         }
     }
       
 
-    /// Saves the reviewed photo: the enhanced version (the original if the enhance failed),
-    /// plus the cropped version in crop modes. Closes the review when done.
+    /// Saves the reviewed photo: the enhanced version (the original if the enhance failed).
     func saveReview() async {
         guard let review, !review.isEnhancing, !isSavingReview else { return }
         isSavingReview = true
@@ -485,16 +700,6 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
-            }
-            // Crop modes (testing): also save the cropped, straightened version next to it.
-            if let plan = review.cropPlan {
-                let cropped = await Task.detached(priority: .userInitiated) {
-                    WideCrop.crop(data, person: plan.person, target: plan.target,
-                                  rollDegrees: plan.roll, photoMegapixels: plan.megapixels)
-                }.value
-                if let cropped, let assetID = try await photoLibraryService.save(imageData: cropped) {
-                    galleryStore.addCaptured(assetID: assetID, presetID: nil)
-                }
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {

@@ -2,8 +2,8 @@
 //  CameraGridOverlay.swift
 //  gophoto
 //
-//  Camera-app style grid (rule of thirds) and photo ratio (4:3 / 1:1 / 16:9). The sensor shoots
-//  4:3; other ratios are a centred crop of it, dimmed outside in the preview and cropped on save.
+// Camera-app style grid (rule of thirds) and composition ratio (4:3 / 1:1 / 16:9).
+// Ratios other than 4:3 dim the preview outside the guide; saved photos retain the full camera frame.
 //
 
 import SwiftUI
