@@ -20,15 +20,9 @@ struct PhotoPagerView: View {
     /// assetID of the image currently on screen
     @State private var currentID: String
     @State private var isDeleting = false
-    /// AI Enhanced look previewed on the current photo; nil = photo as it is. Reset on every photo.
-    @State private var selectedLook: EnhancedLook?
-    /// Manual sliders for the current photo: the live values, and the AI Enhance values they started from
-    @State private var adjustments: PhotoEnhancer.Settings?
-    @State private var baseline: PhotoEnhancer.Settings?
-    @State private var isSavingEdit = false
-    @State private var editMessage: String?
-    /// Edit mode (after tapping Edit): the look picker replaces the photo strip.
+    /// The editor is a full-screen cover, so the viewer's toolbar never changes while editing
     @State private var isEditing = false
+    @State private var savedMessage: String?
     @Environment(\.dismiss) private var dismiss
 
     /// - Parameter startID: assetID of the photo that was tapped in the grid
@@ -51,9 +45,7 @@ struct PhotoPagerView: View {
             ForEach(photos) { photo in
                 FullPhotoView(assetID: photo.assetID,
                               createdAt: photo.createdAt,
-                              loadImage: loadImage,
-                              look: photo.assetID == currentID ? selectedLook : nil,
-                              adjustments: photo.assetID == currentID ? adjustments : nil)
+                              loadImage: loadImage)
                     .tag(photo.assetID)          // links the page to currentID
             }
         }
@@ -62,149 +54,45 @@ struct PhotoPagerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                // With a look selected the share sheet gets the filtered photo; it has Save Image.
-                if adjustments != nil {
-                    EmptyView()   // share after saving: the edit is a normal photo then
-                } else if let selectedLook {
-                    ShareLink(item: FilteredPhoto(assetID: currentID, look: selectedLook),
-                              preview: SharePreview("Photo (\(selectedLook.title))",
-                                                    image: Image(systemName: "photo")))
-                } else {
-                    ShareLink(item: SharedPhoto(assetID: currentID),
-                              preview: SharePreview("Photo", image: Image(systemName: "photo")))
-                }
+                ShareLink(item: SharedPhoto(assetID: currentID),
+                          preview: SharePreview("Photo", image: Image(systemName: "photo")))
             }
-            if !isEditing {
-                // Viewing: Edit opens the looks; Delete as before.
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                ToolbarItem(placement: .bottomBar) {
-                    Button("Edit", systemImage: "pencil") {
-                        withAnimation(.snappy) { isEditing = true }
-                    }.disabled(isDeleting)
-                }
-                ToolbarItem(placement: .bottomBar){
-                    Button("Delete", systemImage: "trash", role: .destructive){
-                        Task{await deleteCurrent()}
-                    }.disabled(isDeleting)
-                }
-            } else if adjustments == nil {
-                // Editing, looks: Cancel, Adjust (sliders from the look), Save the look.
-                ToolbarItem(placement: .bottomBar) {
-                    Button("Cancel") { finishEditing() }
-                        .disabled(isSavingEdit)
-                }
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                ToolbarItem(placement: .bottomBar) {
-                    Button("Adjust", systemImage: "slider.horizontal.3") {
-                        Task { await startEditing() }
-                    }.disabled(isSavingEdit)
-                }
-                ToolbarItem(placement: .bottomBar) {
-                    Button("Save") { Task { await saveLook() } }
-                        .bold()
-                        .disabled(selectedLook == nil || isSavingEdit)
-                }
+            ToolbarItem(placement: .bottomBar) {
+                Button("Edit", systemImage: "pencil") { isEditing = true }
+                    .disabled(isDeleting)
             }
-            // Sliders open: their panel has its own Cancel / Save.
-        }
-        .safeAreaInset(edge: .bottom){
-            VStack(spacing: 0) {
-                if let binding = Binding($adjustments) {
-                    AdjustPanelView(settings: binding,
-                                    baseline: baseline,
-                                    isSaving: isSavingEdit,
-                                    onCancel: stopEditing,
-                                    onSave: { Task { await saveEdit() } })
-                } else if isEditing {
-                    LookPickerView(assetID: currentID,
-                                   selection: $selectedLook,
-                                   loadThumbnail: loadThumbnail)
-                        .padding(.bottom, 8)
-                } else {
-                    PhotoStripView(photos: photos,
-                                   currentID: $currentID,
-                                   loadThumbnail: loadThumbnail,)
+            ToolbarSpacer(.flexible, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) {
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    Task { await deleteCurrent() }
                 }
+                .disabled(isDeleting)
             }
-            .background(.bar)
         }
-        .onChange(of: currentID) {
-            finishEditing()
+        .safeAreaInset(edge: .bottom) {
+            PhotoStripView(photos: photos,
+                           currentID: $currentID,
+                           loadThumbnail: loadThumbnail)
+                .background(.bar)
         }
-        .alert(editMessage ?? "", isPresented: Binding(get: { editMessage != nil },
-                                                       set: { if !$0 { editMessage = nil } })) {
+        .fullScreenCover(isPresented: $isEditing) {
+            editor
+        }
+        .alert(savedMessage ?? "", isPresented: Binding(get: { savedMessage != nil },
+                                                        set: { if !$0 { savedMessage = nil } })) {
             Button("OK", role: .cancel) { }
         }
     }
 
-    /// Opens the sliders at the AI Enhance values of the current photo (in the selected look).
-    private func startEditing() async {
+    private var editor: some View {
         let id = currentID
-        let look = selectedLook
-        isSavingEdit = false
-        baseline = nil
-        // Screen-sized is enough to measure the photo; the full-resolution save reuses these values
-        guard let image = await loadImage(id, CGSize(width: 1024, height: 1024)) else { return }
-        let measured = await Task.detached(priority: .userInitiated) {
-            PhotoEnhancer().baselineSettings(for: image, look: look)
-        }.value
-        guard id == currentID, let measured else { return }
-        baseline = measured
-        adjustments = measured
-    }
-
-    private func stopEditing() {
-        adjustments = nil
-        baseline = nil
-        isSavingEdit = false
-    }
-
-    /// Leaves edit mode: no look, no sliders, back to the photo strip.
-    private func finishEditing() {
-        stopEditing()
-        selectedLook = nil
-        withAnimation(.snappy) { isEditing = false }
-    }
-
-    /// Saves the selected look as a new photo (the original is unchanged): its settings are
-    /// measured on a screen-sized copy, like the sliders, and applied to the full photo.
-    private func saveLook() async {
-        guard let look = selectedLook else { return }
-        let id = currentID
-        isSavingEdit = true
-        guard let image = await loadImage(id, CGSize(width: 1024, height: 1024)) else {
-            isSavingEdit = false
-            editMessage = "The photo could not be loaded."
-            return
-        }
-        let settings = await Task.detached(priority: .userInitiated) {
-            PhotoEnhancer().baselineSettings(for: image, look: look)
-        }.value
-        guard id == currentID, let settings else { isSavingEdit = false; return }
-        let presetID = photos.first(where: { $0.assetID == id })?.presetID
-        let error = await onSaveEdit(id, presetID, settings)
-        isSavingEdit = false
-        if let error {
-            editMessage = error
-        } else {
-            finishEditing()
-            editMessage = "Saved to your gallery as a new photo. The original is unchanged."
-        }
-    }
-
-    private func saveEdit() async {
-        guard let settings = adjustments else { return }
-        let id = currentID
-        let presetID = photos.first(where: { $0.assetID == id })?.presetID
-        isSavingEdit = true
-        let error = await onSaveEdit(id, presetID, settings)
-        isSavingEdit = false
-        if let error {
-            editMessage = error
-        } else {
-            finishEditing()
-            editMessage = "Saved to your gallery as a new photo. The original is unchanged."
-        }
+        let photo = photos.first(where: { $0.assetID == id })
+        return PhotoEditorView(assetID: id,
+                               createdAt: photo?.createdAt ?? .now,
+                               loadImage: loadImage,
+                               loadThumbnail: loadThumbnail,
+                               onSave: { settings in await onSaveEdit(id, photo?.presetID, settings) },
+                               onSaved: { savedMessage = "Saved to your gallery as a new photo. The original is unchanged." })
     }
 
     /// Date + time of the photo on screen, shown in the nav bar like the Photos app

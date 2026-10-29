@@ -18,7 +18,7 @@ struct CameraView: View {
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
     private static let appMode = 1
-    private static var isTesting: Bool { appMode == 1 }
+    private static var isTesting: Bool { appMode == 2 }
 
     @State private var viewModel = CameraViewModel(
         fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
@@ -35,6 +35,7 @@ struct CameraView: View {
     /// Developer: the picked style. Testing: none.
     private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
+    @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
     
@@ -81,6 +82,9 @@ struct CameraView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .sheet(isPresented: $isShowingAcknowledgements) {
+            AcknowledgementsView()
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
@@ -206,6 +210,7 @@ struct CameraView: View {
                         GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
                             .padding(.top, 56)   // below the instruction pill
                     }
+                    .padding(.top, 12)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     // Optional side-view pose guide (A / B), picked next to the ladybug.

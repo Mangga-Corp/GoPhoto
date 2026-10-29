@@ -32,6 +32,25 @@ nonisolated enum CameraPermission: Sendable {
     case restricted   // blocked by Screen Time / device management → user can't fix it
 }
 
+/// The light the camera sees now: the backlight tip, plus values for the debug panel.
+nonisolated struct ExposureStatus: Sendable, Equatable {
+    /// Where to move because the person is backlit; nil when they are not.
+    let backlightTip: BacklightTip?
+    /// ISO, and shutter time in seconds (auto-exposure, never changed by the app).
+    let iso: Float
+    let shutter: Double
+    /// The backlight rule currently sees a backlit person (the tip follows after a moment).
+    let isBacklit: Bool
+    /// How bright the face (nil: none found), the whole frame and the background left / right of
+    /// the person are, 0...1.
+    let faceLuminance: Double?
+    let frameLuminance: Double
+    /// The brightest area behind the person (a window, the sky).
+    let peakLuminance: Double
+    let leftLuminance: Double?
+    let rightLuminance: Double?
+}
+
 // MARK: - Errors
 
 nonisolated enum CameraError: LocalizedError {
@@ -133,7 +152,15 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// Re-aim only when the subject moved this far (frame fraction), at most this often, so the
     /// brightness doesn't pump as the face box jitters.
     private static let meteringMinMove: CGFloat = 0.05
-    private static let meteringMinInterval: TimeInterval = 0.5                                                      
+    private static let meteringMinInterval: TimeInterval = 0.5
+
+    // Backlight, on the video queue: the face is measured against the frame about twice a second,
+    // and the controller answers with where to move. The camera's exposure is left alone.
+    private let luminanceMeter = LuminanceMeter()
+    private var backlight = BacklightController()
+    private var luminanceMeasuredAt: TimeInterval = 0
+    private var statusContinuation: AsyncStream<ExposureStatus>.Continuation?
+    private static let luminanceInterval: TimeInterval = 0.5
 
     // 1. Ask the user for camera permission (shows the iOS popup the first time)
     func requestPermission() async -> CameraPermission {
@@ -400,6 +427,32 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         detection?.photoMegapixels = photoMegapixels
         continuation.yield(detection)
         updateMetering(for: detection)
+        updateBacklight(face: detection?.face, person: detection?.box, pixelBuffer: pixelBuffer)
+    }
+
+    /// Backlight rule (video queue): measures the face against the frame, the brightest light behind
+    /// the person and the background on each side of the person. Throttled.
+    private func updateBacklight(face: CGRect?, person: CGRect?, pixelBuffer: CVPixelBuffer) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - luminanceMeasuredAt >= Self.luminanceInterval,
+              let reading = luminanceMeter.measure(pixelBuffer, face: face, person: person) else { return }
+        luminanceMeasuredAt = now
+        let tip = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame,
+                                   peakLuminance: reading.peak, leftLuminance: reading.left, rightLuminance: reading.right, now: now)
+        let isBacklit = backlight.isBacklit
+        sessionQueue.async {
+            self.publishStatus(tip: tip, isBacklit: isBacklit, reading: reading)
+        }
+    }
+
+    /// Session queue (where the camera is read).
+    private func publishStatus(tip: BacklightTip?, isBacklit: Bool, reading: LuminanceMeter.Reading) {
+        guard let device else { return }
+        let status = ExposureStatus(backlightTip: tip, iso: device.iso,
+                                    shutter: device.exposureDuration.seconds, isBacklit: isBacklit,
+                                    faceLuminance: reading.face, frameLuminance: reading.frame,
+                                    peakLuminance: reading.peak, leftLuminance: reading.left, rightLuminance: reading.right)
+        videoQueue.async { self.statusContinuation?.yield(status) }
     }
 
     /// Runs semantic scene analysis no more than once per second and never concurrently.

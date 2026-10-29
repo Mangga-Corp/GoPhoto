@@ -56,6 +56,8 @@ final class CameraViewModel {
     private(set) var pitch: Double = 0                   // + = phone tilted down
     private(set) var face: CGRect?                       // normalized, origin top-left
     private(set) var personOutline: CGImage?             // body outline, old-look mode only
+    private(set) var exposure: ExposureStatus?           // backlight tip / ISO / shutter (debug panel)
+    let lighting = LightingCoordinator()                 // sun / light tips; the camera owns the exposure
     @ObservationIgnored private var verticalFOV: Double? // of the upright frame, degrees
     @ObservationIgnored private var photoMegapixels: Double? // largest photo size (mode F)
 
@@ -352,6 +354,7 @@ final class CameraViewModel {
         if preset?.name != presetName { presetName = preset?.name }
         let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
         if picked != analysis { analysis = picked }
+        lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
         if analyzing != isAnalyzingPreset { isAnalyzingPreset = analyzing }
 
@@ -622,6 +625,7 @@ final class CameraViewModel {
     }
 
     func stopCamera() async {
+        lighting.reset()
         await cameraService.stop()
     }
 

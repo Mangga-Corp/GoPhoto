@@ -31,6 +31,12 @@ struct GuideDebugPanel: View {
             Text(String(format: "Horizon roll %+.1f°", viewModel.roll))
             Text(frameLine)
             Text(personLine)
+            Text(exposureLine)
+            Text(sunLine)
+            Text(lightingLine)
+            if let failure = viewModel.lighting.weatherFailure {
+                Text("Weather error: \(failure)").foregroundStyle(.red).lineLimit(4)
+            }
             if viewModel.guideMode.crops, let w = viewModel.evaluation.cropWindow {
                 Text(String(format: "Crop %.0f%% of frame (min %.0f%%) · x%.2f y%.2f",
                             w.width * 100, (viewModel.evaluation.cropMinScale ?? 0) * 100, w.minX, w.minY))
@@ -128,6 +134,32 @@ struct GuideDebugPanel: View {
         guard let box = viewModel.personBox else { return "Person: not found" }
         let o = viewModel.target.offset(of: box)
         return String(format: "Person dx %+.2f dy %+.2f size ×%.2f", o.dx, o.dy, o.sizeRatio)
+    }
+
+    private var exposureLine: String {
+        guard let e = viewModel.exposure else { return "Exposure: —" }
+        let shutter = e.shutter > 0 ? "1/\(Int((1 / e.shutter).rounded()))" : "—"
+        func level(_ v: Double?) -> String { v.map { String(format: "%.2f", $0) } ?? "—" }
+        let backlight = e.backlightTip.map { " · tip \(String(describing: $0))" } ?? (e.isBacklit ? " · backlit" : "")
+        return String(format: "ISO %.0f · ", e.iso) + shutter + " s · face \(level(e.faceLuminance))"
+            + " frame \(level(e.frameLuminance)) peak \(level(e.peakLuminance)) L \(level(e.leftLuminance)) R \(level(e.rightLuminance))" + backlight
+    }
+
+    private var sunLine: String {
+        let lighting = viewModel.lighting
+        guard let sun = lighting.sunPosition else { return "Sun: — (no location)" }
+        let heading = lighting.heading.map { String(format: "%.0f°", $0.degrees) + ($0.isReliable ? "" : "?") } ?? "—"
+        return String(format: "Sun az %.0f° alt %.0f°", sun.azimuth, sun.altitude) + " · camera \(heading)"
+    }
+
+    private var lightingLine: String {
+        let lighting = viewModel.lighting
+        let weather = lighting.weather.map { String(describing: $0) } ?? "unknown"
+        guard let advice = lighting.recommendation else { return "Light: weather \(weather) · no advice" }
+        let rule = advice.rule
+        return "Light: \(advice.scene.rawValue) (weather \(weather)) · f/\(rule.aperture.lowerBound.formatted())–"
+            + "\(rule.aperture.upperBound.formatted()) · shutter ≥1/\(Int((1 / advice.slowestShutter).rounded()))"
+            + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) (all info only)"
     }
 
     private var distanceLine: String {
