@@ -142,7 +142,7 @@ struct GuideDebugPanel: View {
         func level(_ v: Double?) -> String { v.map { String(format: "%.2f", $0) } ?? "—" }
         let backlight = e.backlightTip.map { " · tip \(String(describing: $0))" } ?? (e.isBacklit ? " · backlit" : "")
         return String(format: "ISO %.0f · ", e.iso) + shutter + " s · face \(level(e.faceLuminance))"
-            + " frame \(level(e.frameLuminance)) L \(level(e.leftLuminance)) R \(level(e.rightLuminance))" + backlight
+            + " frame \(level(e.frameLuminance)) peak \(level(e.peakLuminance)) L \(level(e.leftLuminance)) R \(level(e.rightLuminance))" + backlight
     }
 
     private var sunLine: String {

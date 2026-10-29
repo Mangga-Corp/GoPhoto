@@ -45,6 +45,8 @@ nonisolated struct ExposureStatus: Sendable, Equatable {
     /// the person are, 0...1.
     let faceLuminance: Double?
     let frameLuminance: Double
+    /// The brightest area behind the person (a window, the sky).
+    let peakLuminance: Double
     let leftLuminance: Double?
     let rightLuminance: Double?
 }
@@ -351,15 +353,15 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         updateBacklight(face: detection?.face, person: detection?.box, pixelBuffer: pixelBuffer)
     }
 
-    /// Backlight rule (video queue): measures the face against the frame and the background on
-    /// each side of the person. Throttled.
+    /// Backlight rule (video queue): measures the face against the frame, the brightest light behind
+    /// the person and the background on each side of the person. Throttled.
     private func updateBacklight(face: CGRect?, person: CGRect?, pixelBuffer: CVPixelBuffer) {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - luminanceMeasuredAt >= Self.luminanceInterval,
               let reading = luminanceMeter.measure(pixelBuffer, face: face, person: person) else { return }
         luminanceMeasuredAt = now
         let tip = backlight.update(faceLuminance: reading.face, frameLuminance: reading.frame,
-                                   leftLuminance: reading.left, rightLuminance: reading.right, now: now)
+                                   peakLuminance: reading.peak, leftLuminance: reading.left, rightLuminance: reading.right, now: now)
         let isBacklit = backlight.isBacklit
         sessionQueue.async {
             self.publishStatus(tip: tip, isBacklit: isBacklit, reading: reading)
@@ -372,7 +374,7 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         let status = ExposureStatus(backlightTip: tip, iso: device.iso,
                                     shutter: device.exposureDuration.seconds, isBacklit: isBacklit,
                                     faceLuminance: reading.face, frameLuminance: reading.frame,
-                                    leftLuminance: reading.left, rightLuminance: reading.right)
+                                    peakLuminance: reading.peak, leftLuminance: reading.left, rightLuminance: reading.right)
         videoQueue.async { self.statusContinuation?.yield(status) }
     }
 

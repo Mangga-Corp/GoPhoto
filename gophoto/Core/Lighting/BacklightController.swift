@@ -31,6 +31,18 @@ nonisolated struct BacklightController: Sendable {
         /// One side of the background brighter than the other by this share means the light comes
         /// from that side; less than this and it counts as straight behind.
         var sideDifference = 0.15
+        /// The side that "has the light" must itself be at least this bright: two dark walls that
+        /// differ a little say nothing about where the light comes from.
+        var minSideLuminance = 0.25
+        /// A face this dark (entering) / this dark (leaving) against a bright area behind the
+        /// person is backlit even when the frame average is low (a dark room with a window).
+        var darkFaceEnter = 0.25
+        var darkFaceExit = 0.30
+        /// The brightest area behind the person counts as a light from this brightness up, and the
+        /// face is backlit when darker than this share of it (entering) / of it (leaving).
+        var minPeakLuminance = 0.40
+        var peakEnterRatio = 0.35
+        var peakExitRatio = 0.50
         /// Seconds of backlight before the tip shows, so a passing glance does not trigger it.
         var confirmDelay: TimeInterval = 1.0
         /// Seconds without backlight (or without a face) before the tip goes away.
@@ -56,12 +68,13 @@ nonisolated struct BacklightController: Sendable {
         lastBacklitAt = nil
     }
 
-    /// One measurement. `faceLuminance` is nil when no face was found; `leftLuminance` and
-    /// `rightLuminance` are the background beside the person (nil when that side is too narrow).
-    mutating func update(faceLuminance: Double?, frameLuminance: Double,
+    /// One measurement. `faceLuminance` is nil when nobody was found; `peakLuminance` is the
+    /// brightest area behind the person; `leftLuminance` and `rightLuminance` are the background
+    /// beside the person (nil when that side is too narrow).
+    mutating func update(faceLuminance: Double?, frameLuminance: Double, peakLuminance: Double,
                          leftLuminance: Double?, rightLuminance: Double?, now: TimeInterval) -> BacklightTip? {
         isBacklit = Self.isBacklit(faceLuminance: faceLuminance, frameLuminance: frameLuminance,
-                                   wasBacklit: isBacklit, tuning: tuning)
+                                   peakLuminance: peakLuminance, wasBacklit: isBacklit, tuning: tuning)
         if isBacklit {
             lastBacklitAt = now
             let since = backlitSince ?? now
@@ -81,15 +94,24 @@ nonisolated struct BacklightController: Sendable {
 
     /// The brighter side of the background is where the light comes from.
     static func direction(left: Double?, right: Double?, tuning: Tuning = Tuning()) -> BacklightTip {
-        guard let left, let right, max(left, right) > 0,
+        guard let left, let right, max(left, right) >= tuning.minSideLuminance,
               abs(left - right) / max(left, right) >= tuning.sideDifference else { return .swapPlaces }
         return left > right ? .moveLeft : .moveRight
     }
 
-    private static func isBacklit(faceLuminance: Double?, frameLuminance: Double,
+    /// Two ways to be backlit: the face is much darker than the frame, or (a dark room, where the
+    /// frame average is low) the face is dark against a bright light behind the person.
+    private static func isBacklit(faceLuminance: Double?, frameLuminance: Double, peakLuminance: Double,
                                   wasBacklit: Bool, tuning: Tuning) -> Bool {
-        guard let faceLuminance, frameLuminance >= tuning.minFrameLuminance else { return false }
-        let ratio = faceLuminance / frameLuminance
-        return wasBacklit ? ratio <= tuning.exitRatio : ratio < tuning.enterRatio
+        guard let faceLuminance else { return false }
+        if frameLuminance >= tuning.minFrameLuminance {
+            let ratio = faceLuminance / frameLuminance
+            if wasBacklit ? ratio <= tuning.exitRatio : ratio < tuning.enterRatio { return true }
+        }
+        guard peakLuminance >= tuning.minPeakLuminance else { return false }
+        let ratio = faceLuminance / peakLuminance
+        return wasBacklit
+            ? faceLuminance <= tuning.darkFaceExit && ratio <= tuning.peakExitRatio
+            : faceLuminance < tuning.darkFaceEnter && ratio < tuning.peakEnterRatio
     }
 }
