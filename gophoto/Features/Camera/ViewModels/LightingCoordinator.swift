@@ -13,12 +13,9 @@ import CoreLocation
 @Observable
 final class LightingCoordinator {
 
-    /// The sun tip on screen, or nil. While one shows, the backlight tip and the recommendation
-    /// stay hidden so the tips never talk over each other.
-    private(set) var suggestion: SunSuggestion?
-    /// Where to move because the person is backlit (any light, indoors too), or nil. Shown when
-    /// there is no sun tip; it hides the recommendation.
-    private(set) var backlightTip: BacklightTip?
+    /// The one light tip on screen (sun or backlight, see `LightTip.choose`), or nil. While one
+    /// shows, the recommendation stays hidden so the tips never talk over each other.
+    private(set) var tip: LightTip?
     /// The weather recommendation to show, or nil (indoors, or nothing known about the light).
     private(set) var recommendation: LightingRecommendation?
 
@@ -94,7 +91,7 @@ final class LightingCoordinator {
         let sun = location.map { sunService.position(at: Date(), location: $0) }
         let fresh = now - lastHeadingAt < Self.headingMaxAge
         let heading = fresh ? heading.flatMap { $0.isReliable ? $0.degrees : nil } : nil
-        let tip = guidance.update(SunConditions(sun: sun, cameraHeading: heading,
+        let sunTip = guidance.update(SunConditions(sun: sun, cameraHeading: heading,
                                                 frameLuminance: exposure.frameLuminance,
                                                 faceLuminance: exposure.faceLuminance,
                                                 hasPerson: hasPerson))
@@ -106,9 +103,8 @@ final class LightingCoordinator {
         let applies = advice.scene != .unknown && (isOutdoor || advice.scene == .night)
 
         if sun != sunPosition { sunPosition = sun }
-        if tip != suggestion { suggestion = tip }
-        let backlight = tip == nil ? exposure.backlightTip : nil
-        if backlight != backlightTip { backlightTip = backlight }
+        let chosen = LightTip.choose(sun: sunTip, backlight: exposure.backlightTip)
+        if chosen != tip { tip = chosen }
         let shown = applies ? advice : nil
         if shown != recommendation { recommendation = shown }
     }
@@ -116,8 +112,7 @@ final class LightingCoordinator {
     /// The camera stopped: tips would be stale when it comes back.
     func reset() {
         guidance = SunGuidance()
-        suggestion = nil
-        backlightTip = nil
+        tip = nil
         recommendation = nil
     }
 }

@@ -10,6 +10,13 @@ struct LightingTipPill: View {
     private let title: LocalizedStringKey
     private let symbol: String
 
+    init(tip: LightTip) {
+        switch tip {
+        case .sun(let suggestion): self.init(suggestion: suggestion)
+        case .backlight(let backlight): self.init(backlight: backlight)
+        }
+    }
+
     init(suggestion: SunSuggestion) {
         switch suggestion {
         case .swapPlaces:
