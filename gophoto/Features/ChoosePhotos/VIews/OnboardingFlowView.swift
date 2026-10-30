@@ -13,6 +13,16 @@ struct OnboardingFlowView: View {
     var onFinish: () -> Void
     @State private var pickedPhotos: [PhotoItem]?
     @State private var style: StyleSummary?
+    @State private var analysisFailed = false
+    @State private var analysisRetry = 0
+
+    init(onFinish: @escaping () -> Void, resumeExistingPreference: Bool = false) {
+        self.onFinish = onFinish
+        let photos = resumeExistingPreference
+            ? PreferencesViewModel.shared.selectedPreference?.photos
+            : nil
+        _pickedPhotos = State(initialValue: photos?.isEmpty == false ? photos : nil)
+    }
 
     var body: some View {
         ZStack {
@@ -21,17 +31,26 @@ struct OnboardingFlowView: View {
                             presetName: PreferencesViewModel.shared.selectedPreference?.name ?? "",
                             onDone: onFinish)
                     .transition(.opacity)
+            } else if analysisFailed {
+                AnalysisRetryScreen {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        analysisFailed = false
+                        analysisRetry += 1
+                    }
+                }
+                .transition(.opacity)
             } else if let pickedPhotos {
                 AnalyzingScreen(photos: pickedPhotos) {
                     let preference = PreferencesViewModel.shared.selectedPreference
                     guard let summary = StyleSummary(analysis: preference?.analysis,
                                                      photos: preference?.photos ?? []) else {
-                        onFinish()
+                        withAnimation(.easeInOut(duration: 0.4)) { analysisFailed = true }
                         return
                     }
                     withAnimation(.easeInOut(duration: 0.4)) { style = summary }
                 }
                 .transition(.opacity)
+                .id(analysisRetry)
             } else {
                 PreferencesScreen { photos, name in
                     PreferencesViewModel.shared.addFirstPreference(name: name, photos: photos)
@@ -41,6 +60,26 @@ struct OnboardingFlowView: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+private struct AnalysisRetryScreen: View {
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("We couldn't finish your photo analysis.")
+                .font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Button("Try again", action: onRetry)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: Theme.background))
     }
 }
 
