@@ -1,0 +1,254 @@
+{
+  "Inputs" : {
+    "image" : {
+      "MLFeatureShortDescription" : "--"
+    }
+  },
+  "Outputs" : {
+    "up_field" : {
+      "MLFeatureShortDescription" : "--"
+    },
+    "up_confidence" : {
+      "MLFeatureShortDescription" : "--"
+    },
+    "latitude_confidence" : {
+      "MLFeatureShortDescription" : "--"
+    },
+    "latitude_field" : {
+      "MLFeatureShortDescription" : "--"
+    }
+  },
+  "TrainingInputs" : {
+
+  },
+  "Functions" : [
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h416_w320",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h320_w416",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h544_w320",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h320_w544",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h384_w320",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h320_w384",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h480_w320",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h320_w480",
+      "States" : {
+
+      }
+    },
+    {
+      "Inputs" : {
+        "image" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Outputs" : {
+        "up_field" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "up_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_confidence" : {
+          "MLFeatureShortDescription" : "--"
+        },
+        "latitude_field" : {
+          "MLFeatureShortDescription" : "--"
+        }
+      },
+      "Name" : "h320_w320",
+      "States" : {
+
+      }
+    }
+  ],
+  "States" : {
+
+  }
+}
