@@ -15,14 +15,14 @@ struct WelcomeOnboardingView: View {
                     Spacer(minLength: 18)
 
                     Text("Start with your best photos")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(Color(red: 17 / 255, green: 17 / 255, blue: 17 / 255))
+                        .font(GoPhotoDesign.headline)
+                        .foregroundStyle(GoPhotoDesign.primaryText)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text("Add your favorite self-portraits as references for your AI guide.")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(Color(red: 133 / 255, green: 133 / 255, blue: 133 / 255))
+                        .font(GoPhotoDesign.body)
+                        .foregroundStyle(GoPhotoDesign.secondaryText)
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
                         .padding(.top, 16)
@@ -30,28 +30,28 @@ struct WelcomeOnboardingView: View {
                     Spacer(minLength: 28)
 
                     Button(action: onContinue) {
-                        Text("CONTINUE")
-                            .font(.system(size: 17, weight: .semibold))
+                        Text("CHOOSE PHOTOS")
+                            .font(GoPhotoDesign.primaryButton)
                             .tracking(1.2)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 62)
-                            .background(Color(red: 146 / 255, green: 131 / 255, blue: 189 / 255))
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .frame(height: GoPhotoDesign.buttonHeight)
+                            .background(GoPhotoDesign.purple)
+                            .clipShape(RoundedRectangle(cornerRadius: GoPhotoDesign.buttonCornerRadius, style: .continuous))
                             .shadow(color: .black.opacity(0.14), radius: 14, x: 0, y: 7)
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Continue to choose reference photos")
                     .padding(.bottom, 14)
                 }
-                .padding(.horizontal, 30)
+                .padding(.horizontal, GoPhotoDesign.horizontalMargin)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.white)
+                .background(GoPhotoDesign.background)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .background(.white)
+            .background(GoPhotoDesign.background)
         }
-        .background(.white)
+        .background(GoPhotoDesign.background)
         .ignoresSafeArea(edges: .top)
     }
 }

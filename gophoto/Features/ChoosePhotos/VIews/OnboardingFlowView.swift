@@ -7,28 +7,34 @@
 
 import SwiftUI
 
-/// First-launch flow: Photos permission -> Preferences (pick photos) -> analysis -> "Your style"
-/// card -> onFinish.
+/// Resumes analysis and the "Your style" card for the preference created during first launch.
 struct OnboardingFlowView: View {
     var onFinish: () -> Void
-    @State private var pickedPhotos: [PhotoItem]?
+    let preferenceID: UUID
+    let onAnalysisCompleted: () -> Void
     @State private var style: StyleSummary?
     @State private var analysisFailed = false
     @State private var analysisRetry = 0
 
-    init(onFinish: @escaping () -> Void, resumeExistingPreference: Bool = false) {
+    init(
+        preferenceID: UUID,
+        startsAtStyleCard: Bool,
+        onAnalysisCompleted: @escaping () -> Void,
+        onFinish: @escaping () -> Void
+    ) {
+        self.preferenceID = preferenceID
+        self.onAnalysisCompleted = onAnalysisCompleted
         self.onFinish = onFinish
-        let photos = resumeExistingPreference
-            ? PreferencesViewModel.shared.selectedPreference?.photos
-            : nil
-        _pickedPhotos = State(initialValue: photos?.isEmpty == false ? photos : nil)
+        let preference = PreferencesViewModel.shared.preference(id: preferenceID)
+        let summary = StyleSummary(analysis: preference?.analysis, photos: preference?.photos ?? [])
+        _style = State(initialValue: startsAtStyleCard ? summary : nil)
     }
 
     var body: some View {
         ZStack {
             if let style {
                 StyleScreen(summary: style,
-                            presetName: PreferencesViewModel.shared.selectedPreference?.name ?? "",
+                            presetName: PreferencesViewModel.shared.preference(id: preferenceID)?.name ?? "",
                             onDone: onFinish)
                     .transition(.opacity)
             } else if analysisFailed {
@@ -39,22 +45,26 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .transition(.opacity)
-            } else if let pickedPhotos {
-                AnalyzingScreen(photos: pickedPhotos) {
-                    let preference = PreferencesViewModel.shared.selectedPreference
-                    guard let summary = StyleSummary(analysis: preference?.analysis,
-                                                     photos: preference?.photos ?? []) else {
+            } else if let preference = PreferencesViewModel.shared.preference(id: preferenceID) {
+                AnalyzingScreen(preferenceID: preferenceID, photos: preference.photos) {
+                    guard let preference = PreferencesViewModel.shared.preference(id: preferenceID),
+                          preference.analysis?.isCurrent == true,
+                          let summary = StyleSummary(analysis: preference.analysis, photos: preference.photos) else {
                         withAnimation(.easeInOut(duration: 0.4)) { analysisFailed = true }
                         return
                     }
-                    withAnimation(.easeInOut(duration: 0.4)) { style = summary }
+                    onAnalysisCompleted()
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        style = summary
+                    }
                 }
                 .transition(.opacity)
                 .id(analysisRetry)
             } else {
-                PreferencesScreen { photos, name in
-                    PreferencesViewModel.shared.addFirstPreference(name: name, photos: photos)
-                    withAnimation(.easeInOut(duration: 0.4)) { pickedPhotos = photos }
+                AnalysisRetryScreen {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        analysisFailed = true
+                    }
                 }
                 .transition(.opacity)
             }
@@ -83,19 +93,6 @@ private struct AnalysisRetryScreen: View {
     }
 }
 
-private struct PreferencesScreen: UIViewControllerRepresentable {
-    var onPhotosPicked: ([PhotoItem], String) -> Void
-
-    func makeUIViewController(context: Context) -> AIPreferencesViewController {
-        let viewModel = ChoosePhotosViewModel(service: ChoosePhotosService(),
-                                              preferenceName: "Preferences", items: [], mode: .onboarding)
-        let vc = AIPreferencesViewController(viewModel: viewModel)
-        vc.onPhotosAdded = onPhotosPicked
-        return vc
-    }
-    func updateUIViewController(_ vc: AIPreferencesViewController, context: Context) {}
-}
-
 private struct StyleScreen: UIViewControllerRepresentable {
     let summary: StyleSummary
     let presetName: String
@@ -110,11 +107,12 @@ private struct StyleScreen: UIViewControllerRepresentable {
 }
 
 private struct AnalyzingScreen: UIViewControllerRepresentable {
+    let preferenceID: UUID
     let photos: [PhotoItem]
     var onFinish: () -> Void
 
     func makeUIViewController(context: Context) -> AnalyzingViewController {
-        let vc = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: PreferencesViewModel.shared.selectedID),
+        let vc = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: preferenceID),
                                          photos: photos)
         vc.onFinish = onFinish
         return vc

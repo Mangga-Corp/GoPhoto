@@ -18,6 +18,7 @@ final class AIPreferencesViewController: UIViewController {
     var framingOf: ((PhotoItem) -> String?)?
 
     private let viewModel: ChoosePhotosViewModel
+    private var photoPickerFlow: PhotoPreferencePickerFlow?
 
     /// Title = preference name. Tap to rename (shows the selection count while selecting).
     private let titleField: UITextField = {
@@ -160,7 +161,15 @@ final class AIPreferencesViewController: UIViewController {
         viewModel.onSelectionChange = { [weak self] in self?.renderSelection() }
         backButton.addAction(UIAction { [weak self] _ in self?.backTapped() }, for: .touchUpInside)
         selectButton.addAction(UIAction { [weak self] _ in self?.viewModel.toggleSelecting() }, for: .touchUpInside)
-        addButton.addAction(UIAction { [weak self] _ in self?.addTapped() }, for: .touchUpInside)
+        photoPickerFlow = PhotoPreferencePickerFlow(
+            presenter: self,
+            viewModel: viewModel,
+            onSave: { [weak self] photos, name in
+                self?.onPhotosAdded?(photos, name)
+                return nil
+            }
+        )
+        addButton.addAction(UIAction { [weak self] _ in self?.photoPickerFlow?.start() }, for: .touchUpInside)
         trashButton.addAction(UIAction { [weak self] _ in self?.confirmDelete() }, for: .touchUpInside)
 
         // Tap outside the title field to finish renaming (does not block taps on photos).
@@ -264,63 +273,6 @@ final class AIPreferencesViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func addTapped() {
-        switch viewModel.addTapped() {
-        case .limitReached: showAlert(message: viewModel.limitMessage)
-        case .permission: requestAccessThenPick()
-        case .picker: presentPicker()
-        case .settings: showSettingsAlert()
-        }
-    }
-
-    private func requestAccessThenPick() {
-        viewModel.requestAccess { [weak self] canBrowse in
-            if canBrowse { self?.presentPicker() }
-        }
-    }
-
-    private func presentPicker() {
-        let vc = SelectPhotoViewController(viewModel: viewModel.makePickerViewModel())
-        vc.onCancel = { [weak self] in self?.dismiss(animated: true) }
-        vc.onDone = { [weak self] newItems in
-            guard let self else { return }
-            self.viewModel.append(newItems)
-            self.dismiss(animated: true) {
-                guard !newItems.isEmpty, self.viewModel.asksNameAfterPicking else { return }
-                if let message = self.viewModel.minimumPhotosMessage {
-                    self.showAlert(message: message)
-                    return
-                }
-                self.askPreferenceName { name in self.onPhotosAdded?(self.viewModel.items, name) }
-            }
-        }
-        present(vc, animated: true)
-    }
-
-    private func askPreferenceName(completion: @escaping (String) -> Void) {
-        let alert = UIAlertController(title: viewModel.namePromptTitle,
-                                      message: viewModel.namePromptMessage, preferredStyle: .alert)
-        let confirm = UIAlertAction(title: "Continue", style: .default) { [weak alert] _ in
-            let name = alert?.textFields?.first?.text ?? ""
-            completion(name.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        confirm.isEnabled = false
-        alert.addTextField { [weak self, weak confirm, weak alert] textField in
-            textField.placeholder = "Name"
-            textField.autocapitalizationType = .words
-            textField.addAction(UIAction { [weak alert] action in
-                guard let self else { return }
-                let text = (action.sender as? UITextField)?.text ?? ""
-                let error = self.viewModel.nameError(for: text)
-                confirm?.isEnabled = error == nil
-                alert?.message = (error == nil || text.isEmpty) ? self.viewModel.namePromptMessage : error
-            }, for: .editingChanged)
-        }
-        alert.addAction(confirm)
-        alert.preferredAction = confirm
-        present(alert, animated: true)
-    }
-
     /// Confirmation like the Photos app: an action sheet with a destructive button and Cancel.
     private func confirmDelete() {
         let sheet = UIAlertController(title: nil, message: viewModel.deleteConfirmMessage, preferredStyle: .actionSheet)
@@ -339,15 +291,6 @@ final class AIPreferencesViewController: UIViewController {
         present(a, animated: true)
     }
 
-    private func showSettingsAlert() {
-        let a = UIAlertController(title: "Photo Access Needed",
-                                  message: "Allow photo access in Settings to choose photos.", preferredStyle: .alert)
-        a.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        a.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        })
-        present(a, animated: true)
-    }
 }
 
 extension AIPreferencesViewController: UITextFieldDelegate {
