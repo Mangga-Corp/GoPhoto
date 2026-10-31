@@ -161,9 +161,14 @@ struct CameraView: View {
             .overlay { guideVisuals }
             .overlay { gridOverlay }
             .overlay { HorizonLevelView(state: viewModel.horizon) }
-            .overlay { directionArrow }
+            .overlay {
+                GuidanceMotionOverlay(
+                    instruction: viewModel.instruction,
+                    pitchError: viewModel.pitchError,
+                    isEnabled: !isShowingGallery && !isShowingAnalysis
+                )
+            }
             .overlay(alignment: .bottom) { bottomStepCard }
-            .overlay { heightRings }
             .overlay(alignment: .top) { stepBannerView }
             .overlay(alignment: .trailing) { sideBar }
             .overlay(alignment: .top) { instructionPill }
@@ -191,22 +196,12 @@ struct CameraView: View {
             GuideFramesOverlay(target: viewModel.target.rect,
                                personOutline: viewModel.personOutline,
                                isAligned: viewModel.isReady)
-        } else if showsRing {
-            GuideRingOverlay(target: viewModel.target.rect,
-                             person: viewModel.personBox,
-                             isAligned: viewModel.isReady)      // green = ready
         }
     }
 
     /// Ratio mask + thirds grid, under the guide visuals.
     private var gridOverlay: some View {
         CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
-    }
-
-    @ViewBuilder private var directionArrow: some View {
-        if !showsStepBar {
-            DirectionArrowOverlay(instruction: viewModel.instruction)
-        }
     }
 
     @ViewBuilder private var bottomStepCard: some View {
@@ -218,17 +213,6 @@ struct CameraView: View {
                         isOK: viewModel.evaluation.checks[.distance] == .ok)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
-        }
-    }
-
-    /// Mode C: camera height as two rings on the subject's eyes, not a bar.
-    @ViewBuilder private var heightRings: some View {
-        if activeStep == .height, viewModel.evaluation.heightUsesRings,
-           let rings = viewModel.heightRings {
-            HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
-                              // "Don't tilt" only once the tilt is set (C); in B it comes after.
-                              tiltError: viewModel.guideMode.tiltBeforeHeight ? viewModel.pitchError : nil,
-                              isOK: viewModel.evaluation.checks[.height] == .ok)
         }
     }
 
@@ -315,11 +299,6 @@ struct CameraView: View {
 
     private var showsStepBar: Bool {
         activeStep == .distance || activeStep == .height || activeStep == .tilt || activeStep == .heightRule
-    }
-
-    private var showsRing: Bool {
-        viewModel.guideMode.steps.isEmpty || activeStep == .horizontal || activeStep == .vertical
-            || viewModel.isReady
     }
 
     // MARK: Top bar, shutter, permission
