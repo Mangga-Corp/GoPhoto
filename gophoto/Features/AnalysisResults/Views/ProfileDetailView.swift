@@ -18,7 +18,7 @@ struct ProfileDetailView: View {
                                        description: Text("Analyse some photos to build a profile."))
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AnalysisResultsPalette.pageBackground)
         .navigationTitle("Preference Profile")
         .navigationBarTitleDisplayMode(.inline)
     }

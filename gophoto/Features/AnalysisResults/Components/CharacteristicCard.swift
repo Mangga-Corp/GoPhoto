@@ -239,7 +239,7 @@ struct EvidenceList: View {
                                     Text(item.role.label)
                                         .font(.caption2)
                                         .padding(.horizontal, 6).padding(.vertical, 1)
-                                        .background(Color(.tertiarySystemFill), in: Capsule())
+                                        .background(AnalysisResultsPalette.subtleSurface, in: Capsule())
                                 }
                                 Text(item.value).font(.footnote).foregroundStyle(.secondary)
                                 if let source = item.source {

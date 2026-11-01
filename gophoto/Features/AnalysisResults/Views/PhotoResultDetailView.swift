@@ -25,7 +25,7 @@ struct PhotoResultDetailView: View {
                                        description: Text("This photo's analysis is not available."))
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AnalysisResultsPalette.pageBackground)
         .navigationBarTitleDisplayMode(.inline)
     }
 
