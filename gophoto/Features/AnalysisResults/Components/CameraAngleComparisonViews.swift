@@ -61,7 +61,7 @@ struct CameraAngleComparisonCard: View {
                 if method == selected {
                     Text("in use").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                        .background(GoPhotoDesign.purple.opacity(0.15), in: Capsule())
                 }
                 Spacer()
                 Text(result?.category.label ?? "—").font(.footnote.weight(.semibold))

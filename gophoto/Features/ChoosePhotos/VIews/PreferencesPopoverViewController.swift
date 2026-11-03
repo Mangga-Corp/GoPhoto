@@ -29,6 +29,7 @@ final class PreferencesPopoverViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        overrideUserInterfaceStyle = .light
         view.backgroundColor = Theme.surface
         tableView.backgroundColor = .clear
         tableView.separatorColor = Theme.stroke
