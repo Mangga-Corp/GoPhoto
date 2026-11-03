@@ -167,17 +167,17 @@ struct CurvedRacingArrowView: View {
         case .down:
             // Melengkung ke KANAN BAWAH (mengalir dari atas-kiri ke kanan-bawah)
             switch index {
-            case 0: return (CGSize(width: -20, height: -8), .degrees(20))
-            case 1: return (CGSize(width: 0, height: -2), .degrees(45))
-            case 2: return (CGSize(width: 20, height: 8), .degrees(70))
+            case 0: return (CGSize(width: 5, height: 0), .degrees(20))
+            case 1: return (CGSize(width: 25, height: 8), .degrees(45))
+            case 2: return (CGSize(width: 45, height: 18), .degrees(70))
             default: return (.zero, .zero)
             }
         case .up:
             // Melengkung ke KIRI BAWAH (mengalir dari atas-kanan ke kiri-bawah, tidak ada yang ke atas)
             switch index {
-            case 0: return (CGSize(width: 20, height: -8), .degrees(160))
-            case 1: return (CGSize(width: 0, height: -2), .degrees(135))
-            case 2: return (CGSize(width: -20, height: 8), .degrees(110))
+            case 0: return (CGSize(width: -5, height: 0), .degrees(160))
+            case 1: return (CGSize(width: -25, height: 8), .degrees(135))
+            case 2: return (CGSize(width: -45, height: 18), .degrees(110))
             default: return (.zero, .zero)
             }
         }
@@ -245,7 +245,7 @@ struct GuidanceMotionOverlay: View {
                     switch motion {
                     case .tilt(let direction, _, _):
                         CurvedRacingArrowView(direction: direction)
-                            .position(x: gridLineX, y: centerY - (height / 2) - 10)
+                            .position(x: gridLineX, y: centerY - (height / 2) + 5)
                             .transition(.opacity)
 
                     case .height(let direction):
