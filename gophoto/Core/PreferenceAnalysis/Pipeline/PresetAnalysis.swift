@@ -101,11 +101,17 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// preset only (not in the framing / shot variants). Personalises the lighting tips.
     var lightLevel: Double?
 
-    /// The analysis for the mode picked in the preset popover: that shot size's variant (or an
-    /// older full / half body variant), or this one when the preset has no photo of it.
-    func forFraming(_ framing: String?) -> PresetAnalysis {
-        guard let framing else { return self }
-        return shotVariants?[framing] ?? framingVariants?[framing] ?? self
+    /// What every evidence source did over the photos, so a failed analysis (a required Vision
+    /// request could not run) is not saved like one that found nobody. Whole preset only. Nil in
+    /// analyses saved before it existed: unknown, not failed (see `usability`). Optional and
+    /// decoded if present, so older saves still decode; the version is unchanged because no
+    /// existing field changed meaning.
+    var evidence: AnalysisEvidenceSummary?
+
+    /// The analysis made from this shot size's photos only, or nil when the preset has none.
+    /// No fallback: `PhotoSessionConfiguration.resolve` decides which shot size the camera uses.
+    func shotVariant(_ shot: ShotSize) -> PresetAnalysis? {
+        shotVariants?[shot.rawValue]
     }
 
     /// Shot sizes this preset has photos of, widest first.

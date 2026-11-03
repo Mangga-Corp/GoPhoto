@@ -205,7 +205,11 @@ final class CameraViewModel {
         return next
     }
 
-    // The selected preset and what the AI learned from it (copied from PreferencesViewModel).
+    /// The session the camera guides with, set by the view (`apply(sessionConfiguration:)`).
+    /// The camera never picks a preference or shot size itself. Nil = no preset (center target).
+    private(set) var sessionConfiguration: PhotoSessionConfiguration?
+
+    // The session's preset and what the AI learned from it (read from PreferencesViewModel).
     private(set) var presetName: String?
     private(set) var presetID: UUID?
     private(set) var analysis: PresetAnalysis?
@@ -255,12 +259,14 @@ final class CameraViewModel {
          photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService(),
          galleryStore: GalleryStoreProtocol? = nil,
          preferences: PreferencesViewModel? = nil,
+         sessionConfiguration: PhotoSessionConfiguration? = nil,
          fixedSetup: (mode: GuideMode, aspect: CaptureAspect)? = nil){
         self.cameraService = cameraService
         self.motionService = motionService
         self.photoLibraryService = photoLibraryService
         self.galleryStore = galleryStore ?? GalleryStore()
         self.preferences = preferences ?? .shared
+        self.sessionConfiguration = sessionConfiguration
         if let fixedSetup {   // testing mode: fixed, not saved
             savesSetup = false
             guideMode = fixedSetup.mode
@@ -271,6 +277,15 @@ final class CameraViewModel {
     }
 
     // MARK: Intents (things the View asks for)
+
+    /// A new session (or none): the guide starts over with its preset and effective shot size.
+    func apply(sessionConfiguration configuration: PhotoSessionConfiguration?) {
+        guard configuration != sessionConfiguration else { return }
+        sessionConfiguration = configuration
+        progress = GuideProgress()
+        adaptiveFOVReset()
+        updateInstruction()
+    }
 
     func startCamera() async {
         switch await cameraService.requestPermission() {
@@ -348,11 +363,14 @@ final class CameraViewModel {
     }
 
     private func updateInstruction() {
-        // Targets come from the selected preset, so switching presets applies at once.
-        let preset = preferences.selectedPreference
+        // Targets come from the session's preset and its effective shot variant (read live, so a
+        // finished analysis applies at once). A deleted preset or a missing variant means no
+        // preset targets: another preset or shot size is never substituted here.
+        let session = sessionConfiguration
+        let preset = session.flatMap { preferences.preference(id: $0.preferenceID) }
         if preset?.id != presetID { presetID = preset?.id }
         if preset?.name != presetName { presetName = preset?.name }
-        let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
+        let picked = session.flatMap { preset?.analysis?.shotVariant($0.effectiveShotSize) }
         if picked != analysis { analysis = picked }
         lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
@@ -614,7 +632,7 @@ final class CameraViewModel {
     }
 
     private var shouldPreserveEnvironmentContext: Bool {
-        guard let id = preferences.selectedPreference?.id,
+        guard let id = presetID,
               let environment = preferences.session(for: id)?.profile?.environment else { return false }
         let finding = environment.transferable.environmentProminence
         guard finding.validObservationCount >= 2,
