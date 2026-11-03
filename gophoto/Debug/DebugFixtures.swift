@@ -96,6 +96,10 @@ enum DebugFixtures {
             analysis = fixtureAnalysis(items, shots: [], light: 0.5, side: nil, centerX: 0.5)
             analysis.evidence = AnalysisEvidenceSummary(photoRuns: runs(humans: .nothingDetected, pose: .nothingDetected,
                                                                         faces: .nothingDetected))
+        case "classic":
+            // All full body, angles mixed, centred: "The Classic" (style card screenshots).
+            analysis = fixtureAnalysis(items, shots: [.full], light: 0.5, side: nil, centerX: 0.5)
+            analysis.evidence = AnalysisEvidenceSummary(photoRuns: runs(humans: .produced, pose: .produced, faces: .produced))
         case "optionalFailure":
             analysis = fixtureAnalysis(items, shots: [.full, .threeQuarter], light: 0.5, side: nil, centerX: 0.5)
             analysis.evidence = AnalysisEvidenceSummary(photoRuns: runs(humans: .produced, pose: .produced, faces: .failed))

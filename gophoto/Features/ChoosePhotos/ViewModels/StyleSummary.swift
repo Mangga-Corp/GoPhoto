@@ -56,8 +56,10 @@ struct StyleSummary {
                 top = first
                 wide = first == .full || first == .threeQuarter
                 let copy = Self.shotCopy(first)
+                // "Full-body framing" stays as is (no "Always …"): the evidence line shows the count.
+                let always = share >= Self.alwaysShare && first != .full
                 traits.append(Trait(symbol: Self.shotSymbol(first),
-                                    title: share >= Self.alwaysShare ? Self.always(copy.title) : copy.title,
+                                    title: always ? Self.always(copy.title) : copy.title,
                                     line: copy.line, evidence: "\(k) of \(n) photos"))
             } else if ranked.count >= 2,
                       Double(k + counts[ranked[1]]!) / Double(n) >= Self.clearShare {
@@ -86,8 +88,9 @@ struct StyleSummary {
                                 line: side == .below ? "It makes you look taller." : "It feels soft and close.",
                                 evidence: n > 0 ? "\(k) of \(n) photos" : nil))
         } else if source == .mixed {
-            traits.append(Trait(symbol: "arrow.up.and.down.circle", title: "No fixed angle",
-                                line: "Your angles vary, so we'll use a classic one for each shot.",
+            // Angles vary: the camera picks the classic angle per shot (guidance unchanged).
+            traits.append(Trait(symbol: "arrow.up.and.down.circle", title: "Smart Angle",
+                                line: "We'll find the right angle for every shot.",
                                 evidence: nil))
         } else {
             traits.append(Trait(symbol: "sparkles", title: "Still learning your angle",
@@ -102,8 +105,8 @@ struct StyleSummary {
             traits.append(offSide
                 ? Trait(symbol: x < 0.5 ? "align.horizontal.left" : "align.horizontal.right",
                         title: "Off to the side", line: "You leave room for the view.", evidence: nil)
-                : Trait(symbol: "align.horizontal.center", title: "Center stage",
-                        line: "You stand right in the middle.", evidence: nil))
+                : Trait(symbol: "align.horizontal.center", title: "Centered Composition",
+                        line: "Stay naturally positioned at the center of the frame.", evidence: nil))
         }
 
         // Style name: shot (wide / close) × angle × position.
@@ -132,7 +135,7 @@ struct StyleSummary {
 
     private static func shotCopy(_ shot: PresetAnalysis.ShotSize) -> (title: String, line: String) {
         switch shot {
-        case .full:         ("Head to toe", "You like the whole you in the frame.")
+        case .full:         ("Full-body framing", "Keep your entire look in the frame.")
         case .threeQuarter: ("Knees up", "Enough to show the outfit, close enough to see your face.")
         case .half:         ("Waist up", "You keep it personal, with a bit of the place around you.")
         case .quarter:      ("Up close", "Your face does the talking.")

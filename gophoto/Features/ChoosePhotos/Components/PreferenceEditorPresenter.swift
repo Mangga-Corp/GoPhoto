@@ -68,8 +68,7 @@ final class PreferenceEditorPresenter {
                 finish()
                 return
             }
-            let card = StyleCardViewController(summary: summary, presetName: preference.name,
-                                               buttonTitle: buttonTitle)
+            let card = StyleCardViewController(summary: summary, buttonTitle: buttonTitle)
             card.modalPresentationStyle = .fullScreen
             card.modalTransitionStyle = .crossDissolve
             card.onDone = finish

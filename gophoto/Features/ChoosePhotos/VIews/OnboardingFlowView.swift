@@ -53,9 +53,7 @@ struct OnboardingFlowView: View {
     var body: some View {
         ZStack {
             if let style {
-                StyleScreen(summary: style,
-                            presetName: PreferencesViewModel.shared.preference(id: preferenceID)?.name ?? "",
-                            onDone: finish)
+                StyleScreen(summary: style, onDone: finish)
                     .transition(.opacity)
             } else if let failure {
                 AnalysisRetryScreen(failure: failure,
@@ -165,11 +163,10 @@ private struct AnalysisRetryScreen: View {
 
 private struct StyleScreen: UIViewControllerRepresentable {
     let summary: StyleSummary
-    let presetName: String
     var onDone: () -> Void
 
     func makeUIViewController(context: Context) -> StyleCardViewController {
-        let vc = StyleCardViewController(summary: summary, presetName: presetName)
+        let vc = StyleCardViewController(summary: summary)
         vc.onDone = onDone
         return vc
     }
