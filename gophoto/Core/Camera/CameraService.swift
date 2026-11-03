@@ -327,6 +327,16 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         self.device = device
         _minAvailableZoom = device.minAvailableVideoZoomFactor
         _maxAvailableZoom = device.maxAvailableVideoZoomFactor
+        // Every session starts at the baseline. The device object is shared, so it still has the
+        // zoom the previous session left it at.
+        let baseline = max(_minAvailableZoom, min(_maxAvailableZoom, AdaptiveFOV.baselineZoom))
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = baseline
+            device.unlockForConfiguration()
+        } catch {
+            NSLog("GoPhoto camera zoom could not be reset: %@", error.localizedDescription)
+        }
         _currentZoom = Double(device.videoZoomFactor)
         zoomContinuation?.yield(_currentZoom)
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.

@@ -6,40 +6,43 @@
 //
 
 import Foundation
+import Observation
 
-/// List of preferences and which one is selected. Shared by the camera popup and the editor page.
+/// A preference name that was not accepted (empty, or already used).
+struct PreferenceNameError: Error, Equatable {
+    let message: String
+}
+
+/// The saved preferences and the last one used to start a camera session.
 /// Every change is saved to disk (see PreferencesStorage).
+///
+/// Which preference and shot size the camera uses right now is session state and lives in
+/// `PhotoSessionStore`, not here.
+@Observable
 final class PreferencesViewModel {
     static let shared = PreferencesViewModel()
 
-    private let storage: PreferencesStorage
+    /// Shot size key of older versions (the popover's switch, saved across launches). Shot size
+    /// is now chosen per session and never saved, so the stale value is removed at launch.
+    private static let legacyShotSizeKey = "presetShotSize"
+
+    @ObservationIgnored private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
-    private(set) var selectedID: UUID?
-    /// Shot size picked in the preset popover (`PresetAnalysis.ShotSize.rawValue`: "full" /
-    /// "threeQuarter" / "half" / "quarter"), or nil for the preset's default. Saved across launches.
-    private(set) var framing: String? = UserDefaults.standard.string(forKey: PreferencesViewModel.framingKey)
-    private static let framingKey = "presetShotSize"
+    /// The preference used to start the most recent successful camera session. Saved as
+    /// `selectedID` in `index.json` (same field as before, so existing installs keep it).
+    /// Changed only by `recordLastSelected(id:)` (a session started) and by deleting that
+    /// preference; never points at a preference that does not exist.
+    private(set) var lastSelectedID: UUID?
 
-    func setFraming(_ framing: String?) {
-        self.framing = framing
-        UserDefaults.standard.set(framing, forKey: Self.framingKey)
-    }
-
-    /// The shot size the camera uses for a preset: the picked one when the preset has photos of
-    /// it, else the size with the most photos. Older analyses: the picked or majority framing.
-    func effectiveFraming(for preference: Preference?) -> String? {
-        guard let analysis = preference?.analysis else { return framing }
-        let shots = analysis.availableShots
-        if shots.isEmpty { return framing ?? analysis.framing }
-        if let framing, shots.contains(where: { $0.rawValue == framing }) { return framing }
-        return analysis.defaultShot?.rawValue
-    }
-
-    init(storage: PreferencesStorage = PreferencesStorage()) {
+    init(storage: PreferencesStorage = PreferencesStorage(), defaults: UserDefaults = .standard) {
         self.storage = storage
         let saved = storage.load()
         preferences = saved.preferences
-        selectedID = saved.selectedID
+        // A saved ID whose preference is gone is dropped (written out with the next save).
+        lastSelectedID = saved.selectedID.flatMap { id in
+            saved.preferences.contains { $0.id == id } ? id : nil
+        }
+        defaults.removeObject(forKey: Self.legacyShotSizeKey)
         // Presets saved before the AI existed (or with an older result) are analysed now.
         for preference in preferences where preference.analysis?.isCurrent != true {
             reanalyze(id: preference.id)
@@ -50,15 +53,23 @@ final class PreferencesViewModel {
     var canDelete: Bool { preferences.count > 1 }
     let cannotDeleteMessage = "You can’t delete this preference. At least one preference is required as the reference for your photos."
 
-    func isSelected(at index: Int) -> Bool { preferences[index].id == selectedID }
-
     func preference(id: UUID) -> Preference? { preferences.first { $0.id == id } }
 
-    var selectedPreference: Preference? { selectedID.flatMap { preference(id: $0) } }
+    var lastSelectedPreference: Preference? { lastSelectedID.flatMap { preference(id: $0) } }
 
-    func select(at index: Int) {
-        guard preferences.indices.contains(index) else { return }
-        selectedID = preferences[index].id
+    /// The preference to preselect when a new session is configured: the last one used when it
+    /// still exists, else the first saved preference with photos, else the first one. Nil only
+    /// when nothing is saved.
+    var resolvedLastSelectedID: UUID? {
+        if let preference = lastSelectedPreference { return preference.id }
+        return (preferences.first { !$0.photos.isEmpty } ?? preferences.first)?.id
+    }
+
+    /// Remembers the preference a camera session was just started with. Called by
+    /// `PhotoSessionStore` only after the session was created; unknown IDs are ignored.
+    func recordLastSelected(id: UUID) {
+        guard preference(id: id) != nil, lastSelectedID != id else { return }
+        lastSelectedID = id
         persist()
     }
 
@@ -83,14 +94,15 @@ final class PreferencesViewModel {
         return nil
     }
 
+    /// Saves a new preference and returns its ID. It does not become the last selected
+    /// preference here: that happens when a camera session is started with it.
     @discardableResult
-    func add(name: String, photos: [PhotoItem]) -> String? {
-        if let error = nameError(for: name) { return error }
+    func add(name: String, photos: [PhotoItem]) -> Result<UUID, PreferenceNameError> {
+        if let error = nameError(for: name) { return .failure(PreferenceNameError(message: error)) }
         let preference = Preference(name: name.trimmingCharacters(in: .whitespacesAndNewlines), photos: photos)
         preferences.append(preference)
-        selectedID = preference.id
         persist()
-        return nil
+        return .success(preference.id)
     }
 
     /// Returns an error message, or nil when renamed.
@@ -116,13 +128,14 @@ final class PreferencesViewModel {
     // MARK: AI analysis
 
     /// The last analysis started; the next one waits for it so only one runs at a time.
-    private var analysisChain: Task<Void, Never>?
-    private var analysisTokens: [UUID: Int] = [:]
+    @ObservationIgnored private var analysisChain: Task<Void, Never>?
+    @ObservationIgnored private var analysisTokens: [UUID: Int] = [:]
     /// Latest analysis run per preset, kept in memory for the results screen (not saved).
-    private var sessions: [UUID: AnalysisSession] = [:]
+    @ObservationIgnored private var sessions: [UUID: AnalysisSession] = [:]
+    /// Observed, so screens can show which presets are being analysed.
     private var analyzingIDs: Set<UUID> = []
     /// The newest analysis task per preset, so a screen can wait for one already running.
-    private var analysisTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var analysisTasks: [UUID: Task<Void, Never>] = [:]
 
     /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
     func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
@@ -147,7 +160,18 @@ final class PreferencesViewModel {
             await previous?.value
             guard let self else { return }
             guard self.analysisTokens[id] == token else { return }
+            self.analysisRunCount += 1
+            #if DEBUG
+            // UI tests only (`-GoPhotoFakeAnalysis <mode>`): a stand-in result instead of Vision.
+            let analysis: PresetAnalysis?
+            if let fake = await DebugFixtures.fakeAnalysis(for: photos) {
+                analysis = fake
+            } else {
+                analysis = await session.analyze(photos)
+            }
+            #else
             let analysis = await session.analyze(photos)
+            #endif
             guard self.analysisTokens[id] == token else { return }
             self.analyzingIDs.remove(id)
             if let analysis { self.setAnalysis(analysis, for: id) }
@@ -163,23 +187,33 @@ final class PreferencesViewModel {
         persist()
     }
 
-    /// Creates the first preference from the photos picked during onboarding and selects it.
-    func addFirstPreference(name: String, photos: [PhotoItem]) {
-        let preference = Preference(name: name, photos: photos)
-        preferences.append(preference)
-        selectedID = preference.id
-        persist()
-    }
-
     /// Returns false when it is the last preference (never deletable).
+    /// Deleting the last selected preference clears it (`resolvedLastSelectedID` then falls back);
+    /// another preference is not recorded as "used". A session running with the deleted
+    /// preference is invalidated by `PhotoSessionStore`, never switched to another preference.
+    ///
+    /// `allowingLast`: the camera's popover keeps at least one preference (the camera has no way
+    /// to create one from an empty state). Preference Selection passes true: it shows an empty
+    /// state with Add New Preference, and nothing else needs a saved preference to exist.
     @discardableResult
-    func delete(id: UUID) -> Bool {
-        guard canDelete, let index = preferences.firstIndex(where: { $0.id == id }) else { return false }
+    func delete(id: UUID, allowingLast: Bool = false) -> Bool {
+        guard allowingLast || canDelete,
+              let index = preferences.firstIndex(where: { $0.id == id }) else { return false }
         preferences.remove(at: index)
-        if selectedID == id { selectedID = preferences.first?.id }
+        if lastSelectedID == id { lastSelectedID = nil }
         persist()
         return true
     }
 
-    private func persist() { storage.save(preferences, selectedID: selectedID) }
+    /// Saves requested since launch. Diagnostics only (debug UI tests check that selecting a
+    /// card writes nothing); not saved.
+    private(set) var persistCount = 0
+    /// Analysis runs started since launch. Diagnostics only (debug UI tests check that a retry
+    /// really runs the analysis again); not saved.
+    private(set) var analysisRunCount = 0
+
+    private func persist() {
+        persistCount += 1
+        storage.save(preferences, selectedID: lastSelectedID)
+    }
 }
