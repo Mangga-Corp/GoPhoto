@@ -15,6 +15,8 @@ import Foundation
 nonisolated enum AdaptiveFOV: Sendable {
 
     static let maximumAutomaticZoom = 2.0
+    /// Zoom every camera session starts at, and returns to when nobody is detected.
+    static let baselineZoom = 1.0
 
     /// Tighter than GuideFlow's `sizeEnter` (0.15) so adaptive FOV acts before the
     /// guide would ask the photographer to move closer or farther away.
