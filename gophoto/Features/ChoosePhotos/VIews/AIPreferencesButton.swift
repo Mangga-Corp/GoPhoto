@@ -29,6 +29,7 @@ private final class CompactPillButton: UIButton {
         configuration.title = title
         configuration.cornerStyle = .capsule
         configuration.buttonSize = .small
+        configuration.baseForegroundColor = .white
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var attributes = $0
             attributes.font = UIFont.preferredFont(forTextStyle: .footnote)
@@ -36,6 +37,7 @@ private final class CompactPillButton: UIButton {
         }
         self.configuration = configuration
         overrideUserInterfaceStyle = .dark
+        tintColor = Theme.accent
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 

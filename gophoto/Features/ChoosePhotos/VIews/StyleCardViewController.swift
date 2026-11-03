@@ -6,6 +6,7 @@
 //  photos): the style name, up to three traits with their photo counts, and three photos.
 //
 
+import SwiftUI
 import UIKit
 
 final class StyleCardViewController: UIViewController {
@@ -22,28 +23,35 @@ final class StyleCardViewController: UIViewController {
         self.presetName = presetName
         self.buttonTitle = buttonTitle
         super.init(nibName: nil, bundle: nil)
+        overrideUserInterfaceStyle = .light
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = Theme.background
+        let background = UIColor(GoPhotoDesign.background)
+        let primaryText = UIColor(GoPhotoDesign.primaryText)
+        let secondaryText = UIColor(GoPhotoDesign.secondaryText)
+        let accent = UIColor(GoPhotoDesign.purple)
+        overrideUserInterfaceStyle = .light
+        view.backgroundColor = background
 
         let kicker = UILabel.make("YOUR STYLE", style: .footnote)
         kicker.font = .preferredFont(forTextStyle: .footnote).withWeight(.semibold)
-        kicker.textColor = Theme.accent
+        kicker.textColor = accent
 
         let name = UILabel.make(summary.name ?? "Your style, decoded", style: .largeTitle)
         name.font = .preferredFont(forTextStyle: .largeTitle).withWeight(.bold)
+        name.textColor = primaryText
 
         var header: [UIView] = [kicker, name]
         if let tagline = summary.tagline {
             let label = UILabel.make(tagline, style: .body)
-            label.textColor = Theme.text.withAlphaComponent(0.75)
+            label.textColor = secondaryText
             header.append(label)
         }
         let based = UILabel.make("Based on \(summary.photoCount) photos · \(presetName)", style: .footnote)
-        based.textColor = Theme.text.withAlphaComponent(0.6)
+        based.textColor = secondaryText
         header.append(based)
 
         let headerStack = UIStackView(arrangedSubviews: header)
@@ -61,6 +69,9 @@ final class StyleCardViewController: UIViewController {
         photos.distribution = .fillEqually
 
         let button = PillButton(title: buttonTitle, prominent: true)
+        button.configuration?.baseBackgroundColor = accent
+        button.configuration?.baseForegroundColor = .white
+        button.tintColor = accent
         button.addAction(UIAction { [weak self] _ in self?.onDone?() }, for: .touchUpInside)
 
         let content = UIStackView(arrangedSubviews: [headerStack, traitStack, photos])
@@ -117,19 +128,20 @@ final class StyleCardViewController: UIViewController {
 
     private func makeTraitRow(_ trait: StyleSummary.Trait) -> UIView {
         let icon = UIImageView(image: UIImage(systemName: trait.symbol))
-        icon.tintColor = Theme.accent
+        icon.tintColor = UIColor(GoPhotoDesign.purple)
         icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .title2)
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)
         icon.widthAnchor.constraint(equalToConstant: 32).isActive = true
 
         let title = UILabel.make(trait.title, style: .headline)
+        title.textColor = UIColor(GoPhotoDesign.primaryText)
         let line = UILabel.make(trait.line, style: .subheadline)
-        line.textColor = Theme.text.withAlphaComponent(0.75)
+        line.textColor = UIColor(GoPhotoDesign.secondaryText)
         var texts: [UIView] = [title, line]
         if let evidence = trait.evidence {
             let label = UILabel.make(evidence, style: .footnote)
-            label.textColor = Theme.accent
+            label.textColor = UIColor(GoPhotoDesign.purple)
             texts.append(label)
         }
         for case let label as UILabel in texts { label.textAlignment = .natural }
@@ -142,7 +154,7 @@ final class StyleCardViewController: UIViewController {
         row.alignment = .center
         row.isLayoutMarginsRelativeArrangement = true
         row.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
-        row.backgroundColor = Theme.surface
+        row.backgroundColor = UIColor(GoPhotoDesign.subtleSurface)
         row.layer.cornerRadius = 14
 
         row.isAccessibilityElement = true

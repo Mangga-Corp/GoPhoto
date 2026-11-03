@@ -350,7 +350,7 @@ private struct DominantElementsCard: View {
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.tertiarySystemFill))
+                    Capsule().fill(AnalysisResultsPalette.subtleSurface)
                     Capsule().fill(c.role.color.opacity(0.75)).frame(width: max(4, geo.size.width * c.score))
                 }
             }
