@@ -273,6 +273,12 @@ enum PhotoValueText {
 
 // MARK: - Card container
 
+enum AnalysisResultsPalette {
+    static let pageBackground = GoPhotoDesign.groupedBackground
+    static let cardBackground = GoPhotoDesign.background
+    static let subtleSurface = GoPhotoDesign.subtleSurface
+}
+
 struct ResultCard<Content: View>: View {
     @ViewBuilder var content: Content
 
@@ -280,7 +286,7 @@ struct ResultCard<Content: View>: View {
         content
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(AnalysisResultsPalette.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

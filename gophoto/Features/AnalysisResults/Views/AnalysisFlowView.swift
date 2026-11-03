@@ -21,7 +21,9 @@ struct AnalysisFlowView: View {
                 ResultsOverviewView(session: session, onOpenCamera: onOpenCamera)
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AnalysisResultsPalette.pageBackground)
+        .preferredColorScheme(.light)
+        .tint(GoPhotoDesign.purple)
         .navigationTitle(session.phase == .completed ? "Analysis Results" : "Analyzing Photos")
         .navigationBarTitleDisplayMode(.inline)
         .task { session.start(photos: photos) }

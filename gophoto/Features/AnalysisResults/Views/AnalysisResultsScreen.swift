@@ -39,6 +39,8 @@ struct AnalysisResultsScreen: View {
                 }
             }
         }
+        .preferredColorScheme(.light)
+        .tint(GoPhotoDesign.purple)
         .onAppear {
             if let presetID { session = preferences.session(for: presetID) }
         }
@@ -58,7 +60,7 @@ private struct AnalysisSessionContent: View {
                 ResultsOverviewView(session: session, onOpenCamera: onDone)
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AnalysisResultsPalette.pageBackground)
         .navigationDestination(for: PhotoDetailRoute.self) { route in
             PhotoResultDetailView(session: session, photoID: route.photoID)
         }

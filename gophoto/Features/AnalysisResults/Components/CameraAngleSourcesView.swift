@@ -78,7 +78,7 @@ struct CameraAngleSourcesView: View {
                     Text(o.provider.title).font(.footnote.weight(.semibold))
                     Text(roleLabel(o, used: used)).font(.caption2.weight(.medium))
                         .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(Color(.tertiarySystemFill), in: Capsule())
+                        .background(AnalysisResultsPalette.subtleSurface, in: Capsule())
                 }
                 Text(o.validity.isValid ? o.summary : (o.validity.reason ?? o.summary))
                     .font(.caption).foregroundStyle(.secondary)

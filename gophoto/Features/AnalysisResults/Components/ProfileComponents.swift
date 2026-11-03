@@ -11,7 +11,7 @@ struct PhotoThumb: View {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
-                    Color(.tertiarySystemFill)
+                    AnalysisResultsPalette.subtleSurface
                     Image(systemName: "photo").foregroundStyle(.secondary)
                 }
             }
@@ -29,7 +29,7 @@ struct CoverageSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: coverage.fraction)
-                .tint(coverage.determinedCount == 0 ? .gray : .accentColor)
+                .tint(coverage.determinedCount == 0 ? .gray : GoPhotoDesign.purple)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
@@ -111,8 +111,8 @@ struct FindingSection<Category: Hashable & Sendable>: View {
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.tertiarySystemFill))
-                    Capsule().fill(isDominant ? Color.green : Color.accentColor.opacity(0.7))
+                    Capsule().fill(AnalysisResultsPalette.subtleSurface)
+                    Capsule().fill(isDominant ? Color.green : GoPhotoDesign.purple.opacity(0.7))
                         .frame(width: max(6, geo.size.width * share))
                 }
             }
@@ -144,7 +144,7 @@ struct PositionMap: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(.tertiarySystemFill))
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(AnalysisResultsPalette.subtleSurface)
                 Path { p in
                     for i in 1...2 {
                         let f = CGFloat(i) / 3
@@ -161,7 +161,7 @@ struct PositionMap: View {
                 }
                 ForEach(dots) { dot in
                     ZStack {
-                        Circle().fill(Color.accentColor)
+                        Circle().fill(GoPhotoDesign.purple)
                         Text("\(dot.index)").font(.caption2.bold()).foregroundStyle(.white)
                     }
                     .frame(width: 20, height: 20)
