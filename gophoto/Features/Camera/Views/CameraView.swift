@@ -81,6 +81,8 @@ struct CameraView: View {
         }
         .sheet(isPresented: $isShowingAcknowledgements) {
             AcknowledgementsView()
+                .preferredColorScheme(.light)
+                .tint(GoPhotoDesign.purple)
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
@@ -99,8 +101,11 @@ struct CameraView: View {
                         }
                     }
             }
+            .preferredColorScheme(.light)
+            .tint(GoPhotoDesign.purple)
             .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
         }
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Layout (like the Camera app: slim top bar, 4:3 image, big bottom area)

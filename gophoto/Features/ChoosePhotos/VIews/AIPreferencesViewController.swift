@@ -146,6 +146,7 @@ final class AIPreferencesViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        overrideUserInterfaceStyle = .light
         view.backgroundColor = Theme.background
         collectionView.backgroundColor = .clear
         collectionView.dataSource = self

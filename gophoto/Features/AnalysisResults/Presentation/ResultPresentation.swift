@@ -274,9 +274,9 @@ enum PhotoValueText {
 // MARK: - Card container
 
 enum AnalysisResultsPalette {
-    static let pageBackground = Color(red: 0.96, green: 0.96, blue: 0.97)
+    static let pageBackground = GoPhotoDesign.groupedBackground
     static let cardBackground = GoPhotoDesign.background
-    static let subtleSurface = Color(red: 0.93, green: 0.93, blue: 0.95)
+    static let subtleSurface = GoPhotoDesign.subtleSurface
 }
 
 struct ResultCard<Content: View>: View {

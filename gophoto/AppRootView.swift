@@ -27,11 +27,15 @@ struct AppRootView: View {
                         },
                         onFinish: completeOnboarding
                     )
+                    .preferredColorScheme(.light)
+                    .tint(GoPhotoDesign.purple)
                 } else {
                     PhotoSessionSetupView { preferenceID in
                         onboardingPreferenceID = preferenceID
                         firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
                     }
+                    .preferredColorScheme(.light)
+                    .tint(GoPhotoDesign.purple)
                 }
             } else if PreferencesViewModel.shared.hasPreferences {
                 CameraView()
@@ -45,6 +49,8 @@ struct AppRootView: View {
                     firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
                     welcomeOnboardingStarted = true
                 }
+                .preferredColorScheme(.light)
+                .tint(GoPhotoDesign.purple)
             }
         }
     }

@@ -29,7 +29,7 @@ struct PreferencePhotoPager: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+            GoPhotoDesign.background.ignoresSafeArea()
 
             TabView(selection: $current) {
                 ForEach(images.indices, id: \.self) { index in
@@ -44,17 +44,17 @@ struct PreferencePhotoPager: View {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(GoPhotoDesign.primaryText)
                         .frame(width: 44, height: 44)
-                        .background(.black.opacity(0.4), in: Circle())
+                        .background(GoPhotoDesign.subtleSurface, in: Circle())
                 }
                 .accessibilityLabel("Close")
                 Spacer()
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(GoPhotoDesign.primaryText)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(.black.opacity(0.4), in: Capsule())
+                    .background(GoPhotoDesign.subtleSurface, in: Capsule())
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)
             }

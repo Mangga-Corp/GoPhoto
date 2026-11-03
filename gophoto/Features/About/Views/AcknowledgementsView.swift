@@ -65,6 +65,7 @@ struct AcknowledgementsView: View {
             }
             .task { weatherAttribution = await weatherService.attribution() }
         }
+        .preferredColorScheme(.light)
     }
 
     /// Apple's mark when it could be loaded, its name as text otherwise (offline).

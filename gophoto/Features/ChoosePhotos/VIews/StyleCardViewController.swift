@@ -154,7 +154,7 @@ final class StyleCardViewController: UIViewController {
         row.alignment = .center
         row.isLayoutMarginsRelativeArrangement = true
         row.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
-        row.backgroundColor = UIColor(GoPhotoDesign.purple).withAlphaComponent(0.10)
+        row.backgroundColor = UIColor(GoPhotoDesign.subtleSurface)
         row.layer.cornerRadius = 14
 
         row.isAccessibilityElement = true
