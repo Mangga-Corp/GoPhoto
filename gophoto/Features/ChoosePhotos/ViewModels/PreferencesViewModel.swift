@@ -21,6 +21,7 @@ struct PreferenceNameError: Error, Equatable {
 @Observable
 final class PreferencesViewModel {
     static let shared = PreferencesViewModel()
+    static let pendingOnboardingPreferenceIDKey = "firstTimeOnboardingPreferenceID"
 
     /// Shot size key of older versions (the popover's switch, saved across launches). Shot size
     /// is now chosen per session and never saved, so the stale value is removed at launch.
@@ -28,6 +29,7 @@ final class PreferencesViewModel {
 
     @ObservationIgnored private let storage: PreferencesStorage
     private(set) var preferences: [Preference]
+    private var isSavingNewPreference = false
     /// The preference used to start the most recent successful camera session. Saved as
     /// `selectedID` in `index.json` (same field as before, so existing installs keep it).
     /// Changed only by `recordLastSelected(id:)` (a session started) and by deleting that
@@ -43,8 +45,11 @@ final class PreferencesViewModel {
             saved.preferences.contains { $0.id == id } ? id : nil
         }
         defaults.removeObject(forKey: Self.legacyShotSizeKey)
-        // Presets saved before the AI existed (or with an older result) are analysed now.
-        for preference in preferences where preference.analysis?.isCurrent != true {
+        let pendingOnboardingID = defaults.string(forKey: Self.pendingOnboardingPreferenceIDKey)
+            .flatMap { UUID(uuidString: $0) }
+        // Keep the new first-time preference available for Phase 3 without starting analysis yet.
+        for preference in preferences
+        where preference.analysis?.isCurrent != true && preference.id != pendingOnboardingID {
             reanalyze(id: preference.id)
         }
     }
@@ -103,6 +108,62 @@ final class PreferencesViewModel {
         preferences.append(preference)
         persist()
         return .success(preference.id)
+    }
+
+    /// Commits a new preference and its source images before publishing it in memory. Used by
+    /// first-time setup so a successful name submission is recoverable after app interruption.
+    func addPersisted(
+        id: UUID = UUID(),
+        name: String,
+        photos: [PhotoItem],
+        completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
+    ) {
+        guard !isSavingNewPreference else {
+            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            return
+        }
+        if let error = nameError(for: name) {
+            completion(.failure(PreferenceNameError(message: error)))
+            return
+        }
+
+        var seenPhotoIDs = Set<UUID>()
+        var seenAssetIDs = Set<String>()
+        let validPhotos = photos.filter { photo in
+            guard seenPhotoIDs.insert(photo.id).inserted else { return false }
+            guard let assetID = photo.sourceAssetIdentifier else { return true }
+            return seenAssetIDs.insert(assetID).inserted
+        }
+        guard validPhotos.count >= ChoosePhotosViewModel.minPhotos else {
+            completion(.failure(PreferenceNameError(
+                message: "Select at least \(ChoosePhotosViewModel.minPhotos) valid photos before continuing."
+            )))
+            return
+        }
+
+        let preference = Preference(
+            id: id,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            photos: validPhotos
+        )
+        let updatedPreferences = preferences + [preference]
+        isSavingNewPreference = true
+        storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isSavingNewPreference = false
+                switch result {
+                case .success:
+                    self.preferences.append(preference)
+                    self.persistCount += 1
+                    completion(.success(preference.id))
+                case .failure:
+                    completion(.failure(PreferenceNameError(
+                        message: "Couldn't save the preference and its photos. Check available storage and try again."
+                    )))
+                }
+            }
+        }
     }
 
     /// Returns an error message, or nil when renamed.

@@ -6,6 +6,15 @@
 //
 
 import UIKit
+import os
+
+private enum PreferenceStorageError: LocalizedError {
+    case photoEncodingFailed
+
+    var errorDescription: String? {
+        "A selected photo could not be saved."
+    }
+}
 
 /// Saves preferences (names + photos) in the app's Application Support folder.
 final class PreferencesStorage {
@@ -40,6 +49,7 @@ final class PreferencesStorage {
     private let fileManager = FileManager.default
     private let ioQueue = DispatchQueue(label: "gophoto.preferences.storage", qos: .utility)
     private let root: URL
+    private let logger = Logger(subsystem: "co.mango.gophoto", category: "preferences.storage")
 
     init() {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -64,8 +74,10 @@ final class PreferencesStorage {
     func load() -> (preferences: [Preference], selectedID: UUID?) {
         guard let data = try? Data(contentsOf: indexURL),
               let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return ([], nil) }
+        let referencedFiles = Set(snapshot.entries.flatMap(\.photoIDs).map { photoURL($0).lastPathComponent })
+        removeUnreferencedPhotoFiles(keeping: referencedFiles)
         let preferences = snapshot.entries.map { entry in
-            let photos = entry.photoIDs.compactMap { id -> PhotoItem? in
+            let photos = unique(entry.photoIDs).compactMap { id -> PhotoItem? in
                 guard let image = UIImage(contentsOfFile: photoURL(id).path) else { return nil }
                 return PhotoItem(id: id, image: image, focalLength35mm: entry.focals?[id.uuidString])
             }
@@ -74,31 +86,91 @@ final class PreferencesStorage {
         return (preferences, snapshot.selectedID)
     }
 
-    /// Runs in the background so picking many photos doesn't freeze the UI.
-    func save(_ preferences: [Preference], selectedID: UUID?) {
+    /// Runs in the background so picking many photos doesn't freeze the UI. New image files are
+    /// written before the index is atomically replaced; failed writes remove files created by
+    /// this save, leaving the previous index and preference set intact.
+    func save(
+        _ preferences: [Preference],
+        selectedID: UUID?,
+        completion: ((Result<Void, Error>) -> Void)? = nil
+    ) {
         ioQueue.async { [self] in
-            let photos = preferences.flatMap(\.photos)
-            for photo in photos {
-                let url = photoURL(photo.id)
-                guard !fileManager.fileExists(atPath: url.path),
-                      let data = photo.image.jpegData(compressionQuality: 0.85) else { continue }
-                try? data.write(to: url, options: .atomic)
+            do {
+                try saveSynchronously(preferences, selectedID: selectedID)
+                completion?(.success(()))
+            } catch {
+                logger.error("Could not save preferences: \(error.localizedDescription, privacy: .public)")
+                completion?(.failure(error))
             }
-            // Remove photo files that no longer belong to any preference.
-            let used = Set(photos.map { photoURL($0.id).lastPathComponent })
-            for file in (try? fileManager.contentsOfDirectory(atPath: photosURL.path)) ?? [] where !used.contains(file) {
-                try? fileManager.removeItem(at: photosURL.appendingPathComponent(file))
-            }
-            let snapshot = Snapshot(
-                entries: preferences.map { preference in
-                    let focals = preference.photos.reduce(into: [String: Double]()) { map, photo in
-                        if let f = photo.focalLength35mm { map[photo.id.uuidString] = f }
-                    }
-                    return .init(id: preference.id, name: preference.name, photoIDs: preference.photos.map(\.id),
-                                 analysis: preference.analysis, focals: focals.isEmpty ? nil : focals)
-                },
-                selectedID: selectedID)
-            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: indexURL, options: .atomic) }
         }
+    }
+
+    private func saveSynchronously(_ preferences: [Preference], selectedID: UUID?) throws {
+        try fileManager.createDirectory(at: photosURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let uniquePhotosByID = preferences.reduce(into: [UUID: PhotoItem]()) { result, preference in
+            for photo in preference.photos where result[photo.id] == nil {
+                result[photo.id] = photo
+            }
+        }
+        let entries = preferences.map { preference -> Snapshot.Entry in
+            let photos = unique(preference.photos)
+            let focals = photos.reduce(into: [String: Double]()) { map, photo in
+                if let focal = photo.focalLength35mm { map[photo.id.uuidString] = focal }
+            }
+            return .init(id: preference.id, name: preference.name, photoIDs: photos.map(\.id),
+                         analysis: preference.analysis, focals: focals.isEmpty ? nil : focals)
+        }
+        let snapshot = Snapshot(entries: entries, selectedID: selectedID)
+        let indexData = try JSONEncoder().encode(snapshot)
+        let usedFiles = Set(uniquePhotosByID.keys.map { photoURL($0).lastPathComponent })
+        var filesCreatedByThisSave: [URL] = []
+
+        do {
+            for photo in uniquePhotosByID.values {
+                let destination = photoURL(photo.id)
+                guard !fileManager.fileExists(atPath: destination.path) else { continue }
+                guard let imageData = photo.image.jpegData(compressionQuality: 0.85) else {
+                    throw PreferenceStorageError.photoEncodingFailed
+                }
+                try imageData.write(to: destination, options: .atomic)
+                filesCreatedByThisSave.append(destination)
+            }
+
+            try indexData.write(to: indexURL, options: .atomic)
+        } catch {
+            for url in filesCreatedByThisSave {
+                do {
+                    try fileManager.removeItem(at: url)
+                } catch {
+                    logger.error("Could not remove an uncommitted photo file: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            throw error
+        }
+
+        removeUnreferencedPhotoFiles(keeping: usedFiles)
+    }
+
+    private func removeUnreferencedPhotoFiles(keeping referencedFiles: Set<String>) {
+        guard let files = try? fileManager.contentsOfDirectory(atPath: photosURL.path) else { return }
+        for file in files where !referencedFiles.contains(file) {
+            do {
+                try fileManager.removeItem(at: photosURL.appendingPathComponent(file))
+            } catch {
+                logger.error("Could not remove an unreferenced photo file: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func unique(_ ids: [UUID]) -> [UUID] {
+        var seen = Set<UUID>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+
+    private func unique(_ photos: [PhotoItem]) -> [PhotoItem] {
+        var seen = Set<UUID>()
+        return photos.filter { seen.insert($0.id).inserted }
     }
 }
