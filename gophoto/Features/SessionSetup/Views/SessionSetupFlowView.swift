@@ -33,23 +33,30 @@ struct SessionSetupFlowView: View {
 
     private let sessions: PhotoSessionStore
     private let handoffPreferenceID: UUID?
+    private let hasPreferenceHandoff: Bool
+    private let onHandoffConsumed: (() -> Void)?
 
     /// `initialPath`: screens already pushed when the flow opens (debug checks only; normally empty).
     init(preferences: PreferencesViewModel = .shared, sessions: PhotoSessionStore = .shared,
-         initialPath: [SessionSetupRoute] = [], handoffPreferenceID: UUID? = nil) {
+         initialPath: [SessionSetupRoute] = [], handoffPreferenceID: UUID? = nil,
+         hasPreferenceHandoff: Bool = false, onHandoffConsumed: (() -> Void)? = nil) {
         _selection = State(initialValue: PreferenceSelectionViewModel(preferences: preferences, sessions: sessions))
         _path = State(initialValue: initialPath)
         self.sessions = sessions
         self.handoffPreferenceID = handoffPreferenceID
+        self.hasPreferenceHandoff = hasPreferenceHandoff
+        self.onHandoffConsumed = onHandoffConsumed
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             PreferenceSelectionView(
                 handoffPreferenceID: handoffPreferenceID,
+                hasPreferenceHandoff: hasPreferenceHandoff,
                 selection: selection,
                 onContinue: { id in path.append(.shotSize(preferenceID: id)) },
-                onAddNew: { isPresentingPicker = true }
+                onAddNew: { isPresentingPicker = true },
+                onHandoffConsumed: onHandoffConsumed
             )
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: SessionSetupRoute.self) { route in

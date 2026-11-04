@@ -42,7 +42,12 @@ struct AppRootView: View {
                 SessionSetupFlowView(
                     initialPath: debugInitialPath,
                     handoffPreferenceID: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue
-                        ? UUID(uuidString: onboardingPreferenceIDString) : nil
+                        ? UUID(uuidString: onboardingPreferenceIDString) : nil,
+                    hasPreferenceHandoff: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue,
+                    onHandoffConsumed: {
+                        onboardingPreferenceIDString = ""
+                        firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+                    }
                 )
                     #if DEBUG
                     .overlay(alignment: .top) {

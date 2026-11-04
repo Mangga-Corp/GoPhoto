@@ -12,10 +12,12 @@ import SwiftUI
 struct PreferenceSelectionView: View {
     /// Carries the onboarding preference ID through this route; selection behavior is unchanged.
     let handoffPreferenceID: UUID?
+    let hasPreferenceHandoff: Bool
     let selection: PreferenceSelectionViewModel
     /// Continue, with a preference that exists and can start a session.
     let onContinue: (UUID) -> Void
     let onAddNew: () -> Void
+    let onHandoffConsumed: (() -> Void)?
 
     @State private var anchor = PresentationAnchor()
     @State private var editorPresenter: PreferenceEditorPresenter?
@@ -23,6 +25,7 @@ struct PreferenceSelectionView: View {
     @State private var renameText = ""
     @State private var deleteTarget: PreferenceCardModel?
     @State private var errorMessage: String?
+    @State private var didApplyHandoff = false
 
     var body: some View {
         let cards = selection.cards
@@ -70,7 +73,16 @@ struct PreferenceSelectionView: View {
             .accessibilityHint(selection.continueTarget == nil ? "Select a preference first" : "Choose the shot size next")
         }
         .background { PresentationAnchorView(anchor: anchor) }
-        .onAppear { selection.reconcile() }
+        .onAppear {
+            guard !didApplyHandoff else { return }
+            didApplyHandoff = true
+            if hasPreferenceHandoff {
+                errorMessage = selection.selectHandoff(handoffPreferenceID)
+                onHandoffConsumed?()
+            } else {
+                selection.reconcile()
+            }
+        }
         .onChange(of: selection.reconcileKey) { selection.reconcile() }
         .alert("Rename Preference", isPresented: isPresented($renameTarget), presenting: renameTarget) { card in
             TextField("Name", text: $renameText)
