@@ -98,6 +98,12 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     /// Requests a zoom factor, clamped to device limits and GoPhoto's automatic zoom cap.
     /// Returns the actual applied factor.
     func applyZoom(_ factor: Double) async -> Double
+    /// The next live frame, upright, long side 640 px (for Scene Ideas). nil if no frame comes within 2 s.
+    func latestFrame() async -> CGImage?
+}
+
+nonisolated extension CameraServiceProtocol {
+    func latestFrame() async -> CGImage? { nil }
 }
 
 // MARK: - Real implementation
@@ -126,6 +132,9 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private var lastEnvironmentInferenceTime: TimeInterval = 0
     private var lastEnvironmentErrorLogTime: TimeInterval = 0
     private var frameCount = 0
+    /// One pending "give me the next frame" request (video queue), for Scene Ideas.
+    private var frameRequest: (id: Int, continuation: CheckedContinuation<CGImage?, Never>)?
+    private var frameRequestID = 0
     /// True from the shutter until the photo arrives (videoQueue): person detection pauses so the
     /// camera's photo pipeline gets the processor. The guide keeps its last values meanwhile.
     private var photosInFlight = 0
@@ -409,12 +418,37 @@ nonisolated extension CameraService: AVCapturePhotoCaptureDelegate {
     }
 }
 
+// MARK: - Latest frame (Scene Ideas)
+
+nonisolated extension CameraService {
+    func latestFrame() async -> CGImage? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
+            videoQueue.async {
+                self.frameRequest?.continuation.resume(returning: nil)   // only the newest request waits
+                self.frameRequestID += 1
+                let id = self.frameRequestID
+                self.frameRequest = (id, continuation)
+                self.videoQueue.asyncAfter(deadline: .now() + 2) {
+                    if let r = self.frameRequest, r.id == id {
+                        self.frameRequest = nil
+                        r.continuation.resume(returning: nil)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Video frame delegate (called ~30x/sec on videoQueue)
 
 nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        if let request = frameRequest, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            frameRequest = nil
+            request.continuation.resume(returning: FrameDownscaler.cgImage(from: buffer, longEdge: 640))
+        }
         guard let continuation = personContinuation, !isTakingPhoto else { return }
 
         frameCount += 1

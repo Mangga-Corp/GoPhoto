@@ -242,6 +242,8 @@ final class CameraViewModel {
     }
 
     var session: AVCaptureSession { cameraService.session }
+    /// Current live frame for Scene Ideas (nil when the camera isn't running).
+    func sceneFrame() async -> CGImage? { await cameraService.latestFrame() }
 
     // MARK: Dependency (injected, like swiftshop's repositories)
     @ObservationIgnored private let cameraService: CameraServiceProtocol

@@ -13,9 +13,8 @@ struct CameraView: View {
     /// 1 = testing: clean camera for testers. Guide B crop-framing mode, grid on, 4:3. No pose guide,
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
-    private static let appMode = 1
+    private static let appMode = 2
     private static var isTesting: Bool { appMode == 1 }
-
     @State private var viewModel = CameraViewModel(
         fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
     @Environment(\.openURL) private var openURL
@@ -33,6 +32,11 @@ struct CameraView: View {
     @State private var isShowingAnalysis = false
     @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
+    /// Scene Ideas (Foundation Models): AI button → ideas sheet → optional place guide on the camera.
+    @State private var sceneIdeas = SceneIdeasModel()
+    @State private var isShowingIdeas = false
+    /// True during the single scan sweep over the preview (before the sheet opens).
+    @State private var isScanningPlace = false
     @Namespace private var galleryZoom
 
     var body: some View {
@@ -82,6 +86,15 @@ struct CameraView: View {
         .sheet(isPresented: $isShowingAcknowledgements) {
             AcknowledgementsView()
         }
+        .sheet(isPresented: $isShowingIdeas) {
+            SceneIdeasSheet(model: sceneIdeas,
+                            onUse: { idea in
+                                withAnimation(.snappy) { sceneIdeas.chosen = idea }
+                                isShowingIdeas = false
+                            },
+                            onRescan: { isShowingIdeas = false })   // back to the camera; scan again with the AI button
+                .presentationDetents([.large])
+        }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
         }
@@ -111,12 +124,23 @@ struct CameraView: View {
 
             cameraPreview
 
+            if let idea = sceneIdeas.chosen {
+                PlaceGuideCard(idea: idea) { withAnimation(.snappy) { sceneIdeas.chosen = nil } }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             shutterButton
                 .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
                 .overlay(alignment: .leading) {
                     GalleryShortcutButton { isShowingGallery = true }
                         .matchedTransitionSource(id: "gallery", in: galleryZoom)
                         .padding(.leading, 24)
+                }
+                .overlay(alignment: .trailing) {
+                    SceneIdeasButton(isBusy: sceneIdeas.isBusy, isActive: sceneIdeas.chosen != nil) { scanPlace() }
+                        .padding(.trailing, 24)
                 }
         }
         .task { await viewModel.observeTilt() }
@@ -172,6 +196,7 @@ struct CameraView: View {
             .overlay(alignment: .bottomTrailing) { poseGuide }
             .overlay(alignment: .bottomLeading) { debugPanel }
             .overlay { flashOverlay }
+            .overlay { if isScanningPlace { SceneScanSweep(frame: sceneIdeas.frame) } }
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .layoutPriority(1)
     }
@@ -320,6 +345,26 @@ struct CameraView: View {
     private var showsRing: Bool {
         viewModel.guideMode.steps.isEmpty || activeStep == .horizontal || activeStep == .vertical
             || viewModel.isReady
+    }
+
+    // MARK: Scene Ideas
+
+    /// Grabs the live frame, plays one sweep over the preview, then opens the full sheet (image +
+    /// placeholder cards; ideas fill in one by one). The model already runs during the sweep.
+    private func scanPlace() {
+        guard !sceneIdeas.isBusy, !isScanningPlace else { return }
+        sceneIdeas.phase = .reading
+        sceneIdeas.frame = nil
+        Task {
+            let frame = await viewModel.sceneFrame()
+            sceneIdeas.frame = frame
+            withAnimation(.easeIn(duration: 0.15)) { isScanningPlace = true }
+            let analysis = Task { await sceneIdeas.scan(frame) }
+            try? await Task.sleep(for: .seconds(SceneScanSweep.duration))
+            isShowingIdeas = true
+            withAnimation(.easeOut(duration: 0.3)) { isScanningPlace = false }
+            await analysis.value
+        }
     }
 
     // MARK: Top bar, shutter, permission
