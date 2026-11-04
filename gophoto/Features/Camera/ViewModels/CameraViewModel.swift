@@ -707,12 +707,13 @@ final class CameraViewModel {
 
         // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
         let capturedData = photo.data
+        let presetAtShot = presetID
         Task { [weak self] in
             guard let self else { return }
             let saveStart = Date()
             do {
                 if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
-                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                    self.galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
                 }
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -737,7 +738,7 @@ final class CameraViewModel {
 
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
-                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                galleryStore.addCaptured(assetID: assetID, presetID: presetID)
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {
