@@ -211,6 +211,9 @@ final class CameraViewModel {
     private(set) var analysis: PresetAnalysis?
     private(set) var isAnalyzingPreset = false
 
+    /// The preset is used for a seated subject (the popover's Standing / Sitting switch).
+    var isSeated: Bool { analysis?.posture == Posture.sitting.rawValue }
+
     /// Phone pitch the camera aims for, or nil when there is no angle guidance.
     var targetPitch: Double? { Self.pitchTarget(for: analysis?.angle) }
 
@@ -229,7 +232,8 @@ final class CameraViewModel {
         return PoseGuideState(heightNow: centimetres(e.eyeElevation),
                               heightTarget: centimetres(e.eyeElevationTarget),
                               tiltNow: -pitch, tiltTarget: targetPitch.map { -$0 },
-                              distance: e.distanceMeters, heightOK: heightOK, tiltOK: tiltOK)
+                              distance: e.distanceMeters, heightOK: heightOK, tiltOK: tiltOK,
+                              seated: isSeated)
     }
     /// Phone pitch minus the target (+ = tilted further down than the target).
     var pitchError: Double? { targetPitch.map { pitch - $0 } }
@@ -352,7 +356,7 @@ final class CameraViewModel {
         let preset = preferences.selectedPreference
         if preset?.id != presetID { presetID = preset?.id }
         if preset?.name != presetName { presetName = preset?.name }
-        let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
+        let picked = preferences.guideAnalysis(for: preset)
         if picked != analysis { analysis = picked }
         lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false

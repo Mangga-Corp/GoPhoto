@@ -16,6 +16,11 @@ final class AIPreferencesViewController: UIViewController {
     /// The analysed framing of a photo ("fullBody" / "halfBody" / other), to group the grid into
     /// Full body / Half body sections. Nil = one plain grid (e.g. a preference being created).
     var framingOf: ((PhotoItem) -> String?)?
+    /// What a photo counts as (standing / sitting) and whether the user set it. Nil = no posture
+    /// menu (e.g. a preference being created, which is not analysed yet).
+    var postureOf: ((PhotoItem) -> PhotoPostureInfo)?
+    /// The user chose a posture for a photo (nil = automatic).
+    var onSetPosture: ((PhotoItem, Posture?) -> Void)?
 
     private let viewModel: ChoosePhotosViewModel
     private var photoPickerFlow: PhotoPreferencePickerFlow?
@@ -107,11 +112,19 @@ final class AIPreferencesViewController: UIViewController {
         guard let start = order.firstIndex(of: item) else { return }
         let images = order.map { viewModel.items[$0].image }
         let labels = order.map { index in framingOf?(viewModel.items[index]).flatMap(Self.framingTitle) }
+        let canSetPosture = postureOf != nil && onSetPosture != nil
         final class Current { var item: Int; init(_ item: Int) { self.item = item } }
         let current = Current(item)
 
         let pager = PreferencePhotoPager(
-            images: images, labels: labels, startIndex: start,
+            images: images, labels: labels,
+            postures: canSetPosture ? order.map { postureOf?(viewModel.items[$0]) ?? .init(posture: nil, isManual: false) } : nil,
+            startIndex: start,
+            onSetPosture: canSetPosture ? { [weak self] page, posture in
+                guard let self, order.indices.contains(page) else { return .init(posture: nil, isManual: false) }
+                self.setPosture(posture, forItem: order[page])
+                return self.postureOf?(self.viewModel.items[order[page]]) ?? .init(posture: nil, isManual: false)
+            } : nil,
             onPageChange: { [weak self] page in
                 guard let self, order.indices.contains(page) else { return }
                 current.item = order[page]
@@ -128,6 +141,12 @@ final class AIPreferencesViewController: UIViewController {
             return self.collectionView.cellForItem(at: ip)
         }
         present(host, animated: true)
+    }
+
+    /// Saves a photo's posture and refreshes its badge in the grid.
+    private func setPosture(_ posture: Posture?, forItem item: Int) {
+        onSetPosture?(viewModel.items[item], posture)
+        if let ip = indexPath(forItem: item) { collectionView.reloadItems(at: [ip]) }
     }
 
     /// The photo index (into `viewModel.items`) shown at `indexPath`.
@@ -321,6 +340,7 @@ extension AIPreferencesViewController: UICollectionViewDataSource, UICollectionV
         cell.imageView.image = viewModel.items[index].image
         cell.selectMode = viewModel.isSelecting
         cell.isChecked = viewModel.isChecked(at: index)
+        cell.isSeated = postureOf?(viewModel.items[index]).posture == .sitting
         return cell
     }
 
@@ -334,6 +354,26 @@ extension AIPreferencesViewController: UICollectionViewDataSource, UICollectionV
             header.label.text = section.title.map { "\($0) · \(section.indices.count)" }
         }
         return header
+    }
+
+    /// Long press: Standing / Sitting / Automatic for that photo.
+    func collectionView(_ cv: UICollectionView, contextMenuConfigurationForItemAt ip: IndexPath,
+                        point: CGPoint) -> UIContextMenuConfiguration? {
+        guard postureOf != nil, onSetPosture != nil, !viewModel.isSelecting, let index = itemIndex(at: ip) else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            guard let self, let info = self.postureOf?(self.viewModel.items[index]) else { return nil }
+            func action(_ title: String, _ symbol: String, _ posture: Posture?, on: Bool) -> UIAction {
+                UIAction(title: title, image: UIImage(systemName: symbol), state: on ? .on : .off) { [weak self] _ in
+                    self?.setPosture(posture, forItem: index)
+                }
+            }
+            return UIMenu(title: "Posture", children: [
+                action("Standing", "figure.stand", .standing, on: info.isManual && info.posture == .standing),
+                action("Sitting", "figure.seated.side", .sitting, on: info.isManual && info.posture == .sitting),
+                action(info.posture == nil || info.isManual ? "Automatic" : "Automatic (\(info.posture == .sitting ? "sitting" : "standing"))",
+                       "wand.and.stars", nil, on: !info.isManual)
+            ])
+        }
     }
 
     func collectionView(_ cv: UICollectionView, didSelectItemAt ip: IndexPath) {

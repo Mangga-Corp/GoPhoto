@@ -23,6 +23,8 @@ struct PoseGuideState: Equatable {
     var distance: Double?
     var heightOK: Bool
     var tiltOK: Bool
+    /// Draw the subject seated (the preset is used for a seated subject).
+    var seated = false
 
     var isOK: Bool { heightOK && tiltOK }
 
@@ -99,6 +101,10 @@ private enum PoseDraw {
     /// Where the subject's eyes sit in the drawing, cm above the ground (drawing only).
     static let assumedEyeCm = 150.0
     static let shoulderCm = 140.0, armCm = 60.0
+    /// The same, for a seated subject (drawing only).
+    static let assumedSeatedEyeCm = 115.0
+
+    static func eyeCm(seated: Bool) -> Double { seated ? assumedSeatedEyeCm : assumedEyeCm }
 
     static func rad(_ d: Double) -> Double { d * .pi / 180 }
 
@@ -153,6 +159,21 @@ private enum PoseDraw {
         line(ctx, hip, CGPoint(x: x + 10, y: groundY), color, width: 3, round: true)
     }
 
+    /// A stick person seated side-on at `x`, facing left (toward the photographer): thighs level,
+    /// shins down, eyes at `eyeY`.
+    static func seatedPerson(_ ctx: GraphicsContext, x: Double, groundY: Double, eyeY: Double, color: Color) {
+        let headR = 8.0
+        let height = groundY - eyeY
+        let hip = CGPoint(x: x, y: groundY - height * 0.4)
+        let knee = CGPoint(x: x - 20, y: hip.y)
+        ctx.stroke(Path(ellipseIn: CGRect(x: x - headR, y: eyeY - headR, width: headR * 2, height: headR * 2)),
+                   with: .color(color), lineWidth: 2.5)
+        line(ctx, CGPoint(x: x, y: eyeY + headR), hip, color, width: 3, round: true)
+        line(ctx, hip, knee, color, width: 3, round: true)
+        line(ctx, knee, CGPoint(x: knee.x, y: groundY), color, width: 3, round: true)
+        line(ctx, CGPoint(x: x - 4, y: hip.y + 3), CGPoint(x: x + 8, y: hip.y + 3), PoseColors.mute, width: 1.5)
+    }
+
     /// Text in screen points (not scaled with the drawing), at a view-box position.
     static func label(_ ctx: GraphicsContext, _ text: String, at p: CGPoint, scale: Double, color: Color,
                       anchor: UnitPoint = .leading) {
@@ -174,7 +195,7 @@ private struct AnnotatedPoseScene: View {
 
             let s = 0.75, gy = 198.0, px = 62.0, W = 340.0
             func P(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: px + x * s, y: gy - y * s) }
-            let eye = PoseDraw.assumedEyeCm
+            let eye = PoseDraw.eyeCm(seated: state.seated)
             let now = eye + (state.heightNow ?? 0)
             let target = state.heightTarget.map { eye + $0 }
             let distanceCm = min(max((state.distance ?? 2.3) * 100, 120), 330)
@@ -183,7 +204,11 @@ private struct AnnotatedPoseScene: View {
 
             // Subject and their eye line.
             let eyePoint = P(distanceCm, eye)
-            PoseDraw.person(ctx, x: eyePoint.x, groundY: gy, eyeY: eyePoint.y, color: PoseColors.dim)
+            if state.seated {
+                PoseDraw.seatedPerson(ctx, x: eyePoint.x, groundY: gy, eyeY: eyePoint.y, color: PoseColors.dim)
+            } else {
+                PoseDraw.person(ctx, x: eyePoint.x, groundY: gy, eyeY: eyePoint.y, color: PoseColors.dim)
+            }
             PoseDraw.line(ctx, CGPoint(x: 8, y: eyePoint.y), eyePoint, PoseColors.mute, dash: [2, 3])
 
             // Photographer.
@@ -254,12 +279,16 @@ private struct SideViewPoseScene: View {
 
             let W = 340.0, gy = 206.0, s = 0.85, x = 70.0
             func Y(_ cm: Double) -> Double { gy - cm * s }
-            let eye = PoseDraw.assumedEyeCm
+            let eye = PoseDraw.eyeCm(seated: state.seated)
             let now = eye + (state.heightNow ?? 0)
 
             PoseDraw.line(ctx, CGPoint(x: 0, y: gy), CGPoint(x: W, y: gy), PoseColors.mute, width: 1.5)
             // Subject and their eye line.
-            PoseDraw.person(ctx, x: 285, groundY: gy, eyeY: Y(eye), color: PoseColors.dim)
+            if state.seated {
+                PoseDraw.seatedPerson(ctx, x: 285, groundY: gy, eyeY: Y(eye), color: PoseColors.dim)
+            } else {
+                PoseDraw.person(ctx, x: 285, groundY: gy, eyeY: Y(eye), color: PoseColors.dim)
+            }
             PoseDraw.line(ctx, CGPoint(x: 20, y: Y(eye)), CGPoint(x: 285, y: Y(eye)), PoseColors.mute, dash: [2, 3])
 
             // Target (dashed green ghost).

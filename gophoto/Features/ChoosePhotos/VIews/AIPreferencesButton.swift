@@ -106,6 +106,16 @@ private struct AIPreferencesButtonRepresentable: UIViewRepresentable {
                 return analysis?.photoShotSizes?[photo.id.uuidString]
                     ?? analysis?.photoFramings?[photo.id.uuidString]
             }
+            // Standing / Sitting per photo (long press, or in the big viewer). A choice means the guide's
+            // analysis is rebuilt when the editor closes, like after adding or removing photos.
+            editor.postureOf = { [weak self] photo in
+                let info = self?.viewModel.posture(of: photo, in: id) ?? (nil, false)
+                return PhotoPostureInfo(posture: info.0, isManual: info.1)
+            }
+            editor.onSetPosture = { [weak self] photo, posture in
+                photosChanged.value = true
+                self?.viewModel.setPostureOverride(posture, for: photo, in: id)
+            }
             editor.modalPresentationStyle = .fullScreen
             // Photos changed: the analysis runs again, so show it (training) and the new style card.
             editor.onBack = { [weak self, weak editor, weak presenter] in

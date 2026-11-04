@@ -10,6 +10,8 @@ import SwiftUI
 struct HeightRuleCard: View {
     /// `CameraHeightLevel.rawValue`, or "chestToWaist" (PRD fixed rule).
     let rule: String
+    /// A seated full body: a seated figure, and the rules the guide cannot measure.
+    var seatedTips = false
     var onDone: () -> Void
 
     private static let figureHeight: CGFloat = 120
@@ -17,7 +19,7 @@ struct HeightRuleCard: View {
     var body: some View {
         HStack(spacing: 16) {
             ZStack(alignment: .top) {
-                Image(systemName: "figure.stand")
+                Image(systemName: seatedTips ? "figure.seated.side" : "figure.stand")
                     .resizable()
                     .scaledToFit()
                     .frame(height: Self.figureHeight)
@@ -33,6 +35,15 @@ struct HeightRuleCard: View {
                 Text("Hold the phone at this height, then keep it there.")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
+                if seatedTips {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(SittingFullBodyDefaults.tips, id: \.self) { tip in
+                            Text("• " + tip)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+                }
                 Button("Done", action: onDone)
                     .buttonStyle(.borderedProminent)
                     .tint(.yellow)
@@ -90,6 +101,7 @@ struct HeightRuleCard: View {
     VStack(spacing: 20) {
         HeightRuleCard(rule: "shoulder") {}
         HeightRuleCard(rule: "chestToWaist") {}
+        HeightRuleCard(rule: "chestToWaist", seatedTips: true) {}
     }
     .padding()
     .background(.gray)

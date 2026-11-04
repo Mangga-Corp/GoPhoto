@@ -119,9 +119,19 @@ extension PreferencesPopoverViewController: UITableViewDataSource, UITableViewDe
         let preference = viewModel.preferences[ip.row]
         cell.configure(name: preference.name, selected: viewModel.isSelected(at: ip.row),
                        framing: viewModel.effectiveFraming(for: preference),
-                       shots: preference.analysis?.availableShots.map(\.rawValue) ?? [])
+                       shots: preference.analysis == nil ? [] : viewModel.selectableShots.map(\.rawValue),
+                       posture: viewModel.posture.rawValue,
+                       note: viewModel.isSelected(at: ip.row) ? viewModel.matchNote(for: preference) : nil)
         cell.onEdit = { [weak self] in self?.onEdit?(preference.id) }
-        cell.onFraming = { [weak self] framing in self?.viewModel.setFraming(framing) }
+        // The note depends on both picks, so the list is drawn again after either one changes.
+        cell.onFraming = { [weak self] framing in
+            self?.viewModel.setFraming(framing)
+            self?.refresh()
+        }
+        cell.onPosture = { [weak self] posture in
+            self?.viewModel.setPosture(posture)
+            self?.refresh()
+        }
         return cell
     }
 

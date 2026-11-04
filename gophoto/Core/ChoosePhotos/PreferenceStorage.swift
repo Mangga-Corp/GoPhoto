@@ -17,10 +17,13 @@ final class PreferencesStorage {
             var analysis: PresetAnalysis?
             /// EXIF 35 mm-equivalent focal length per photo (`UUID.uuidString`), when known.
             var focals: [String: Double]?
+            /// Postures the user set by hand (`PhotoItem.id.uuidString` → `Posture.rawValue`).
+            var postureOverrides: [String: String]?
 
-            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?, focals: [String: Double]?) {
+            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?, focals: [String: Double]?,
+                 postureOverrides: [String: String]?) {
                 self.id = id; self.name = name; self.photoIDs = photoIDs; self.analysis = analysis
-                self.focals = focals
+                self.focals = focals; self.postureOverrides = postureOverrides
             }
 
             /// An unreadable analysis is dropped (the preset is analysed again), the preset is kept.
@@ -31,6 +34,7 @@ final class PreferencesStorage {
                 photoIDs = try c.decode([UUID].self, forKey: .photoIDs)
                 analysis = try? c.decodeIfPresent(PresetAnalysis.self, forKey: .analysis)
                 focals = try? c.decodeIfPresent([String: Double].self, forKey: .focals)
+                postureOverrides = try? c.decodeIfPresent([String: String].self, forKey: .postureOverrides)
             }
         }
         var entries: [Entry]
@@ -59,7 +63,8 @@ final class PreferencesStorage {
                 guard let image = UIImage(contentsOfFile: photoURL(id).path) else { return nil }
                 return PhotoItem(id: id, image: image, focalLength35mm: entry.focals?[id.uuidString])
             }
-            return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
+            return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis,
+                              postureOverrides: entry.postureOverrides ?? [:])
         }
         return (preferences, snapshot.selectedID)
     }
@@ -85,7 +90,8 @@ final class PreferencesStorage {
                         if let f = photo.focalLength35mm { map[photo.id.uuidString] = f }
                     }
                     return .init(id: preference.id, name: preference.name, photoIDs: preference.photos.map(\.id),
-                                 analysis: preference.analysis, focals: focals.isEmpty ? nil : focals)
+                                 analysis: preference.analysis, focals: focals.isEmpty ? nil : focals,
+                                 postureOverrides: preference.postureOverrides.isEmpty ? nil : preference.postureOverrides)
                 },
                 selectedID: selectedID)
             if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: indexURL, options: .atomic) }

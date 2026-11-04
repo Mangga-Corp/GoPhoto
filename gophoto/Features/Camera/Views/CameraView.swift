@@ -216,7 +216,9 @@ struct CameraView: View {
 
     @ViewBuilder private var bottomStepCard: some View {
         if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
-            HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
+            HeightRuleCard(rule: rule, seatedTips: viewModel.isSeated && viewModel.analysis?.framing == "fullBody") {
+                viewModel.confirmPhoneHeight()
+            }
                 .padding(.bottom, 12)
         } else if activeStep == .distance {
             DistanceBar(sizeRatio: viewModel.barSizeRatio, tolerance: GuideFlow.sizeEnter,

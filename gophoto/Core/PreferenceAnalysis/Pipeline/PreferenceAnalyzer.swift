@@ -13,7 +13,8 @@ enum PreferenceAnalyzer {
     // MARK: Profile -> camera targets
 
     nonisolated static func make(profile: PreferenceProfile, results: [PhotoResult],
-                                 photoCount: Int, date: Date = Date()) -> PresetAnalysis {
+                                 photoCount: Int, postureOverrides: [String: Posture] = [:],
+                                 date: Date = Date()) -> PresetAnalysis {
         var analysis = build(profile: profile, results: results, photoCount: photoCount, date: date, only: nil)
         // One analysis per framing, from that framing's photos only (picked in the preset popover).
         var variants: [String: PresetAnalysis] = [:]
@@ -53,7 +54,87 @@ enum PreferenceAnalyzer {
         analysis.photoShotSizes = Dictionary(results.compactMap { result in
             shotSize(of: result).map { (result.id.uuidString, $0.rawValue) }
         }, uniquingKeysWith: { first, _ in first })
+
+        // Posture (version 15): one reading per photo, then the seated analyses for the fallback.
+        let readings = results.map { result in
+            applying(postureOverrides[result.id.uuidString], to: postureReading(of: result))
+        }
+        analysis.photoPostures = Dictionary(zip(results, readings).map { ($0.id.uuidString, $1) },
+                                            uniquingKeysWith: { first, _ in first })
+        let candidates = zip(results, readings).map {
+            ReferenceCandidate(photoID: $0.id.uuidString, shot: shotSize(of: $0), reading: $1)
+        }
+        analysis.selectionVariants = seatedVariants(profile: profile, results: results, candidates: candidates,
+                                                    cut: cut, date: date)
         return analysis
+    }
+
+    // MARK: Posture
+
+    /// The posture reading of one photo, from the pose and the seat cues already measured.
+    /// The reading with the user's own choice on top: a hand-set standing / sitting is certain
+    /// (confidence 1), whatever the photo shows. The rest of the reading (torso turn, what the
+    /// person sits on) is kept when it is still meaningful.
+    nonisolated static func applying(_ override: Posture?, to reading: PostureReading) -> PostureReading {
+        guard let override, override == .standing || override == .sitting else { return reading }
+        var result = reading
+        result.posture = .init(value: override, confidence: 1, visibility: .visible)
+        if override == .sitting {
+            result.sitting = reading.sitting ?? SittingAttributes(
+                supportSurface: .init(value: .unknown, confidence: 0, visibility: .notVisible),
+                legConfiguration: .init(value: .unknown, confidence: 0, visibility: .notVisible))
+        } else {
+            result.sitting = nil
+        }
+        return result
+    }
+
+    nonisolated static func postureReading(of result: PhotoResult) -> PostureReading {
+        let box = result.subjectPositioning.subjectBox
+        let pose = box.flatMap { box in
+            result.evidence?.pose.value.flatMap { SubjectAssociation.pose(for: box, among: $0) }
+        }
+        let size = result.preparation?.preparedSize
+        let aspect = size.map { $0.height > 0 ? Double($0.width / $0.height) : 1 } ?? 1
+        let cues = SupportCue.cues(from: result.environment?.segmentation.regions ?? [])
+        return PostureClassifier.classify(pose: pose, hasSubject: box != nil, aspect: aspect, cues: cues)
+    }
+
+    /// For each shot size, the seated analyses of its three tiers (exact, same posture, same
+    /// framing). A tier without photos has no entry. The tiers use the same partition as
+    /// `ReferenceSelector`, so the level found at run time always matches what is stored.
+    nonisolated static func seatedVariants(profile: PreferenceProfile, results: [PhotoResult],
+                                           candidates: [ReferenceCandidate],
+                                           cut: (level: String, count: Int, of: Int)?,
+                                           date: Date) -> [String: PresetAnalysis]? {
+        let byID = Dictionary(results.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
+        let readingByID = Dictionary(candidates.compactMap { c in c.reading.map { (c.photoID, $0) } },
+                                     uniquingKeysWith: { first, _ in first })
+        var variants: [String: PresetAnalysis] = [:]
+        for shot in PresetAnalysis.ShotSize.allCases {
+            let partition = ReferenceSelector.partition(candidates, shot: shot, posture: .sitting)
+            let tiers: [(ReferenceMatchLevel, [String])] = [
+                (.exact, partition.exact), (.samePosture, partition.samePosture), (.sameFraming, partition.sameFraming)
+            ]
+            for (tier, ids) in tiers where !ids.isEmpty {
+                let subset = ids.compactMap { byID[$0] }
+                guard !subset.isEmpty else { continue }
+                // Photos of another framing do not share this shot's framing rule.
+                var variant = build(profile: profile, results: subset, photoCount: subset.count, date: date,
+                                    only: tier == .samePosture ? nil : shot.framing)
+                variant.shotSize = shot.rawValue
+                variant.cutLevel = cut?.level
+                variant.cutLevelCount = cut?.count
+                variant.cutLevelOf = cut?.of
+                if tier != .sameFraming {
+                    let seated = ids.compactMap { readingByID[$0] }
+                    variant.sittingSupport = SittingProfileAggregator.support(seated)?.rawValue
+                    variant.sittingLegs = SittingProfileAggregator.legs(seated)?.rawValue
+                }
+                variants[ReferenceSelector.variantKey(tier, shot: shot, posture: .sitting)] = variant
+            }
+        }
+        return variants.isEmpty ? nil : variants
     }
 
     /// The analysis of `results`. `only`: these are the photos of one framing (a framing variant).

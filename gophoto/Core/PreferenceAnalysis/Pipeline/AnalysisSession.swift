@@ -58,7 +58,7 @@ final class AnalysisSession: ObservableObject {
     // MARK: Control
 
     /// Analyses a preset's photos and returns what the camera needs. Nil if cancelled.
-    func analyze(_ photos: [PhotoItem]) async -> PresetAnalysis? {
+    func analyze(_ photos: [PhotoItem], postureOverrides: [String: Posture] = [:]) async -> PresetAnalysis? {
         let references = photos.enumerated().map { index, item in
             ReferencePhoto(id: item.id, localIdentifier: "", image: item.image, selectionOrder: index,
                            focalLength35mm: item.focalLength35mm)
@@ -66,7 +66,8 @@ final class AnalysisSession: ObservableObject {
         start(photos: references)
         await runTask?.value
         guard phase == .completed, let profile else { return nil }
-        var analysis = PreferenceAnalyzer.make(profile: profile, results: results, photoCount: photos.count)
+        var analysis = PreferenceAnalyzer.make(profile: profile, results: results, photoCount: photos.count,
+                                                   postureOverrides: postureOverrides)
         let images = photos.map(\.image)
         analysis.lightLevel = await Task.detached(priority: .utility) { PhotoLightLevel.median(of: images) }.value
         return analysis

@@ -55,7 +55,7 @@ final class AnalyzingViewModel {
             var analysisSucceeded = false
             // An edit already started the analysis: wait for it rather than running it twice.
             if let id = self.preferenceID,
-               let analysis = self.preferences.runningAnalysis(for: id) ?? self.preferences.reanalyze(id: id) {
+               let analysis = self.preferences.runningAnalysis(for: id) ?? self.preferences.reanalyze(id: id, reusingSession: true) {
                 await analysis.value
                 analysisSucceeded = self.preferences.session(for: id)?.phase == .completed
                     && self.preferences.preference(id: id)?.analysis?.isCurrent == true

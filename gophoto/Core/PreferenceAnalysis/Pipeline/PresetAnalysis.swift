@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 14
+    static let currentVersion = 17
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -100,6 +100,28 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// How bright the reference photos are (version 14): median mean luminance, 0...1. Whole
     /// preset only (not in the framing / shot variants). Personalises the lighting tips.
     var lightLevel: Double?
+
+    // Posture (version 15). Optional so older saves still decode.
+
+    /// Posture reading of each photo (`PhotoItem.id.uuidString` → reading). Whole preset only.
+    var photoPostures: [String: PostureReading]?
+    /// Seated analyses for the fallback, keyed `ReferenceSelector.variantKey` (`<tier>:<shot>:sitting`).
+    /// Whole preset only; present only for tiers with at least one photo.
+    var selectionVariants: [String: PresetAnalysis]?
+    /// In a seated variant: what most photos sit on / how their legs are (`SupportSurface` /
+    /// `LegConfiguration` raw values). Nil without a clear majority.
+    var sittingSupport: String?
+    var sittingLegs: String?
+
+    // The result of `forSelection` (not saved with the preset's own analysis).
+
+    /// `Posture.rawValue` the guide was built for; nil = standing, as before postures existed.
+    var posture: String?
+    /// `ReferenceMatchLevel.rawValue` of the picked framing × posture.
+    var matchLevel: String?
+    /// Where each part of this analysis came from (`composition`, `pose`, `cameraHeight` →
+    /// `exact` / `samePosture` / `sameFraming` / `default`), so the UI can say so honestly.
+    var sources: [String: String]?
 
     /// The analysis for the mode picked in the preset popover: that shot size's variant (or an
     /// older full / half body variant), or this one when the preset has no photo of it.

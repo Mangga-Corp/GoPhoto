@@ -8,16 +8,22 @@
 import UIKit
 
 /// One row in the preferences popover. When selected, shows a checkmark, an Edit button and a
-/// shot-size switch (Full / 3/4 / Half / 1/4, only the sizes the preset has photos of).
+/// shot-size switch (Full / 3/4 / Half / 1/4), a Standing / Sitting switch and, when the photos
+/// do not match both picks exactly, a note saying which photos the guide is built from.
 final class PreferenceCell: UITableViewCell {
     static let reuseID = "PreferenceCell"
     var onEdit: (() -> Void)?
     /// Called with the picked `PresetAnalysis.ShotSize.rawValue` when the switch changes.
     var onFraming: ((String) -> Void)?
+    /// Called when the Standing / Sitting switch changes.
+    var onPosture: ((Posture) -> Void)?
 
     /// The shot sizes shown, in segment order (`ShotSize.rawValue`).
     private var framings: [String] = []
     private let framingControl = UISegmentedControl(items: [])
+    private let postures: [Posture] = [.standing, .sitting]
+    private let postureControl = UISegmentedControl(items: ["Standing", "Sitting"])
+    private let noteLabel = UILabel.make("", style: .caption1)
 
     private let nameLabel = UILabel.make("", style: .body)
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark"))
@@ -45,7 +51,14 @@ final class PreferenceCell: UITableViewCell {
         let top = UIStackView(arrangedSubviews: [nameLabel, checkmark])
         top.spacing = 8
         top.alignment = .center
-        let stack = UIStackView(arrangedSubviews: [top, editRow])
+        postureControl.addAction(UIAction { [weak self] _ in
+            guard let self, self.postures.indices.contains(self.postureControl.selectedSegmentIndex) else { return }
+            self.onPosture?(self.postures[self.postureControl.selectedSegmentIndex])
+        }, for: .valueChanged)
+        noteLabel.numberOfLines = 0
+        noteLabel.textAlignment = .natural
+        noteLabel.textColor = .secondaryLabel
+        let stack = UIStackView(arrangedSubviews: [top, editRow, postureControl, noteLabel])
         stack.axis = .vertical
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -59,13 +72,19 @@ final class PreferenceCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// `shots`: the shot sizes the preset has photos of (`ShotSize.rawValue`, widest first);
-    /// the switch is hidden without any. `framing`: the one in use, or nil when unknown.
-    func configure(name: String, selected: Bool, framing: String? = nil, shots: [String] = []) {
+    /// `shots`: the shot sizes offered (`ShotSize.rawValue`, widest first); the switch is hidden
+    /// without any. `framing`: the one in use, or nil when unknown. `posture`: `Posture.rawValue`.
+    /// `note`: which photos the guide uses when they do not match exactly.
+    func configure(name: String, selected: Bool, framing: String? = nil, shots: [String] = [],
+                   posture: String = Posture.standing.rawValue, note: String? = nil) {
         nameLabel.text = name
         nameLabel.accessibilityValue = selected ? "Selected" : nil
         checkmark.isHidden = !selected
         editRow.isHidden = !selected
+        postureControl.isHidden = !selected || shots.isEmpty
+        postureControl.selectedSegmentIndex = postures.firstIndex { $0.rawValue == posture } ?? 0
+        noteLabel.text = note
+        noteLabel.isHidden = !selected || note == nil
         if shots != framings {
             framings = shots
             framingControl.removeAllSegments()

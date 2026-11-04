@@ -25,14 +25,39 @@ final class PreferencesViewModel {
         UserDefaults.standard.set(framing, forKey: Self.framingKey)
     }
 
-    /// The shot size the camera uses for a preset: the picked one when the preset has photos of
-    /// it, else the size with the most photos. Older analyses: the picked or majority framing.
+    /// Standing or sitting, picked in the preset popover. Standing until the user changes it.
+    private(set) var posture: Posture = Posture(rawValue: UserDefaults.standard.string(forKey: PreferencesViewModel.postureKey) ?? "") ?? .standing
+    private static let postureKey = "presetPosture"
+
+    func setPosture(_ posture: Posture) {
+        self.posture = posture
+        UserDefaults.standard.set(posture.rawValue, forKey: Self.postureKey)
+    }
+
+    /// The shot sizes the popover offers. Every size can be picked, also one the preset has no
+    /// photo of: the guide then falls back (see `PresetAnalysis.forSelection`).
+    var selectableShots: [PresetAnalysis.ShotSize] { PresetAnalysis.ShotSize.allCases }
+
+    /// The shot size the camera uses for a preset: the picked one, else the size with the most
+    /// photos. Older analyses: the majority framing.
     func effectiveFraming(for preference: Preference?) -> String? {
-        guard let analysis = preference?.analysis else { return framing }
-        let shots = analysis.availableShots
-        if shots.isEmpty { return framing ?? analysis.framing }
-        if let framing, shots.contains(where: { $0.rawValue == framing }) { return framing }
-        return analysis.defaultShot?.rawValue
+        if let framing { return framing }
+        guard let analysis = preference?.analysis else { return nil }
+        return analysis.defaultShot?.rawValue ?? analysis.framing
+    }
+
+    /// The analysis the camera guides with for a preset: shot size × posture, with fallback.
+    func guideAnalysis(for preference: Preference?) -> PresetAnalysis? {
+        preference?.analysis?.forSelection(shot: effectiveFraming(for: preference), posture: posture)
+    }
+
+    /// One line telling the user which photos the guide is built from, or nil when they match.
+    func matchNote(for preference: Preference?) -> String? {
+        guard let analysis = preference?.analysis,
+              let shot = effectiveFraming(for: preference).flatMap(PresetAnalysis.ShotSize.init(rawValue:))
+        else { return nil }
+        return PresetAnalysis.matchNote(level: analysis.matchLevel(shot: shot, posture: posture),
+                                        shot: shot, posture: posture)
     }
 
     init(storage: PreferencesStorage = PreferencesStorage()) {
@@ -135,11 +160,12 @@ final class PreferencesViewModel {
     /// Analyses a preset's photos and saves the result with the preset.
     /// Only the newest request per preset is saved. Await `value` to know when it is done.
     @discardableResult
-    func reanalyze(id: UUID) -> Task<Void, Never>? {
+    func reanalyze(id: UUID, reusingSession: Bool = false) -> Task<Void, Never>? {
         guard let photos = preference(id: id)?.photos, !photos.isEmpty else { return nil }
         let token = (analysisTokens[id] ?? 0) + 1
         analysisTokens[id] = token
-        let session = AnalysisSession()
+        // After a hand-set posture the photos are the same: the models' results are reused.
+        let session = (reusingSession ? sessions[id] : nil) ?? AnalysisSession()
         sessions[id] = session
         analyzingIDs.insert(id)
         let previous = analysisChain
@@ -147,7 +173,8 @@ final class PreferencesViewModel {
             await previous?.value
             guard let self else { return }
             guard self.analysisTokens[id] == token else { return }
-            let analysis = await session.analyze(photos)
+            let overrides = self.postureOverrides(for: id)
+            let analysis = await session.analyze(photos, postureOverrides: overrides)
             guard self.analysisTokens[id] == token else { return }
             self.analyzingIDs.remove(id)
             if let analysis { self.setAnalysis(analysis, for: id) }
@@ -155,6 +182,39 @@ final class PreferencesViewModel {
         analysisChain = task
         analysisTasks[id] = task
         return task
+    }
+
+    // MARK: Posture set by hand
+
+    /// The user's own standing / sitting choices for a preset's photos.
+    func postureOverrides(for id: UUID) -> [String: Posture] {
+        (preference(id: id)?.postureOverrides ?? [:]).compactMapValues(Posture.init(rawValue:))
+    }
+
+    /// What a photo counts as: the user's choice, else what the app read when it was sure enough.
+    /// Nil when neither is known (the grid then shows no posture for it).
+    func posture(of photo: PhotoItem, in id: UUID) -> (posture: Posture?, isManual: Bool) {
+        let preference = self.preference(id: id)
+        let key = photo.id.uuidString
+        if let manual = preference?.postureOverrides[key].flatMap(Posture.init(rawValue:)) {
+            return (manual, true)
+        }
+        guard let reading = preference?.analysis?.photoPostures?[key], reading.posture.isUsable,
+              reading.posture.value == .standing || reading.posture.value == .sitting else { return (nil, false) }
+        return (reading.posture.value, false)
+    }
+
+    /// Sets (or, with nil, clears) the posture of one photo. Saved at once; the analysis that
+    /// feeds the guide is rebuilt by `reanalyze`, which the editor starts when it closes.
+    func setPostureOverride(_ posture: Posture?, for photo: PhotoItem, in id: UUID) {
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }
+        let key = photo.id.uuidString
+        if let posture, posture == .standing || posture == .sitting {
+            preferences[index].postureOverrides[key] = posture.rawValue
+        } else {
+            preferences[index].postureOverrides[key] = nil
+        }
+        persist()
     }
 
     func setAnalysis(_ analysis: PresetAnalysis, for id: UUID) {
