@@ -88,15 +88,13 @@ final class CameraViewModel {
     @ObservationIgnored private var adaptiveFOVLastChangeTime: TimeInterval? = nil
     @ObservationIgnored private var adaptiveFOVHoldSince: TimeInterval? = nil
     @ObservationIgnored private var adaptiveFOVWasHold: Bool = false
-    @ObservationIgnored private var adaptiveFOVResumeUntil: TimeInterval? = nil
-    @ObservationIgnored private var lastNonNilDetectionTime: TimeInterval = 0
+    /// Nobody detected: grace period, then back to the 1.0x baseline (replaces the old freeze).
+    @ObservationIgnored private var personLoss = PersonLossZoomReset()
     @ObservationIgnored private var adaptiveFOVZoomInFlight = false
     @ObservationIgnored private var liveEnvironmentSignal: LiveEnvironmentSignal?
 
     private static let adaptiveFOVMaxRatePerSecond: Double = 0.5
     private static let adaptiveFOVHysteresisDeadband: Double = 0.10
-    private static let adaptiveFOVDetectionFreezeDelay: TimeInterval = 1.5
-    private static let adaptiveFOVResumeDelay: TimeInterval = 0.5
     @ObservationIgnored private var adaptiveFOVStatusTask: Task<Void, Never>? = nil
     private(set) var adaptiveFOVStatusText: String? = nil
 
@@ -205,7 +203,11 @@ final class CameraViewModel {
         return next
     }
 
-    // The selected preset and what the AI learned from it (copied from PreferencesViewModel).
+    /// The session the camera guides with, set by the view (`apply(sessionConfiguration:)`).
+    /// The camera never picks a preference or shot size itself. Nil = no preset (center target).
+    private(set) var sessionConfiguration: PhotoSessionConfiguration?
+
+    // The session's preset and what the AI learned from it (read from PreferencesViewModel).
     private(set) var presetName: String?
     private(set) var presetID: UUID?
     private(set) var analysis: PresetAnalysis?
@@ -255,12 +257,14 @@ final class CameraViewModel {
          photoLibraryService: PhotoLibraryServiceProtocol = PhotoLibraryService(),
          galleryStore: GalleryStoreProtocol? = nil,
          preferences: PreferencesViewModel? = nil,
+         sessionConfiguration: PhotoSessionConfiguration? = nil,
          fixedSetup: (mode: GuideMode, aspect: CaptureAspect)? = nil){
         self.cameraService = cameraService
         self.motionService = motionService
         self.photoLibraryService = photoLibraryService
         self.galleryStore = galleryStore ?? GalleryStore()
         self.preferences = preferences ?? .shared
+        self.sessionConfiguration = sessionConfiguration
         if let fixedSetup {   // testing mode: fixed, not saved
             savesSetup = false
             guideMode = fixedSetup.mode
@@ -271,6 +275,15 @@ final class CameraViewModel {
     }
 
     // MARK: Intents (things the View asks for)
+
+    /// A new session (or none): the guide starts over with its preset and effective shot size.
+    func apply(sessionConfiguration configuration: PhotoSessionConfiguration?) {
+        guard configuration != sessionConfiguration else { return }
+        sessionConfiguration = configuration
+        progress = GuideProgress()
+        adaptiveFOVReset()
+        updateInstruction()
+    }
 
     func startCamera() async {
         switch await cameraService.requestPermission() {
@@ -348,11 +361,14 @@ final class CameraViewModel {
     }
 
     private func updateInstruction() {
-        // Targets come from the selected preset, so switching presets applies at once.
-        let preset = preferences.selectedPreference
+        // Targets come from the session's preset and its effective shot variant (read live, so a
+        // finished analysis applies at once). A deleted preset or a missing variant means no
+        // preset targets: another preset or shot size is never substituted here.
+        let session = sessionConfiguration
+        let preset = session.flatMap { preferences.preference(id: $0.preferenceID) }
         if preset?.id != presetID { presetID = preset?.id }
         if preset?.name != presetName { presetName = preset?.name }
-        let picked = preset?.analysis?.forFraming(preferences.effectiveFraming(for: preset))
+        let picked = session.flatMap { preset?.analysis?.shotVariant($0.effectiveShotSize) }
         if picked != analysis { analysis = picked }
         lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
@@ -419,8 +435,7 @@ final class CameraViewModel {
         adaptiveFOVLastChangeTime = nil
         adaptiveFOVHoldSince = nil
         adaptiveFOVWasHold = false
-        adaptiveFOVResumeUntil = nil
-        lastNonNilDetectionTime = 0
+        personLoss = PersonLossZoomReset()
         adaptiveFOVStatusText = nil
         adaptiveFOVStatusTask?.cancel()
         adaptiveFOVStatusTask = nil
@@ -516,22 +531,9 @@ final class CameraViewModel {
 
         guard !adaptiveFOVZoomInFlight else { return }
 
-        if personBox != nil {
-            lastNonNilDetectionTime = now
-            if adaptiveFOVResumeUntil != nil {
-                adaptiveFOVResumeUntil = nil
-            }
-        }
-
-        if now - lastNonNilDetectionTime > Self.adaptiveFOVDetectionFreezeDelay {
-            adaptiveFOVResumeUntil = now + Self.adaptiveFOVResumeDelay
-            adaptiveFOVHideStatus(after: 0)
-            return
-        }
-
-        if let resumeUntil = adaptiveFOVResumeUntil, now < resumeUntil {
-            return
-        }
+        // Nobody in frame: no adaptive decision; keep the zoom for the grace period, then
+        // return to 1.0x. A person (again): the existing adaptive zoom below decides.
+        if handlePersonLoss(now: now) { return }
 
         guard let currentZoom = cameraService.currentZoom,
               let minZoom = cameraService.minAvailableZoom,
@@ -613,8 +615,42 @@ final class CameraViewModel {
         }
     }
 
+    /// Returns true when nobody is detected (the adaptive zoom must not run). After the grace
+    /// period the zoom steps back to the baseline at the adaptive zoom's rate (0.5x per second),
+    /// through the same `applyZoom`; once there, no further zoom commands are sent.
+    private func handlePersonLoss(now: TimeInterval) -> Bool {
+        let visible = personBox != nil
+        guard let currentZoom = cameraService.currentZoom,
+              let minZoom = cameraService.minAvailableZoom,
+              let maxZoom = cameraService.maxAvailableZoom, currentZoom > 0 else {
+            return !visible
+        }
+        let baseline = max(minZoom, min(maxZoom, AdaptiveFOV.baselineZoom))
+        switch personLoss.update(personVisible: visible, currentZoom: currentZoom, baseline: baseline,
+                                 ratePerSecond: Self.adaptiveFOVMaxRatePerSecond, now: now) {
+        case .personVisible:
+            return false
+        case .waiting, .atBaseline:
+            adaptiveFOVHideStatus(after: 0)
+            return true
+        case .step(let zoom):
+            // No "Zooming out…" capsule: nobody is being framed; the zoom label shows the change.
+            adaptiveFOVHideStatus(after: 0)
+            adaptiveFOVWasHold = false
+            adaptiveFOVHoldSince = nil
+            adaptiveFOVZoomInFlight = true
+            Task {
+                let applied = await self.cameraService.applyZoom(zoom)
+                self.adaptiveFOVLastAppliedZoom = applied
+                self.adaptiveFOVLastChangeTime = ProcessInfo.processInfo.systemUptime
+                self.adaptiveFOVZoomInFlight = false
+            }
+            return true
+        }
+    }
+
     private var shouldPreserveEnvironmentContext: Bool {
-        guard let id = preferences.selectedPreference?.id,
+        guard let id = presetID,
               let environment = preferences.session(for: id)?.profile?.environment else { return false }
         let finding = environment.transferable.environmentProminence
         guard finding.validObservationCount >= 2,
@@ -626,12 +662,14 @@ final class CameraViewModel {
 
     func stopCamera() async {
         lighting.reset()
+        personLoss.pause()   // no frames while stopped (gallery): not a lost person
         await cameraService.stop()
     }
 
     /// Restarts the feed after `stopCamera()` (the session is already set up).
     func resumeCamera() async {
         guard state == .running else { return }
+        personLoss.pause()
         await cameraService.start()
     }
 

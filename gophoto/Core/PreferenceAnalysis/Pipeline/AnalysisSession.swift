@@ -67,6 +67,16 @@ final class AnalysisSession: ObservableObject {
         await runTask?.value
         guard phase == .completed, let profile else { return nil }
         var analysis = PreferenceAnalyzer.make(profile: profile, results: results, photoCount: photos.count)
+        analysis.evidence = AnalysisEvidenceSummary(photoRuns: results.map { result in
+            result.evidence.map { evidence in
+                evidence.runs.map { record in
+                    AnalysisEvidenceSummary.Run(
+                        source: record.source,
+                        outcome: AnalysisEvidenceSummary.Outcome(rawValue: record.state.rawValue) ?? .failed,
+                        detail: record.detail)
+                }
+            }
+        })
         let images = photos.map(\.image)
         analysis.lightLevel = await Task.detached(priority: .utility) { PhotoLightLevel.median(of: images) }.value
         return analysis

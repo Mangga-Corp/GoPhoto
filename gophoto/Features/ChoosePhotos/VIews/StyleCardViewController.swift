@@ -3,7 +3,7 @@
 //  gophoto
 //
 //  "Your style" card, shown after a preset is analysed (onboarding, a new preset, or edited
-//  photos): the style name, up to three traits with their photo counts, and three photos.
+//  photos): the style name and up to three traits with their photo counts.
 //
 
 import SwiftUI
@@ -13,14 +13,14 @@ final class StyleCardViewController: UIViewController {
     var onDone: (() -> Void)?
 
     private let summary: StyleSummary
-    private let presetName: String
     private let buttonTitle: String
     private var revealViews: [UIView] = []
     private var didReveal = false
 
-    init(summary: StyleSummary, presetName: String, buttonTitle: String = "Start shooting") {
+    /// `buttonTitle`: "Open Camera" when the button starts the session (onboarding, a new
+    /// preference), "Done" after editing photos.
+    init(summary: StyleSummary, buttonTitle: String = "Open Camera") {
         self.summary = summary
-        self.presetName = presetName
         self.buttonTitle = buttonTitle
         super.init(nibName: nil, bundle: nil)
         overrideUserInterfaceStyle = .light
@@ -50,7 +50,8 @@ final class StyleCardViewController: UIViewController {
             label.textColor = secondaryText
             header.append(label)
         }
-        let based = UILabel.make("Based on \(summary.photoCount) photos · \(presetName)", style: .footnote)
+        let count = summary.photoCount
+        let based = UILabel.make("Based on \(count) \(count == 1 ? "photo" : "photos")", style: .footnote)
         based.textColor = secondaryText
         header.append(based)
 
@@ -62,11 +63,7 @@ final class StyleCardViewController: UIViewController {
         let traitViews = summary.traits.map(makeTraitRow)
         let traitStack = UIStackView(arrangedSubviews: traitViews)
         traitStack.axis = .vertical
-        traitStack.spacing = 10
-
-        let photos = UIStackView(arrangedSubviews: summary.highlights.map(makeThumbnail))
-        photos.spacing = 10
-        photos.distribution = .fillEqually
+        traitStack.spacing = 12
 
         let button = PillButton(title: buttonTitle, prominent: true)
         button.configuration?.baseBackgroundColor = accent
@@ -74,19 +71,27 @@ final class StyleCardViewController: UIViewController {
         button.tintColor = accent
         button.addAction(UIAction { [weak self] _ in self?.onDone?() }, for: .touchUpInside)
 
-        let content = UIStackView(arrangedSubviews: [headerStack, traitStack, photos])
+        let content = UIStackView(arrangedSubviews: [headerStack, traitStack])
         content.axis = .vertical
-        content.spacing = 24
+        content.spacing = 32
         content.translatesAutoresizingMaskIntoConstraints = false
+
+        // Header and cards as one group, centred (a little above centre) in the space above the
+        // button; when they don't fit (large text) they start at the top and scroll.
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(content)
 
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.alwaysBounceVertical = true
-        scroll.addSubview(content)
+        scroll.addSubview(container)
         view.addSubview(scroll)
         button.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(button)
 
+        let centered = content.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -24)
+        centered.priority = .defaultHigh
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: safe.topAnchor),
@@ -94,18 +99,26 @@ final class StyleCardViewController: UIViewController {
             scroll.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: button.topAnchor, constant: -12),
 
-            content.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 40),
-            content.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -16),
-            content.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 24),
-            content.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -24),
+            container.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            container.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor),
+            container.heightAnchor.constraint(greaterThanOrEqualTo: scroll.frameLayoutGuide.heightAnchor),
+
+            centered,
+            content.topAnchor.constraint(greaterThanOrEqualTo: container.topAnchor, constant: 32),
+            content.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -16),
+            content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
+            content.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
 
             button.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24),
             button.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
             button.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -16)
         ])
+        button.accessibilityIdentifier = "styleCard.primary"
 
-        // Revealed one after another: name, then each trait, then the photos.
-        revealViews = [headerStack] + traitViews + [photos]
+        // Revealed one after another: name, then each trait.
+        revealViews = [headerStack] + traitViews
         if !UIAccessibility.isReduceMotionEnabled {
             revealViews.forEach { $0.alpha = 0; $0.transform = CGAffineTransform(translationX: 0, y: 12) }
         }
@@ -162,15 +175,6 @@ final class StyleCardViewController: UIViewController {
         return row
     }
 
-    private func makeThumbnail(_ image: UIImage) -> UIView {
-        let view = UIImageView(image: image)
-        view.contentMode = .scaleAspectFill
-        view.clipsToBounds = true
-        view.layer.cornerRadius = 12
-        view.isAccessibilityElement = false
-        view.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 4.0 / 3.0).isActive = true
-        return view
-    }
 }
 
 private extension UIFont {

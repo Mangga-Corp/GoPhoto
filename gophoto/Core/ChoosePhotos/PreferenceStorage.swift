@@ -43,9 +43,19 @@ final class PreferencesStorage {
 
     init() {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        root = base.appendingPathComponent("Preferences", isDirectory: true)
+        root = base.appendingPathComponent(Self.directoryName, isDirectory: true)
         try? fileManager.createDirectory(at: photosURL, withIntermediateDirectories: true)
     }
+
+    #if DEBUG
+    /// Debug builds launched with `-GoPhotoFixtureStore <name>` use a separate folder, so fixture
+    /// data never touches the real preferences. Without the argument: the normal folder.
+    private static var directoryName: String {
+        DebugFixtures.storeName.map { "PreferencesFixtures/\($0)" } ?? "Preferences"
+    }
+    #else
+    private static let directoryName = "Preferences"
+    #endif
 
     private var photosURL: URL { root.appendingPathComponent("photos", isDirectory: true) }
     private var indexURL: URL { root.appendingPathComponent("index.json") }

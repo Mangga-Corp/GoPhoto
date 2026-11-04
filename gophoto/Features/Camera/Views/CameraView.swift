@@ -16,6 +16,20 @@ struct CameraView: View {
     private static let appMode = 1
     private static var isTesting: Bool { appMode == 1 }
 
+    /// The session to guide with, from the navigation that opened the camera. The camera never
+    /// chooses a preference or shot size itself; nil = no preset.
+    let sessionConfiguration: PhotoSessionConfiguration?
+    /// Close (top left): ends the session; the app then returns to Preference Selection.
+    /// Nil hides the button (previews).
+    let onClose: (() -> Void)?
+    /// The close button fires once, even if tapped again during the transition.
+    @State private var isClosing = false
+
+    init(sessionConfiguration: PhotoSessionConfiguration? = nil, onClose: (() -> Void)? = nil) {
+        self.sessionConfiguration = sessionConfiguration
+        self.onClose = onClose
+    }
+
     @State private var viewModel = CameraViewModel(
         fixedSetup: CameraView.isTesting ? (mode: .heightFirstCrop, aspect: .fourThree) : nil)
     @Environment(\.openURL) private var openURL
@@ -62,6 +76,14 @@ struct CameraView: View {
                     .foregroundStyle(.white)
             }
 
+        }
+        // No live view (starting, no permission, unavailable): the top bar isn't shown, so the
+        // close button is, to leave the camera from any state.
+        .overlay(alignment: .topLeading) {
+            if viewModel.state != .running { closeButton }
+        }
+        .onChange(of: sessionConfiguration, initial: true) { _, configuration in
+            viewModel.apply(sessionConfiguration: configuration)
         }
         .task { await viewModel.startCamera() }
         .onChange(of: scenePhase) { _, phase in
@@ -166,9 +188,14 @@ struct CameraView: View {
             .overlay { guideVisuals }
             .overlay { gridOverlay }
             .overlay { HorizonLevelView(state: viewModel.horizon) }
-            .overlay { directionArrow }
+            .overlay {
+                GuidanceMotionOverlay(
+                    instruction: viewModel.instruction,
+                    pitchError: viewModel.pitchError,
+                    isEnabled: !isShowingGallery && !isShowingAnalysis
+                )
+            }
             .overlay(alignment: .bottom) { bottomStepCard }
-            .overlay { heightRings }
             .overlay(alignment: .top) { stepBannerView }
             .overlay(alignment: .trailing) { sideBar }
             .overlay(alignment: .top) { instructionPill }
@@ -196,22 +223,12 @@ struct CameraView: View {
             GuideFramesOverlay(target: viewModel.target.rect,
                                personOutline: viewModel.personOutline,
                                isAligned: viewModel.isReady)
-        } else if showsRing {
-            GuideRingOverlay(target: viewModel.target.rect,
-                             person: viewModel.personBox,
-                             isAligned: viewModel.isReady)      // green = ready
         }
     }
 
     /// Ratio mask + thirds grid, under the guide visuals.
     private var gridOverlay: some View {
         CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
-    }
-
-    @ViewBuilder private var directionArrow: some View {
-        if !showsStepBar {
-            DirectionArrowOverlay(instruction: viewModel.instruction)
-        }
     }
 
     @ViewBuilder private var bottomStepCard: some View {
@@ -223,17 +240,6 @@ struct CameraView: View {
                         isOK: viewModel.evaluation.checks[.distance] == .ok)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
-        }
-    }
-
-    /// Mode C: camera height as two rings on the subject's eyes, not a bar.
-    @ViewBuilder private var heightRings: some View {
-        if activeStep == .height, viewModel.evaluation.heightUsesRings,
-           let rings = viewModel.heightRings {
-            HeightRingOverlay(eye: rings.eye, targetY: rings.targetY,
-                              // "Don't tilt" only once the tilt is set (C); in B it comes after.
-                              tiltError: viewModel.guideMode.tiltBeforeHeight ? viewModel.pitchError : nil,
-                              isOK: viewModel.evaluation.checks[.height] == .ok)
         }
     }
 
@@ -322,16 +328,12 @@ struct CameraView: View {
         activeStep == .distance || activeStep == .height || activeStep == .tilt || activeStep == .heightRule
     }
 
-    private var showsRing: Bool {
-        viewModel.guideMode.steps.isEmpty || activeStep == .horizontal || activeStep == .vertical
-            || viewModel.isReady
-    }
-
     // MARK: Top bar, shutter, permission
 
     /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
     private var topBar: some View {
         HStack {
+            closeButton
             if isDeveloper {
                 Button {
                     isShowingDebug.toggle()
@@ -384,11 +386,29 @@ struct CameraView: View {
                     .padding(.vertical, 5)
                     .background(Color.black.opacity(0.35), in: Capsule())
                     .accessibilityLabel("Current camera zoom \(zoom)")
-                    .padding(.trailing, 4)
+                    .padding(.trailing, 16)
             }
-            AIPreferencesButton()
-                .padding(.horizontal, 16)
-                .frame(height: 44)
+        }
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder private var closeButton: some View {
+        if let onClose {
+            Button {
+                guard !isClosing else { return }
+                isClosing = true
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(isClosing)
+            .padding(.leading, 8)
+            .accessibilityLabel("Close camera")
+            .accessibilityIdentifier("camera.close")
         }
     }
 
