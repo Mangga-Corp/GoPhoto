@@ -6,6 +6,7 @@ private enum FirstTimeOnboardingStep: String {
     case analyzing
     case analysisComplete
     case styleCard
+    case preferenceSelection
 }
 
 /// The app's routes, decided in this order:
@@ -38,40 +39,33 @@ struct AppRootView: View {
                     .overlay(alignment: .bottom) { DebugSessionStatus() }
                     #endif
             } else if welcomeOnboardingCompleted {
-                SessionSetupFlowView(initialPath: debugInitialPath)
+                SessionSetupFlowView(
+                    initialPath: debugInitialPath,
+                    handoffPreferenceID: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue
+                        ? UUID(uuidString: onboardingPreferenceIDString) : nil
+                )
                     #if DEBUG
                     .overlay(alignment: .top) {
                         if DebugFixtures.storeName != nil { DebugFixtureStatus() }
                     }
                     #endif
             } else if welcomeOnboardingStarted,
-                      (firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSaved.rawValue
-                       || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue),
+                      ([FirstTimeOnboardingStep.preferenceSaved.rawValue,
+                        FirstTimeOnboardingStep.analyzing.rawValue,
+                        FirstTimeOnboardingStep.analysisComplete.rawValue,
+                        FirstTimeOnboardingStep.styleCard.rawValue]
+                        .contains(firstTimeOnboardingStep)),
                       let preference = savedOnboardingPreference {
                 OnboardingFlowView(
                     preferenceID: preference.id,
-                    startsAtStyleCard: false,
-                    showsStyleCard: false,
+                    startsAtStyleCard: shouldResumeStyleCard(for: preference),
+                    styleButtonTitle: "Continue",
                     onAnalysisCompleted: {
                         pendingOnboardingPreferenceIDString = ""
-                        firstTimeOnboardingStep = FirstTimeOnboardingStep.analysisComplete.rawValue
-                    },
-                    onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
-                    onFinish: { nil }
-                )
-                .preferredColorScheme(.light)
-                .tint(GoPhotoDesign.purple)
-            } else if welcomeOnboardingStarted,
-                      firstTimeOnboardingStep == FirstTimeOnboardingStep.styleCard.rawValue,
-                      let preference = onboardingPreference {
-                OnboardingFlowView(
-                    preferenceID: preference.id,
-                    startsAtStyleCard: shouldResumeStyleCard(for: preference),
-                    onAnalysisCompleted: {
                         firstTimeOnboardingStep = FirstTimeOnboardingStep.styleCard.rawValue
                     },
                     onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
-                    onFinish: completeOnboarding
+                    onFinish: continueToPreferenceSelection
                 )
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
@@ -157,19 +151,12 @@ struct AppRootView: View {
             || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue
     }
 
-    /// The style card's "Start shooting" at the end of onboarding: the new preference's session at
-    /// the initial 3/4 shot size. Onboarding is completed only once that session exists; on
-    /// failure the card stays with the error.
-    private func completeOnboarding() -> String? {
-        guard let preference = onboardingPreference else { return PhotoSessionError.preferenceNotFound.message }
-        if case .failure(let error) = PhotoSessionStore.shared.startSession(preferenceID: preference.id,
-                                                                            shotSize: .initialSelection) {
-            return error.message
-        }
+    /// Continues to the existing Preference Selection screen without starting a session.
+    private func continueToPreferenceSelection() -> String? {
+        guard savedOnboardingPreference != nil else { return PhotoSessionError.preferenceNotFound.message }
         welcomeOnboardingCompleted = true
         welcomeOnboardingStarted = false
-        firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
-        onboardingPreferenceIDString = ""
+        firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSelection.rawValue
         pendingOnboardingPreferenceIDString = ""
         return nil
     }

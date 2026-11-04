@@ -10,6 +10,8 @@
 import SwiftUI
 
 struct PreferenceSelectionView: View {
+    /// Carries the onboarding preference ID through this route; selection behavior is unchanged.
+    let handoffPreferenceID: UUID?
     let selection: PreferenceSelectionViewModel
     /// Continue, with a preference that exists and can start a session.
     let onContinue: (UUID) -> Void

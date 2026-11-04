@@ -32,18 +32,21 @@ struct SessionSetupFlowView: View {
     private struct CreatedPreference: Identifiable { let id: UUID }
 
     private let sessions: PhotoSessionStore
+    private let handoffPreferenceID: UUID?
 
     /// `initialPath`: screens already pushed when the flow opens (debug checks only; normally empty).
     init(preferences: PreferencesViewModel = .shared, sessions: PhotoSessionStore = .shared,
-         initialPath: [SessionSetupRoute] = []) {
+         initialPath: [SessionSetupRoute] = [], handoffPreferenceID: UUID? = nil) {
         _selection = State(initialValue: PreferenceSelectionViewModel(preferences: preferences, sessions: sessions))
         _path = State(initialValue: initialPath)
         self.sessions = sessions
+        self.handoffPreferenceID = handoffPreferenceID
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             PreferenceSelectionView(
+                handoffPreferenceID: handoffPreferenceID,
                 selection: selection,
                 onContinue: { id in path.append(.shotSize(preferenceID: id)) },
                 onAddNew: { isPresentingPicker = true }

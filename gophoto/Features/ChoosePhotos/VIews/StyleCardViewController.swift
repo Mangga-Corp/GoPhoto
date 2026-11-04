@@ -40,11 +40,13 @@ final class StyleCardViewController: UIViewController {
         kicker.font = .preferredFont(forTextStyle: .footnote).withWeight(.semibold)
         kicker.textColor = accent
 
-        let name = UILabel.make(summary.name ?? "Your style, decoded", style: .largeTitle)
-        name.font = .preferredFont(forTextStyle: .largeTitle).withWeight(.bold)
-        name.textColor = primaryText
-
-        var header: [UIView] = [kicker, name]
+        var header: [UIView] = [kicker]
+        if let name = summary.name {
+            let label = UILabel.make(name, style: .largeTitle)
+            label.font = .preferredFont(forTextStyle: .largeTitle).withWeight(.bold)
+            label.textColor = primaryText
+            header.append(label)
+        }
         if let tagline = summary.tagline {
             let label = UILabel.make(tagline, style: .body)
             label.textColor = secondaryText
