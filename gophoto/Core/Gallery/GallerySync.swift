@@ -12,16 +12,24 @@ import Photos
 import SwiftData
 
 final class GallerySync {
-    private let context: ModelContext
+    private let container: ModelContainer
 
-    /// Pass a context in tests/previews; nil = the app's shared database.
-    init(context: ModelContext? = nil) {
-        self.context = context ?? AppDatabase.container.mainContext
+    /// Pass a container in tests/previews; nil = the app's shared database.
+    init(container: ModelContainer? = nil) {
+        self.container = container ?? AppDatabase.container
+    }
+
+    /// Runs the sync on a background thread so opening the gallery never blocks the UI.
+    func removeDeletedPhotosInBackground() async {
+        let container = container
+        await Task.detached(priority: .utility) {
+            Self.removeDeletedPhotos(in: ModelContext(container))
+        }.value
     }
 
     /// Removes gallery records whose photo no longer exists in Photos.
     /// Cheap and safe to call often (gallery opens, app becomes active).
-    func removeDeletedPhotos() {
+    nonisolated private static func removeDeletedPhotos(in context: ModelContext) {
         // 1. SAFETY: only with Photos access. Without access every photo looks "missing",
         //    and we would wipe the whole gallery.
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -39,9 +47,12 @@ final class GallerySync {
         }
 
         // 4. Delete the records whose photo is gone (the Photos library is never touched here)
+        var removedIDs: [String] = []
         for record in records where !existingIDs.contains(record.assetID) {
+            removedIDs.append(record.assetID)
             context.delete(record)
         }
+        ThumbnailCache.shared.remove(assetIDs: removedIDs)
         try? context.save()
     }
 }

@@ -23,6 +23,8 @@ struct FullPhotoView: View {
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
+    /// The gallery thumbnail, shown at once while the full image loads (like the Photos app)
+    @State private var placeholder: UIImage?
     @State private var isMissing = false
     @State private var isSharp = false
     /// The rendered preview and the recipe it was rendered with (a stale look is never shown)
@@ -62,6 +64,10 @@ struct FullPhotoView: View {
                         systemImage: "photo.badge.exclamationmark",
                         description: Text("It may have been deleted from Photos.")
                     )
+                } else if let placeholder {
+                    Image(uiImage: placeholder)
+                        .resizable()
+                        .scaledToFit()
                 } else {
                     ProgressView()
                 }
@@ -69,6 +75,10 @@ struct FullPhotoView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             // Runs when the page appears; cancelled automatically when it scrolls away
             .task(id: assetID) {
+                let id = assetID
+                placeholder = await Task.detached(priority: .userInitiated) {
+                    ThumbnailCache.shared.image(for: id, maxPixels: ThumbnailCache.storedPixels)
+                }.value
                 let pixels = CGSize(width: proxy.size.width * displayScale,
                                     height: proxy.size.height * displayScale)
                 image = await loadImage(assetID, pixels)

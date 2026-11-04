@@ -110,22 +110,9 @@ struct CameraView: View {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
         }
         .fullScreenCover(isPresented: $isShowingGallery) {
-            NavigationStack {
-                GalleryView(viewModel: GalleryViewModel())
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button {
-                                isShowingGallery = false
-                            } label: {
-                                Image(systemName: "chevron.backward")
-                            }
-                            .accessibilityLabel("Back")
-                        }
-                    }
-            }
-            .preferredColorScheme(.light)
-            .tint(GoPhotoDesign.purple)
-            .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
+            // Its own view with no inputs: camera updates never rebuild the gallery
+            GalleryScreen()
+                .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
         }
         .preferredColorScheme(.dark)
     }
@@ -146,7 +133,12 @@ struct CameraView: View {
                         .padding(.leading, 24)
                 }
         }
-        .task { await viewModel.observeTilt() }
+        // Motion runs 30×/s and redraws the camera screen each time: stop it while the gallery
+        // covers the camera, otherwise the gallery underneath it is rebuilt 30×/s too (lag).
+        .task(id: isShowingGallery) {
+            guard !isShowingGallery else { return }
+            await viewModel.observeTilt()
+        }
         .task { await viewModel.observePerson() }
         .task { await viewModel.observeEnvironment() }
         .task { await viewModel.observeZoom() }

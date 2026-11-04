@@ -38,20 +38,28 @@ final class GalleryViewModel {
         self.photoDeleter = photoDeleter
         self.galleryStore = galleryStore ?? GalleryStore()
         self.photoLibraryService = photoLibraryService
+        // Known right away (a cheap status read): the first frame already shows the grid or the
+        // empty state instead of a loading spinner.
+        self.access = authorization.currentAccess()
     }
 
     func onAppear() async {
-        access = authorization.currentAccess()
         if access == .notDetermined {
             access = await authorization.requestAccess()
         }
-        removeDeletedPhotos()
+        await removeDeletedPhotos()
     }
     
-    func removeDeletedPhotos() {
-           guard access == .allowed else { return }
-           gallerySync.removeDeletedPhotos()
-       }
+    func removeDeletedPhotos() async {
+        guard access == .allowed else { return }
+        await gallerySync.removeDeletedPhotosInBackground()
+    }
+
+    /// Looks up all photos in one request and builds missing thumbnails in the background.
+    func prepareThumbnails(for assetIDs: [String]) async {
+        guard access == .allowed else { return }
+        await imageLoader.prepareThumbnails(for: assetIDs)
+    }
 
     func thumbnail(for assetID: String, targetSize: CGSize) async -> UIImage? {
         await imageLoader.thumbnail(for: assetID, targetSize: targetSize)
@@ -65,6 +73,7 @@ final class GalleryViewModel {
         do {
             try await photoDeleter.delete(assetIDs: assetIDs)
             galleryStore.remove(assetIDs: assetIDs)
+            ThumbnailCache.shared.remove(assetIDs: assetIDs)
             return true
         } catch let error where error.isUserCancelled {
             return false
@@ -94,6 +103,10 @@ final class GalleryViewModel {
             guard let newID = try await photoLibraryService.save(imageData: output) else {
                 return PhotoLibraryError.saveFailed.localizedDescription
             }
+            // Thumbnail first (off the main thread), so the new photo appears sharp right away
+            await Task.detached(priority: .userInitiated) {
+                ThumbnailCache.shared.store(imageData: output, for: newID)
+            }.value
             galleryStore.addCaptured(assetID: newID, presetID: presetID)
             return nil
         } catch {
