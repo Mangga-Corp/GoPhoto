@@ -58,7 +58,7 @@ struct GalleryShortcutButton: View {
             image = await loader.thumbnail(for: assetID, targetSize: CGSize(width: pixels, height: pixels))
         }
         .task(id: scenePhase){
-            if scenePhase == .active{GallerySync().removeDeletedPhotos()}
+            if scenePhase == .active{await GallerySync().removeDeletedPhotosInBackground()}
         }
     }
 }

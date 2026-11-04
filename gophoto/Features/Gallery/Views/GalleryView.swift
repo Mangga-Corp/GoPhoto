@@ -12,7 +12,8 @@ import SwiftUI
 import SwiftData
 
 struct GalleryView: View {
-    @State var viewModel: GalleryViewModel
+    /// Owned by the presenter (GalleryScreen); @Observable, so a plain reference is enough.
+    let viewModel: GalleryViewModel
     
     @Query(sort: \GalleryPhoto.createdAt, order: .reverse)
     private var photos: [GalleryPhoto]
@@ -25,6 +26,8 @@ struct GalleryView: View {
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
     @State private var isDeleting = false
+    /// Width of one grid cell in points (measured), so thumbnails are requested at the exact size
+    @State private var cellSide: CGFloat = 132
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
     
@@ -58,7 +61,11 @@ struct GalleryView: View {
             }
         
             .task { await viewModel.onAppear() }
-            .onChange(of: scenePhase,){_, phase in if phase == .active {viewModel.removeDeletedPhotos()
+            // Builds missing thumbnails in the background (also when new photos arrive)
+            .task(id: photos.map(\.assetID)) {
+                await viewModel.prepareThumbnails(for: photos.map(\.assetID))
+            }
+            .onChange(of: scenePhase,){_, phase in if phase == .active {Task { await viewModel.removeDeletedPhotos() }
             }
             }
             .navigationDestination(for: GalleryPhoto.self) { photo in
@@ -116,6 +123,9 @@ struct GalleryView: View {
                         }
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { ($0.size.width - 4) / 3 } action: { side in
+                    if side > 40 { cellSide = side }   // ignore 0 / mid-transition sizes
+                }
             }
         }
     }
@@ -125,7 +135,8 @@ struct GalleryView: View {
         let thumbnail = GalleryThumbnailView(
             assetID: photo.assetID,
             createdAt: photo.createdAt,
-            loadThumbnail: viewModel.thumbnail
+            loadThumbnail: viewModel.thumbnail,
+            side: cellSide
         )
         
         if isSelecting {

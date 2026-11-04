@@ -707,13 +707,15 @@ final class CameraViewModel {
 
         // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
         let capturedData = photo.data
-        let presetAtShot = presetID
+        // Gallery thumbnail, made from the file while Photos is still saving it
+        let thumbnail = Self.makeThumbnail(of: capturedData)
         Task { [weak self] in
             guard let self else { return }
             let saveStart = Date()
             do {
                 if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
-                    self.galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
+                    await Self.storeThumbnail(thumbnail, for: assetID)   // before the grid shows it
+                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
                 }
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -736,14 +738,30 @@ final class CameraViewModel {
             enhanced.flatMap { CapturedPhotoEnhancing.file(for: $0, metadataFrom: original) } ?? original
         }.value
 
+        let thumbnail = Self.makeThumbnail(of: data)
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
-                galleryStore.addCaptured(assetID: assetID, presetID: presetID)
+                await Self.storeThumbnail(thumbnail, for: assetID)
+                galleryStore.addCaptured(assetID: assetID, presetID: nil)
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {
             self.review?.saveError = error.localizedDescription
         }
+    }
+
+    /// Starts building the gallery thumbnail from the photo file (background), so the gallery
+    /// shows the photo instantly and sharp without asking Photos (slow for 48 MP files).
+    private nonisolated static func makeThumbnail(of data: Data) -> Task<Data?, Never> {
+        Task.detached(priority: .userInitiated) { ThumbnailCache.encodedThumbnail(from: data) }
+    }
+
+    private nonisolated static func storeThumbnail(_ thumbnail: Task<Data?, Never>, for assetID: String) async {
+        await Task.detached(priority: .userInitiated) {
+            if let encoded = await thumbnail.value {
+                ThumbnailCache.shared.store(encoded: encoded, for: assetID)
+            }
+        }.value
     }
 
     /// Discards the reviewed photo and returns to the viewfinder.

@@ -145,6 +145,12 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// Supported zoom range for the active format.
     private var _minAvailableZoom: Double = 1.0
     private var _maxAvailableZoom: Double = 1.0
+    /// Copy of the zoom values for readers on other threads (the main actor reads them for every
+    /// detection). Reading through `sessionQueue.sync` blocked the main thread for as long as the
+    /// session queue was busy, e.g. the whole `stopRunning()` when the gallery opened.
+    private struct ZoomSnapshot { var current, min, max: Double? }
+    private let zoomLock = NSLock()
+    private var zoomSnapshot = ZoomSnapshot()
     /// Where exposure and focus last aimed (video queue), upright frame, origin top-left;
     /// nil = the camera's default (frame centre).
     private var meteringPoint: CGPoint?
@@ -241,16 +247,17 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
 
     // MARK: - Zoom control
 
-    var currentZoom: Double? {
-        sessionQueue.sync { device == nil ? nil : _currentZoom }
-    }
+    // Non-blocking: read the snapshot, never wait for the session queue.
+    var currentZoom: Double? { zoomLock.withLock { zoomSnapshot.current } }
+    var minAvailableZoom: Double? { zoomLock.withLock { zoomSnapshot.min } }
+    var maxAvailableZoom: Double? { zoomLock.withLock { zoomSnapshot.max } }
 
-    var minAvailableZoom: Double? {
-        sessionQueue.sync { device == nil ? nil : _minAvailableZoom }
-    }
-
-    var maxAvailableZoom: Double? {
-        sessionQueue.sync { device == nil ? nil : _maxAvailableZoom }
+    /// Session queue: copies the zoom values for `currentZoom` / `min` / `max`.
+    private func publishZoomSnapshot() {
+        let snapshot = device == nil
+            ? ZoomSnapshot()
+            : ZoomSnapshot(current: _currentZoom, min: _minAvailableZoom, max: _maxAvailableZoom)
+        zoomLock.withLock { zoomSnapshot = snapshot }
     }
 
     func zoomUpdates() -> AsyncStream<Double?> {
@@ -283,6 +290,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                     defer { device.unlockForConfiguration() }
                     device.videoZoomFactor = clamped
                     self._currentZoom = Double(device.videoZoomFactor)
+                    self.publishZoomSnapshot()
                     self.zoomContinuation?.yield(self._currentZoom)
                 } catch {
                     NSLog("GoPhoto camera zoom could not be applied: %@", error.localizedDescription)
@@ -338,6 +346,7 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             NSLog("GoPhoto camera zoom could not be reset: %@", error.localizedDescription)
         }
         _currentZoom = Double(device.videoZoomFactor)
+        publishZoomSnapshot()
         zoomContinuation?.yield(_currentZoom)
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
         let fov = Double(device.activeFormat.videoFieldOfView)
