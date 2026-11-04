@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import os
 
 /// A preference name that was not accepted (empty, or already used).
 struct PreferenceNameError: Error, Equatable {
@@ -21,13 +22,14 @@ struct PreferenceNameError: Error, Equatable {
 @Observable
 final class PreferencesViewModel {
     static let shared = PreferencesViewModel()
-    static let pendingOnboardingPreferenceIDKey = "firstTimeOnboardingPreferenceID"
+    static let pendingOnboardingPreferenceIDKey = "pendingOnboardingAnalysisPreferenceID"
 
     /// Shot size key of older versions (the popover's switch, saved across launches). Shot size
     /// is now chosen per session and never saved, so the stale value is removed at launch.
     private static let legacyShotSizeKey = "presetShotSize"
 
     @ObservationIgnored private let storage: PreferencesStorage
+    @ObservationIgnored private let logger = Logger(subsystem: "co.mango.gophoto", category: "preferences.analysis")
     private(set) var preferences: [Preference]
     private var isSavingNewPreference = false
     /// The preference used to start the most recent successful camera session. Saved as
@@ -47,7 +49,8 @@ final class PreferencesViewModel {
         defaults.removeObject(forKey: Self.legacyShotSizeKey)
         let pendingOnboardingID = defaults.string(forKey: Self.pendingOnboardingPreferenceIDKey)
             .flatMap { UUID(uuidString: $0) }
-        // Keep the new first-time preference available for Phase 3 without starting analysis yet.
+        // The onboarding flow starts this preference explicitly; startup must not start a
+        // competing run before that flow can join it.
         for preference in preferences
         where preference.analysis?.isCurrent != true && preference.id != pendingOnboardingID {
             reanalyze(id: preference.id)
@@ -126,6 +129,10 @@ final class PreferencesViewModel {
             completion(.failure(PreferenceNameError(message: error)))
             return
         }
+        guard preference(id: id) == nil else {
+            completion(.failure(PreferenceNameError(message: "This preference has already been saved.")))
+            return
+        }
 
         var seenPhotoIDs = Set<UUID>()
         var seenAssetIDs = Set<String>()
@@ -151,13 +158,24 @@ final class PreferencesViewModel {
         storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.isSavingNewPreference = false
                 switch result {
                 case .success:
-                    self.preferences.append(preference)
-                    self.persistCount += 1
-                    completion(.success(preference.id))
+                    self.storage.loadPreference(id: preference.id) { loadResult in
+                        DispatchQueue.main.async {
+                            switch loadResult {
+                            case .success(let persistedPreference)
+                                where persistedPreference.photos.count == validPhotos.count:
+                                self.preferences.append(persistedPreference)
+                                self.isSavingNewPreference = false
+                                self.persistCount += 1
+                                completion(.success(persistedPreference.id))
+                            case .success, .failure:
+                                self.rollbackFailedPreferenceSave(completion: completion)
+                            }
+                        }
+                    }
                 case .failure:
+                    self.isSavingNewPreference = false
                     completion(.failure(PreferenceNameError(
                         message: "Couldn't save the preference and its photos. Check available storage and try again."
                     )))
@@ -210,7 +228,7 @@ final class PreferencesViewModel {
     /// Only the newest request per preset is saved. Await `value` to know when it is done.
     @discardableResult
     func reanalyze(id: UUID) -> Task<Void, Never>? {
-        guard let photos = preference(id: id)?.photos, !photos.isEmpty else { return nil }
+        guard let existingPhotos = preference(id: id)?.photos, !existingPhotos.isEmpty else { return nil }
         let token = (analysisTokens[id] ?? 0) + 1
         analysisTokens[id] = token
         let session = AnalysisSession()
@@ -221,6 +239,18 @@ final class PreferencesViewModel {
             await previous?.value
             guard let self else { return }
             guard self.analysisTokens[id] == token else { return }
+            let persistedResult: Result<Preference, Error> = await withCheckedContinuation { continuation in
+                self.storage.loadPreference(id: id) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+            guard case .success(let persistedPreference) = persistedResult,
+                  !persistedPreference.photos.isEmpty else {
+                self.logger.error("Could not analyze preference \(id): persisted photos are unavailable")
+                self.analyzingIDs.remove(id)
+                return
+            }
+            let photos = persistedPreference.photos
             self.analysisRunCount += 1
             #if DEBUG
             // UI tests only (`-GoPhotoFakeAnalysis <mode>`): a stand-in result instead of Vision.
@@ -234,12 +264,48 @@ final class PreferencesViewModel {
             let analysis = await session.analyze(photos)
             #endif
             guard self.analysisTokens[id] == token else { return }
+            if let analysis, !(await self.setAnalysisPersisted(analysis, for: id)) {
+                self.logger.error("Could not persist analysis for preference \(id)")
+            }
             self.analyzingIDs.remove(id)
-            if let analysis { self.setAnalysis(analysis, for: id) }
         }
         analysisChain = task
         analysisTasks[id] = task
         return task
+    }
+
+    private func rollbackFailedPreferenceSave(
+        completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
+    ) {
+        storage.save(preferences, selectedID: lastSelectedID) { [weak self] rollbackResult in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if case .failure(let error) = rollbackResult {
+                    self.logger.error("Could not roll back an unreadable new preference: \(error.localizedDescription, privacy: .public)")
+                }
+                self.isSavingNewPreference = false
+                completion(.failure(PreferenceNameError(
+                    message: "Couldn't verify the saved photos. Please try saving the preference again."
+                )))
+            }
+        }
+    }
+
+    private func setAnalysisPersisted(_ analysis: PresetAnalysis, for id: UUID) async -> Bool {
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return false }
+        let previousAnalysis = preferences[index].analysis
+        preferences[index].analysis = analysis
+        let result: Result<Void, Error> = await withCheckedContinuation { continuation in
+            persist { result in continuation.resume(returning: result) }
+        }
+        guard case .success = result else {
+            if let currentIndex = preferences.firstIndex(where: { $0.id == id }),
+               preferences[currentIndex].analysis == analysis {
+                preferences[currentIndex].analysis = previousAnalysis
+            }
+            return false
+        }
+        return true
     }
 
     func setAnalysis(_ analysis: PresetAnalysis, for id: UUID) {
@@ -273,8 +339,8 @@ final class PreferencesViewModel {
     /// really runs the analysis again); not saved.
     private(set) var analysisRunCount = 0
 
-    private func persist() {
+    private func persist(completion: ((Result<Void, Error>) -> Void)? = nil) {
         persistCount += 1
-        storage.save(preferences, selectedID: lastSelectedID)
+        storage.save(preferences, selectedID: lastSelectedID, completion: completion)
     }
 }

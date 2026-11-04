@@ -4,16 +4,18 @@ private enum FirstTimeOnboardingStep: String {
     case photoSetup
     case preferenceSaved
     case analyzing
+    case analysisComplete
     case styleCard
 }
 
 /// The app's routes, decided in this order:
 /// 1. A photography session exists (`PhotoSessionStore.current`) → the camera, with that session.
 /// 2. Onboarding completed → session setup (Preference Selection, or its empty state).
-/// 3. First-time onboarding explicitly in its analysis step → analysis → "Your style" card.
-/// 4. Other first-time onboarding states, including the saved Phase 2 preference → Photo Session Setup.
-/// 5. Saved preferences from a release without the completion flag → marked completed → 2.
-/// 6. Otherwise → Welcome onboarding.
+/// 3. A saved first-time preference awaiting analysis, or in analysis → the existing analysis flow.
+/// 4. The existing style-card onboarding step → analysis/style flow.
+/// 5. Other first-time onboarding states → Photo Session Setup.
+/// 6. Saved preferences from a release without the completion flag → marked completed → 2.
+/// 7. Otherwise → Welcome onboarding.
 /// A session is only ever created by `PhotoSessionStore.startSession` (Start Shooting, a new
 /// preference's style card, or the end of onboarding); app launch never creates one.
 struct AppRootView: View {
@@ -21,8 +23,10 @@ struct AppRootView: View {
     @AppStorage("welcomeOnboardingStarted") private var welcomeOnboardingStarted = false
     @AppStorage("firstTimeOnboardingStep")
     private var firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
-    @AppStorage(PreferencesViewModel.pendingOnboardingPreferenceIDKey)
+    @AppStorage("firstTimeOnboardingPreferenceID")
     private var onboardingPreferenceIDString = ""
+    @AppStorage(PreferencesViewModel.pendingOnboardingPreferenceIDKey)
+    private var pendingOnboardingPreferenceIDString = ""
 
     var body: some View {
         Group {
@@ -41,15 +45,25 @@ struct AppRootView: View {
                     }
                     #endif
             } else if welcomeOnboardingStarted,
-                      firstTimeOnboardingStep != FirstTimeOnboardingStep.analyzing.rawValue,
-                      firstTimeOnboardingStep != FirstTimeOnboardingStep.styleCard.rawValue {
-                PhotoSessionSetupView(
-                    savedPreference: savedOnboardingPreference,
-                    onCreatePreference: createOnboardingPreference
+                      (firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSaved.rawValue
+                       || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue),
+                      let preference = savedOnboardingPreference {
+                OnboardingFlowView(
+                    preferenceID: preference.id,
+                    startsAtStyleCard: false,
+                    showsStyleCard: false,
+                    onAnalysisCompleted: {
+                        pendingOnboardingPreferenceIDString = ""
+                        firstTimeOnboardingStep = FirstTimeOnboardingStep.analysisComplete.rawValue
+                    },
+                    onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
+                    onFinish: { nil }
                 )
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
-            } else if welcomeOnboardingStarted, let preference = onboardingPreference {
+            } else if welcomeOnboardingStarted,
+                      firstTimeOnboardingStep == FirstTimeOnboardingStep.styleCard.rawValue,
+                      let preference = onboardingPreference {
                 OnboardingFlowView(
                     preferenceID: preference.id,
                     startsAtStyleCard: shouldResumeStyleCard(for: preference),
@@ -58,6 +72,13 @@ struct AppRootView: View {
                     },
                     onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
                     onFinish: completeOnboarding
+                )
+                .preferredColorScheme(.light)
+                .tint(GoPhotoDesign.purple)
+            } else if welcomeOnboardingStarted {
+                PhotoSessionSetupView(
+                    savedPreference: savedOnboardingPreference,
+                    onCreatePreference: createOnboardingPreference
                 )
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
@@ -76,6 +97,7 @@ struct AppRootView: View {
         WelcomeOnboardingView {
             firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
             onboardingPreferenceIDString = ""
+            pendingOnboardingPreferenceIDString = ""
             welcomeOnboardingStarted = true
         }
         .preferredColorScheme(.light)
@@ -89,14 +111,18 @@ struct AppRootView: View {
     ) {
         let preferenceID = UUID()
         onboardingPreferenceIDString = preferenceID.uuidString
+        pendingOnboardingPreferenceIDString = preferenceID.uuidString
+        firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSaved.rawValue
         PreferencesViewModel.shared.addPersisted(id: preferenceID, name: name, photos: photos) { result in
             switch result {
             case .success(let id):
                 onboardingPreferenceIDString = id.uuidString
-                firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSaved.rawValue
+                firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
                 completion(nil)
             case .failure(let error):
                 onboardingPreferenceIDString = ""
+                pendingOnboardingPreferenceIDString = ""
+                firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
                 completion(error.message)
             }
         }
@@ -144,6 +170,7 @@ struct AppRootView: View {
         welcomeOnboardingStarted = false
         firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
         onboardingPreferenceIDString = ""
+        pendingOnboardingPreferenceIDString = ""
         return nil
     }
 
@@ -152,6 +179,7 @@ struct AppRootView: View {
     private func chooseOtherOnboardingPhotos(_ id: UUID) {
         PreferencesViewModel.shared.delete(id: id, allowingLast: true)
         onboardingPreferenceIDString = ""
+        pendingOnboardingPreferenceIDString = ""
         firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
     }
 

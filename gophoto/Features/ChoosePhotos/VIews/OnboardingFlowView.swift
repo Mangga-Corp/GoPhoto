@@ -17,10 +17,12 @@ struct OnboardingFlowView: View {
     var onFinish: () -> String?
     let preferenceID: UUID
     let onAnalysisCompleted: () -> Void
+    let showsStyleCard: Bool
     /// "Choose Other Photos" on the no-person screen; nil hides the button.
     let onChooseOtherPhotos: (() -> Void)?
     @State private var style: StyleSummary?
     @State private var failure: AnalysisFailure?
+    @State private var analysisCompleted: Bool
     @State private var analysisRetry = 0
     @State private var finishError: String?
 
@@ -36,18 +38,33 @@ struct OnboardingFlowView: View {
     init(
         preferenceID: UUID,
         startsAtStyleCard: Bool,
+        showsStyleCard: Bool = true,
         onAnalysisCompleted: @escaping () -> Void,
         onChooseOtherPhotos: (() -> Void)? = nil,
         onFinish: @escaping () -> String?
     ) {
         self.preferenceID = preferenceID
         self.onAnalysisCompleted = onAnalysisCompleted
+        self.showsStyleCard = showsStyleCard
         self.onChooseOtherPhotos = onChooseOtherPhotos
         self.onFinish = onFinish
         let preference = PreferencesViewModel.shared.preference(id: preferenceID)
         let usable = preference?.analysis.map { $0.isCurrent && $0.usability == .usable } ?? false
         let summary = usable ? StyleSummary(analysis: preference?.analysis, photos: preference?.photos ?? []) : nil
         _style = State(initialValue: startsAtStyleCard ? summary : nil)
+        let currentAnalysis = preference?.analysis.flatMap { $0.isCurrent ? $0 : nil }
+        let recoveredFailure: AnalysisFailure?
+        if !showsStyleCard, let analysis = currentAnalysis {
+            switch analysis.usability {
+            case .usable: recoveredFailure = nil
+            case .requiredAnalysisFailed: recoveredFailure = .analysisFailed
+            case .noUsableFraming: recoveredFailure = .noUsableFraming
+            }
+        } else {
+            recoveredFailure = nil
+        }
+        _failure = State(initialValue: recoveredFailure)
+        _analysisCompleted = State(initialValue: !showsStyleCard && currentAnalysis?.usability == .usable)
     }
 
     var body: some View {
@@ -65,6 +82,9 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .transition(.opacity)
+            } else if analysisCompleted {
+                ProgressView()
+                    .accessibilityLabel("Analysis complete")
             } else if let preference = PreferencesViewModel.shared.preference(id: preferenceID) {
                 AnalyzingScreen(preferenceID: preferenceID, photos: preference.photos) {
                     analysisFinished()
@@ -79,6 +99,9 @@ struct OnboardingFlowView: View {
             }
         }
         .ignoresSafeArea()
+        .onAppear {
+            if analysisCompleted { onAnalysisCompleted() }
+        }
         .alert("Couldn't start shooting", isPresented: Binding(get: { finishError != nil },
                                                               set: { if !$0 { finishError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -96,12 +119,16 @@ struct OnboardingFlowView: View {
         }
         switch analysis.usability {
         case .usable:
-            guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.photos) else {
-                withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
-                return
+            if showsStyleCard {
+                guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.photos) else {
+                    withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
+                    return
+                }
+                onAnalysisCompleted()
+                withAnimation(.easeInOut(duration: 0.4)) { style = summary }
+            } else {
+                onAnalysisCompleted()
             }
-            onAnalysisCompleted()
-            withAnimation(.easeInOut(duration: 0.4)) { style = summary }
         case .requiredAnalysisFailed:
             Self.log.error("Required analysis failed for \(preferenceID): \(analysis.evidence?.diagnosticDescription ?? "")")
             withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }

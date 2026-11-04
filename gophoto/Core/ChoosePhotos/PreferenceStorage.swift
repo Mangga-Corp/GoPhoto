@@ -10,9 +10,15 @@ import os
 
 private enum PreferenceStorageError: LocalizedError {
     case photoEncodingFailed
+    case preferenceNotFound
+    case photoReadFailed
 
     var errorDescription: String? {
-        "A selected photo could not be saved."
+        switch self {
+        case .photoEncodingFailed: "A selected photo could not be saved."
+        case .preferenceNotFound: "The saved preference could not be found."
+        case .photoReadFailed: "A saved preference photo could not be read."
+        }
     }
 }
 
@@ -86,6 +92,20 @@ final class PreferencesStorage {
         return (preferences, snapshot.selectedID)
     }
 
+    func loadPreference(
+        id: UUID,
+        completion: @escaping (Result<Preference, Error>) -> Void
+    ) {
+        ioQueue.async { [self] in
+            do {
+                completion(.success(try loadPreferenceSynchronously(id: id)))
+            } catch {
+                logger.error("Could not load persisted preference \(id): \(error.localizedDescription, privacy: .public)")
+                completion(.failure(error))
+            }
+        }
+    }
+
     /// Runs in the background so picking many photos doesn't freeze the UI. New image files are
     /// written before the index is atomically replaced; failed writes remove files created by
     /// this save, leaving the previous index and preference set intact.
@@ -151,6 +171,24 @@ final class PreferencesStorage {
         }
 
         removeUnreferencedPhotoFiles(keeping: usedFiles)
+    }
+
+    private func loadPreferenceSynchronously(id: UUID) throws -> Preference {
+        let data = try Data(contentsOf: indexURL)
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: data)
+        guard let entry = snapshot.entries.first(where: { $0.id == id }) else {
+            throw PreferenceStorageError.preferenceNotFound
+        }
+
+        var seen = Set<UUID>()
+        let photoIDs = entry.photoIDs.filter { seen.insert($0).inserted }
+        let photos = try photoIDs.map { photoID -> PhotoItem in
+            guard let image = UIImage(contentsOfFile: photoURL(photoID).path) else {
+                throw PreferenceStorageError.photoReadFailed
+            }
+            return PhotoItem(id: photoID, image: image, focalLength35mm: entry.focals?[photoID.uuidString])
+        }
+        return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
     }
 
     private func removeUnreferencedPhotoFiles(keeping referencedFiles: Set<String>) {
