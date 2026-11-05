@@ -85,6 +85,7 @@ nonisolated struct PhotoSessionConfiguration: Identifiable, Hashable, Sendable {
     /// Resolves the effective shot variant from the preference's analysis:
     /// 1. the requested shot size's variant, when the preference has photos of it;
     /// 2. otherwise the analysis default (`defaultShot`), flagged as a fallback;
+    ///    (a preference of seated full-body photos only: full body);
     /// 3. otherwise the session cannot be created.
     /// No variant is invented and the analysis is not changed.
     static func resolve(preferenceID: UUID, analysis: PresetAnalysis?, requestedShotSize: SessionShotSize,
@@ -97,6 +98,8 @@ nonisolated struct PhotoSessionConfiguration: Identifiable, Hashable, Sendable {
             effective = requested
         } else if let fallback = analysis.defaultShot {
             effective = fallback
+        } else if analysis.sittingVariant != nil {
+            effective = .full                 // seated photos only: full body (seated)
         } else {
             return .failure(.noShotVariant)
         }

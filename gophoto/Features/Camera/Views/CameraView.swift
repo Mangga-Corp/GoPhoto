@@ -17,7 +17,8 @@ struct CameraView: View {
     private static var isTesting: Bool { appMode == 1 }
 
     /// The session to guide with, from the navigation that opened the camera. The camera never
-    /// chooses a preference or shot size itself; nil = no preset.
+    /// chooses a preference itself; its shot size is only the picker's starting point (the
+    /// photographer switches shot size above the shutter). Nil = no preset.
     let sessionConfiguration: PhotoSessionConfiguration?
     /// Close (top left): ends the session; the app then returns to Preference Selection.
     /// Nil hides the button (previews).
@@ -125,13 +126,17 @@ struct CameraView: View {
 
             cameraPreview
 
-            shutterButton
-                .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
-                .overlay(alignment: .leading) {
-                    GalleryShortcutButton { isShowingGallery = true }
-                        .matchedTransitionSource(id: "gallery", in: galleryZoom)
-                        .padding(.leading, 24)
-                }
+            VStack(spacing: 10) {
+                shotSizePicker
+                shutterButton
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .leading) {
+                        GalleryShortcutButton { isShowingGallery = true }
+                            .matchedTransitionSource(id: "gallery", in: galleryZoom)
+                            .padding(.leading, 24)
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
         }
         // Motion runs 30×/s and redraws the camera screen each time: stop it while the gallery
         // covers the camera, otherwise the gallery underneath it is rebuilt 30×/s too (lag).
@@ -401,6 +406,17 @@ struct CameraView: View {
             .padding(.leading, 8)
             .accessibilityLabel("Close camera")
             .accessibilityIdentifier("camera.close")
+        }
+    }
+
+    /// Shot sizes like TikTok's camera modes: full body only while the person sits, the
+    /// preference's shot sizes while they stand. Hidden without a preset.
+    @ViewBuilder private var shotSizePicker: some View {
+        let options = viewModel.shotOptions
+        if !options.isEmpty {
+            ShotSizePicker(options: options, selection: viewModel.activeShot,
+                           posture: viewModel.posture) { viewModel.selectShot($0) }
+                .sensoryFeedback(.selection, trigger: viewModel.activeShot)
         }
     }
 

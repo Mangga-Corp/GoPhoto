@@ -50,7 +50,7 @@ final class PhotoSessionStore {
         guard let preference = preferences.preference(id: current.preferenceID) else {
             return .invalidated(current, .preferenceDeleted)
         }
-        guard preference.analysis?.shotVariant(current.effectiveShotSize) != nil else {
+        guard preference.analysis?.hasGuide(for: current.effectiveShotSize) == true else {
             return .invalidated(current, .shotVariantUnavailable)
         }
         return .active(current)

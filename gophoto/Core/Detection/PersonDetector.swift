@@ -30,6 +30,9 @@ nonisolated struct PersonDetection: @unchecked Sendable {
     /// White ring around the body on a transparent background, covering the whole frame.
     /// Only made when `PersonDetector.includeOutline` is on (guide mode "A · Old look").
     var outline: CGImage? = nil
+    /// Sitting / standing read from this frame's body pose. Nil when the pose was not run this
+    /// frame (it runs every `PersonDetector.poseInterval` frames) or the legs are not visible.
+    var posture: BodyPosture? = nil
 }
 
 nonisolated final class PersonDetector {
@@ -43,6 +46,12 @@ nonisolated final class PersonDetector {
 
     // The person's face (eye line and head size for the camera-height and distance guide)
     private let faceRequest = VNDetectFaceRectanglesRequest()
+
+    // The person's skeleton, only to tell sitting from standing (shot size options). Posture
+    // changes slowly, so it runs every few detections to keep the camera smooth.
+    private let poseRequest = VNDetectHumanBodyPoseRequest()
+    static let poseInterval = 3
+    private var detectionCount = 0
 
     /// Draw the body outline too (costly: person segmentation every frame). Old-look mode only.
     var includeOutline = false
@@ -121,8 +130,13 @@ nonisolated final class PersonDetector {
     func detect(in pixelBuffer: CVPixelBuffer) -> PersonDetection? {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
+        detectionCount += 1
+        let readsPose = detectionCount.isMultiple(of: Self.poseInterval)
+        var requests: [VNRequest] = [boxRequest, faceRequest]
+        if includeOutline { requests.append(maskRequest) }
+        if readsPose { requests.append(poseRequest) }
         do {
-            try handler.perform(includeOutline ? [boxRequest, faceRequest, maskRequest] : [boxRequest, faceRequest])
+            try handler.perform(requests)
         } catch {
             return nil
         }
@@ -172,7 +186,44 @@ nonisolated final class PersonDetector {
             .max { $0.height < $1.height }
 
         let outline = includeOutline ? maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) } : nil
-        return PersonDetection(box: box, face: face, outline: outline)
+        let posture = readsPose ? posture(of: poseRequest.results ?? [], in: box) : nil
+        return PersonDetection(box: box, face: face, outline: outline, posture: posture)
+    }
+
+    // MARK: - Posture (sitting / standing)
+
+    /// Posture of the skeleton that belongs to the locked person's box (same rule as the photo analysis).
+    private func posture(of observations: [VNHumanBodyPoseObservation], in box: CGRect) -> BodyPosture? {
+        let poses = observations.compactMap { observation -> PoseCandidate? in
+            guard let points = try? observation.recognizedPoints(.all) else { return nil }
+            let landmarks = points.compactMap { name, point -> BodyLandmark? in
+                guard let joint = Self.joint(name) else { return nil }
+                // Vision's origin is BOTTOM-left → flip Y
+                return BodyLandmark(joint: joint, point: CGPoint(x: point.location.x, y: 1 - point.location.y),
+                                    confidence: Double(point.confidence))
+            }
+            return PoseCandidate(landmarks: landmarks, observationConfidence: Double(observation.confidence))
+        }
+        guard let pose = SubjectAssociation.pose(for: box, among: poses) else { return nil }
+        return PostureClassifier.posture(of: pose)
+    }
+
+    /// The joints the posture rule reads (others are skipped).
+    private static func joint(_ name: VNHumanBodyPoseObservation.JointName) -> BodyJoint? {
+        switch name {
+        case .neck: .neck
+        case .leftShoulder: .leftShoulder
+        case .rightShoulder: .rightShoulder
+        case .root: .root
+        case .leftHip: .leftHip
+        case .rightHip: .rightHip
+        case .leftKnee: .leftKnee
+        case .rightKnee: .rightKnee
+        case .leftAnkle: .leftAnkle
+        case .rightAnkle: .rightAnkle
+        case .nose: .nose
+        default: nil
+        }
     }
 
     /// Intersection over union of two boxes (0 = apart, 1 = identical).

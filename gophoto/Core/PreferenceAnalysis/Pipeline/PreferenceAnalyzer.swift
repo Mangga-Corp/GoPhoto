@@ -33,11 +33,15 @@ enum PreferenceAnalyzer {
             variants[key]?.cutLevelOf = analysis.cutLevelOf
         }
         analysis.framingVariants = variants.isEmpty ? nil : variants
-        // One analysis per shot size (version 13): the popover offers the sizes with photos.
+        // One analysis per shot size (version 13): the camera offers the sizes with photos.
+        // Seated full-body photos (version 15) get their own analysis instead: the shot sizes are
+        // what a STANDING person is offered.
         var shots: [String: PresetAnalysis] = [:]
         let sizes = results.map { shotSize(of: $0) }
+        let postures = zip(results, sizes).map { $0.1 == .full ? posture(of: $0.0) : nil }
         for shot in PresetAnalysis.ShotSize.allCases {
-            let subset = zip(results, sizes).filter { $0.1 == shot }.map { $0.0 }
+            let subset = zip(zip(results, sizes), postures)
+                .filter { $0.0.1 == shot && $0.1 != .sitting }.map { $0.0.0 }
             guard !subset.isEmpty else { continue }
             var variant = build(profile: profile, results: subset, photoCount: subset.count,
                                 date: date, only: shot.framing)
@@ -48,6 +52,21 @@ enum PreferenceAnalyzer {
             shots[shot.rawValue] = variant
         }
         analysis.shotVariants = shots.isEmpty ? nil : shots
+        let seated = zip(results, postures).filter { $0.1 == .sitting }.map { $0.0 }
+        if !seated.isEmpty {
+            var variant = build(profile: profile, results: seated, photoCount: seated.count,
+                                date: date, only: .fullBody)
+            variant.shotSize = PresetAnalysis.ShotSize.full.rawValue
+            variant.cutLevel = analysis.cutLevel
+            variant.cutLevelCount = analysis.cutLevelCount
+            variant.cutLevelOf = analysis.cutLevelOf
+            analysis.postureVariants = [BodyPosture.sitting.rawValue: variant]
+        }
+        let readPostures = zip(results, postures).compactMap { result, posture in
+            posture.map { (result.id.uuidString, $0.rawValue) }
+        }
+        analysis.photoPostures = readPostures.isEmpty ? nil
+            : Dictionary(readPostures, uniquingKeysWith: { first, _ in first })
         analysis.photoFramings = Dictionary(results.map { ($0.id.uuidString, $0.subjectFraming.category.rawValue) },
                                             uniquingKeysWith: { first, _ in first })
         analysis.photoShotSizes = Dictionary(results.compactMap { result in
@@ -181,6 +200,17 @@ enum PreferenceAnalyzer {
         case .toHips: return .half
         default: return nil
         }
+    }
+
+    // MARK: Posture (sitting / standing)
+
+    /// Sitting or standing, from the main person's skeleton (`PostureClassifier`, the same rule
+    /// as the live camera). Nil when the hips and knees are not visible.
+    nonisolated static func posture(of result: PhotoResult) -> BodyPosture? {
+        guard let box = result.subjectPositioning.subjectBox,
+              let poses = result.evidence?.pose.value,
+              let pose = SubjectAssociation.pose(for: box, among: poses) else { return nil }
+        return PostureClassifier.posture(of: pose)
     }
 
     // MARK: Half-body cut level
