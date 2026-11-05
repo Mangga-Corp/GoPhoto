@@ -77,7 +77,11 @@ struct AppRootView: View {
             } else if welcomeOnboardingStarted {
                 PhotoSessionSetupView(
                     savedPreference: savedOnboardingPreference,
-                    onCreatePreference: createOnboardingPreference
+                    onCreatePreference: createOnboardingPreference,
+                    onStartAnalyzing: { id in
+                        guard savedOnboardingPreference?.id == id else { return }
+                        firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
+                    }
                 )
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
@@ -106,7 +110,7 @@ struct AppRootView: View {
     private func createOnboardingPreference(
         photos: [PhotoItem],
         name: String,
-        completion: @escaping (String?) -> Void
+        completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
     ) {
         let preferenceID = UUID()
         onboardingPreferenceIDString = preferenceID.uuidString
@@ -117,12 +121,12 @@ struct AppRootView: View {
             case .success(let id):
                 onboardingPreferenceIDString = id.uuidString
                 firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
-                completion(nil)
+                completion(.success(id))
             case .failure(let error):
                 onboardingPreferenceIDString = ""
                 pendingOnboardingPreferenceIDString = ""
                 firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
-                completion(error.message)
+                completion(.failure(error))
             }
         }
     }

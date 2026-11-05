@@ -32,6 +32,7 @@ final class PreferencesViewModel {
     @ObservationIgnored private let logger = Logger(subsystem: "co.mango.gophoto", category: "preferences.analysis")
     private(set) var preferences: [Preference]
     private var isSavingNewPreference = false
+    @ObservationIgnored private var updatingPhotoIDs: Set<UUID> = []
     /// The preference used to start the most recent successful camera session. Saved as
     /// `selectedID` in `index.json` (same field as before, so existing installs keep it).
     /// Changed only by `recordLastSelected(id:)` (a session started) and by deleting that
@@ -202,6 +203,151 @@ final class PreferencesViewModel {
         preferences[index].photos = photos
         persist()
         reanalyze(id: id)   // PRD 1.3: adding or removing photos analyses the preset again
+    }
+
+    /// Loads the exact preference from disk, including its photos in persisted order.
+    func loadPersistedPreference(
+        id: UUID,
+        completion: @escaping (Result<Preference, Error>) -> Void
+    ) {
+        storage.loadPreference(id: id) { result in
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Adds photos to an existing preference atomically. The in-memory preference is only
+    /// replaced after its updated photo collection has been written and read back successfully.
+    func addPhotosPersisted(
+        _ photos: [PhotoItem],
+        to id: UUID,
+        completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
+    ) {
+        guard !updatingPhotoIDs.contains(id) else {
+            completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
+            return
+        }
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else {
+            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+
+        let current = preferences[index]
+        let updatedPhotos = mergedPhotos(current.photos, photos)
+        guard updatedPhotos.count <= ChoosePhotosViewModel.maxPhotos else {
+            completion(.failure(PreferenceNameError(message: "A preference can contain up to \(ChoosePhotosViewModel.maxPhotos) photos.")))
+            return
+        }
+        guard updatedPhotos.map(\.id) != current.photos.map(\.id) else {
+            completion(.success(current))
+            return
+        }
+
+        cancelCurrentAnalysis(for: id)
+        var updatedPreferences = preferences
+        updatedPreferences[index].photos = updatedPhotos
+        updatedPreferences[index].analysis = nil
+        updatingPhotoIDs.insert(id)
+
+        storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] saveResult in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard case .success = saveResult else {
+                    self.updatingPhotoIDs.remove(id)
+                    completion(.failure(PreferenceNameError(
+                        message: "Couldn't save the additional photos. Your existing preference is unchanged. Please try again."
+                    )))
+                    return
+                }
+
+                self.storage.loadPreference(id: id) { loadResult in
+                    DispatchQueue.main.async {
+                        guard case .success(let persisted) = loadResult,
+                              persisted.photos.map(\.id) == updatedPhotos.map(\.id),
+                              persisted.analysis == nil,
+                              let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
+                            self.restorePreferencesAfterPhotoUpdateFailure(id: id) {
+                                completion(.failure(PreferenceNameError(
+                                    message: "Couldn't verify the additional photos. Your existing preference is unchanged. Please try again."
+                                )))
+                            }
+                            return
+                        }
+                        self.preferences[currentIndex] = persisted
+                        self.updatingPhotoIDs.remove(id)
+                        self.persistCount += 1
+                        completion(.success(persisted))
+                    }
+                }
+            }
+        }
+    }
+
+    private func mergedPhotos(_ existing: [PhotoItem], _ additions: [PhotoItem]) -> [PhotoItem] {
+        var merged = existing
+        var photoIDs = Set(existing.map(\.id))
+        var assetIDs = Set(existing.compactMap(\.sourceAssetIdentifier))
+        for photo in additions {
+            guard photoIDs.insert(photo.id).inserted else { continue }
+            if let assetID = photo.sourceAssetIdentifier,
+               !assetIDs.insert(assetID).inserted {
+                continue
+            }
+            merged.append(photo)
+        }
+        return merged
+    }
+
+    func prepareForReanalysis(
+        id: UUID,
+        completion: @escaping (Result<Void, PreferenceNameError>) -> Void
+    ) {
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else {
+            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+        cancelCurrentAnalysis(for: id)
+        guard preferences[index].analysis != nil else {
+            completion(.success(()))
+            return
+        }
+
+        var updatedPreferences = preferences
+        updatedPreferences[index].analysis = nil
+        storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard case .success = result,
+                      let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
+                    completion(.failure(PreferenceNameError(
+                        message: "Couldn't prepare the saved preference for analysis. Please try again."
+                    )))
+                    return
+                }
+                self.preferences[currentIndex].analysis = nil
+                self.persistCount += 1
+                completion(.success(()))
+            }
+        }
+    }
+
+    private func cancelCurrentAnalysis(for id: UUID) {
+        analysisTokens[id, default: 0] += 1
+        analysisTasks[id] = nil
+        sessions[id] = nil
+        analyzingIDs.remove(id)
+    }
+
+    private func restorePreferencesAfterPhotoUpdateFailure(id: UUID, completion: @escaping () -> Void) {
+        storage.save(preferences, selectedID: lastSelectedID) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if case .failure(let error) = result {
+                    self.logger.error("Could not restore preference \(id) after a photo update failed: \(error.localizedDescription, privacy: .public)")
+                }
+                self.updatingPhotoIDs.remove(id)
+                completion()
+            }
+        }
     }
 
     // MARK: AI analysis

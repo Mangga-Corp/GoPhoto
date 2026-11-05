@@ -32,10 +32,18 @@ final class PreferencesStorage {
             var analysis: PresetAnalysis?
             /// EXIF 35 mm-equivalent focal length per photo (`UUID.uuidString`), when known.
             var focals: [String: Double]?
+            var sourceAssetIdentifiers: [String: String]?
 
-            init(id: UUID, name: String, photoIDs: [UUID], analysis: PresetAnalysis?, focals: [String: Double]?) {
+            init(
+                id: UUID,
+                name: String,
+                photoIDs: [UUID],
+                analysis: PresetAnalysis?,
+                focals: [String: Double]?,
+                sourceAssetIdentifiers: [String: String]?
+            ) {
                 self.id = id; self.name = name; self.photoIDs = photoIDs; self.analysis = analysis
-                self.focals = focals
+                self.focals = focals; self.sourceAssetIdentifiers = sourceAssetIdentifiers
             }
 
             /// An unreadable analysis is dropped (the preset is analysed again), the preset is kept.
@@ -46,6 +54,7 @@ final class PreferencesStorage {
                 photoIDs = try c.decode([UUID].self, forKey: .photoIDs)
                 analysis = try? c.decodeIfPresent(PresetAnalysis.self, forKey: .analysis)
                 focals = try? c.decodeIfPresent([String: Double].self, forKey: .focals)
+                sourceAssetIdentifiers = try? c.decodeIfPresent([String: String].self, forKey: .sourceAssetIdentifiers)
             }
         }
         var entries: [Entry]
@@ -85,7 +94,12 @@ final class PreferencesStorage {
         let preferences = snapshot.entries.map { entry in
             let photos = unique(entry.photoIDs).compactMap { id -> PhotoItem? in
                 guard let image = UIImage(contentsOfFile: photoURL(id).path) else { return nil }
-                return PhotoItem(id: id, image: image, focalLength35mm: entry.focals?[id.uuidString])
+                return PhotoItem(
+                    id: id,
+                    image: image,
+                    sourceAssetIdentifier: entry.sourceAssetIdentifiers?[id.uuidString],
+                    focalLength35mm: entry.focals?[id.uuidString]
+                )
             }
             return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
         }
@@ -139,8 +153,14 @@ final class PreferencesStorage {
             let focals = photos.reduce(into: [String: Double]()) { map, photo in
                 if let focal = photo.focalLength35mm { map[photo.id.uuidString] = focal }
             }
+            let sourceAssetIdentifiers = photos.reduce(into: [String: String]()) { map, photo in
+                if let identifier = photo.sourceAssetIdentifier {
+                    map[photo.id.uuidString] = identifier
+                }
+            }
             return .init(id: preference.id, name: preference.name, photoIDs: photos.map(\.id),
-                         analysis: preference.analysis, focals: focals.isEmpty ? nil : focals)
+                         analysis: preference.analysis, focals: focals.isEmpty ? nil : focals,
+                         sourceAssetIdentifiers: sourceAssetIdentifiers.isEmpty ? nil : sourceAssetIdentifiers)
         }
         let snapshot = Snapshot(entries: entries, selectedID: selectedID)
         let indexData = try JSONEncoder().encode(snapshot)
@@ -186,7 +206,12 @@ final class PreferencesStorage {
             guard let image = UIImage(contentsOfFile: photoURL(photoID).path) else {
                 throw PreferenceStorageError.photoReadFailed
             }
-            return PhotoItem(id: photoID, image: image, focalLength35mm: entry.focals?[photoID.uuidString])
+            return PhotoItem(
+                id: photoID,
+                image: image,
+                sourceAssetIdentifier: entry.sourceAssetIdentifiers?[photoID.uuidString],
+                focalLength35mm: entry.focals?[photoID.uuidString]
+            )
         }
         return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
     }
