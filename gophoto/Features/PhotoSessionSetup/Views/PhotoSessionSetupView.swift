@@ -11,12 +11,14 @@ struct PhotoSessionSetupView: View {
     private let preferences: PreferencesViewModel
     let onCreatePreference: ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void
     let onStartAnalyzing: (UUID) -> Void
+    private let showsBackButton: Bool
 
     init(
         savedPreference: Preference? = nil,
         preferences: PreferencesViewModel = .shared,
         onCreatePreference: @escaping ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void,
-        onStartAnalyzing: @escaping (UUID) -> Void
+        onStartAnalyzing: @escaping (UUID) -> Void,
+        showsBackButton: Bool = false
     ) {
         let persistedPreference = savedPreference.flatMap { preferences.preference(id: $0.id) }
         _selection = State(initialValue: PhotoSessionSetupSelection(
@@ -26,6 +28,7 @@ struct PhotoSessionSetupView: View {
         self.preferences = preferences
         self.onCreatePreference = onCreatePreference
         self.onStartAnalyzing = onStartAnalyzing
+        self.showsBackButton = showsBackButton
     }
 
     var body: some View {
@@ -58,7 +61,7 @@ struct PhotoSessionSetupView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             actions
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(showsBackButton ? .visible : .hidden, for: .navigationBar)
         .navigationDestination(isPresented: $isShowingCustomPreference) {
             CustomPreferenceBuilderPlaceholderView()
         }

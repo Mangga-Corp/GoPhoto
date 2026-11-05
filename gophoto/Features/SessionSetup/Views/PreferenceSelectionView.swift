@@ -15,7 +15,7 @@ struct PreferenceSelectionView: View {
     let hasPreferenceHandoff: Bool
     let selection: PreferenceSelectionViewModel
     /// Continue, with a preference that exists and can start a session.
-    let onContinue: (UUID) -> Void
+    let onContinue: (UUID) -> PhotoSessionError?
     let onAddNew: () -> Void
     let onHandoffConsumed: (() -> Void)?
 
@@ -67,10 +67,12 @@ struct PreferenceSelectionView: View {
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: selection.continueTarget != nil) {
                 // Re-validated at the tap: never hands on a deleted or unusable preference.
-                if let id = selection.continueTarget { onContinue(id) }
+                if let id = selection.continueTarget, let error = onContinue(id) {
+                    errorMessage = error.message
+                }
             }
             .accessibilityIdentifier("preferenceSelection.continue")
-            .accessibilityHint(selection.continueTarget == nil ? "Select a preference first" : "Choose the shot size next")
+            .accessibilityHint(selection.continueTarget == nil ? "Select a preference first" : "Opens the camera")
         }
         .background { PresentationAnchorView(anchor: anchor) }
         .onAppear {

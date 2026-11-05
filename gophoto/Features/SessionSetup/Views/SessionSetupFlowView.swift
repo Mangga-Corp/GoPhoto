@@ -2,9 +2,8 @@
 //  SessionSetupFlowView.swift
 //  gophoto
 //
-//  Returning users configure sessions here: Preference Selection → Shot Size Selection
-//  → START SHOOTING. Add New Preference opens Photo Session Setup, then the existing analysis
-//  and Style Card flow returns to Preference Selection.
+//  Returning users configure sessions here: Preference Selection → Camera. Add New Preference
+//  opens Photo Session Setup, then the existing analysis and Style Card flow returns here.
 //
 //  Session start: both paths call `PhotoSessionStore.startSession`, which resolves the request
 //  again against the latest analysis, creates the session and only then records the last used
@@ -16,7 +15,6 @@
 import SwiftUI
 
 enum SessionSetupRoute: Hashable {
-    case shotSize(preferenceID: UUID)
     case photoSessionSetup
     case createdPreferenceAnalysis(preferenceID: UUID)
 }
@@ -30,12 +28,10 @@ struct SessionSetupFlowView: View {
     private let hasPreferenceHandoff: Bool
     private let onHandoffConsumed: (() -> Void)?
 
-    /// `initialPath`: screens already pushed when the flow opens (debug checks only; normally empty).
     init(preferences: PreferencesViewModel = .shared, sessions: PhotoSessionStore = .shared,
-         initialPath: [SessionSetupRoute] = [], handoffPreferenceID: UUID? = nil,
+         handoffPreferenceID: UUID? = nil,
          hasPreferenceHandoff: Bool = false, onHandoffConsumed: (() -> Void)? = nil) {
         _selection = State(initialValue: PreferenceSelectionViewModel(preferences: preferences, sessions: sessions))
-        _path = State(initialValue: initialPath)
         self.sessions = sessions
         self.handoffPreferenceID = handoffPreferenceID
         self.hasPreferenceHandoff = hasPreferenceHandoff
@@ -48,16 +44,13 @@ struct SessionSetupFlowView: View {
                 handoffPreferenceID: handoffPreferenceID,
                 hasPreferenceHandoff: hasPreferenceHandoff,
                 selection: selection,
-                onContinue: { id in path.append(.shotSize(preferenceID: id)) },
+                onContinue: startSession,
                 onAddNew: { path.append(.photoSessionSetup) },
                 onHandoffConsumed: onHandoffConsumed
             )
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: SessionSetupRoute.self) { route in
                 switch route {
-                case .shotSize(let preferenceID):
-                    ShotSizeSelectionDestination(preferenceID: preferenceID, preferences: selection.preferences,
-                                                 sessions: sessions, onStartShooting: startSession)
                 case .photoSessionSetup:
                     PhotoSessionSetupView(
                         onCreatePreference: { photos, name, completion in
@@ -73,9 +66,9 @@ struct SessionSetupFlowView: View {
                         },
                         onStartAnalyzing: { id in
                             path = [.createdPreferenceAnalysis(preferenceID: id)]
-                        }
+                        },
+                        showsBackButton: true
                     )
-                    .toolbar(.hidden, for: .navigationBar)
                 case .createdPreferenceAnalysis(let preferenceID):
                     OnboardingFlowView(
                         preferenceID: preferenceID,
@@ -102,35 +95,15 @@ struct SessionSetupFlowView: View {
         .tint(GoPhotoDesign.sessionAccent)
     }
 
-    /// START SHOOTING: the requested preference and shot size, resolved again by the store.
-    private func startSession(_ configuration: PhotoSessionConfiguration) -> PhotoSessionError? {
+    /// Starts the selected preference with the existing default shot size; the store revalidates it.
+    private func startSession(preferenceID: UUID) -> PhotoSessionError? {
         guard sessions.current == nil else { return nil }   // a session already started: ignore
         #if DEBUG
-        DebugFixtures.beforeSessionStart(preferenceID: configuration.preferenceID)
+        DebugFixtures.beforeSessionStart(preferenceID: preferenceID)
         #endif
-        switch sessions.startSession(preferenceID: configuration.preferenceID,
-                                     shotSize: configuration.requestedShotSize) {
+        switch sessions.startSession(preferenceID: preferenceID, shotSize: .initialSelection) {
         case .success: return nil
         case .failure(let error): return error
         }
-    }
-
-}
-
-/// Owns the Shot Size Selection state for one visit: a new view model per push (3/4 Body), gone
-/// when the screen is popped. Nothing from a previous visit or session carries over.
-private struct ShotSizeSelectionDestination: View {
-    @State private var model: ShotSizeSelectionViewModel
-    let onStartShooting: (PhotoSessionConfiguration) -> PhotoSessionError?
-
-    init(preferenceID: UUID, preferences: PreferencesViewModel, sessions: PhotoSessionStore,
-         onStartShooting: @escaping (PhotoSessionConfiguration) -> PhotoSessionError?) {
-        _model = State(initialValue: ShotSizeSelectionViewModel(preferenceID: preferenceID,
-                                                                preferences: preferences, sessions: sessions))
-        self.onStartShooting = onStartShooting
-    }
-
-    var body: some View {
-        ShotSizeSelectionView(model: model, onStartShooting: onStartShooting)
     }
 }
