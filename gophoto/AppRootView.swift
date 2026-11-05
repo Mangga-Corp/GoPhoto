@@ -2,16 +2,21 @@ import SwiftUI
 
 private enum FirstTimeOnboardingStep: String {
     case photoSetup
+    case preferenceSaved
     case analyzing
+    case analysisComplete
     case styleCard
+    case preferenceSelection
 }
 
 /// The app's routes, decided in this order:
 /// 1. A photography session exists (`PhotoSessionStore.current`) → the camera, with that session.
 /// 2. Onboarding completed → session setup (Preference Selection, or its empty state).
-/// 3. First-time onboarding with its preference saved → analysis → "Your style" card.
-/// 4. Saved preferences from a release without the completion flag → marked completed → 2.
-/// 5. Otherwise → Welcome onboarding, whose button opens the photo picker.
+/// 3. A saved first-time preference awaiting analysis, or in analysis → the existing analysis flow.
+/// 4. The existing style-card onboarding step → analysis/style flow.
+/// 5. Other first-time onboarding states → Photo Session Setup.
+/// 6. Saved preferences from a release without the completion flag → marked completed → 2.
+/// 7. Otherwise → Welcome onboarding.
 /// A session is only ever created by `PhotoSessionStore.startSession` (Start Shooting, a new
 /// preference's style card, or the end of onboarding); app launch never creates one.
 struct AppRootView: View {
@@ -19,8 +24,10 @@ struct AppRootView: View {
     @AppStorage("welcomeOnboardingStarted") private var welcomeOnboardingStarted = false
     @AppStorage("firstTimeOnboardingStep")
     private var firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
-    @State private var onboardingPreferenceID: UUID?
-    @State private var isPresentingOnboardingPicker = false
+    @AppStorage("firstTimeOnboardingPreferenceID")
+    private var onboardingPreferenceIDString = ""
+    @AppStorage(PreferencesViewModel.pendingOnboardingPreferenceIDKey)
+    private var pendingOnboardingPreferenceIDString = ""
 
     var body: some View {
         Group {
@@ -32,22 +39,52 @@ struct AppRootView: View {
                     .overlay(alignment: .bottom) { DebugSessionStatus() }
                     #endif
             } else if welcomeOnboardingCompleted {
-                SessionSetupFlowView(initialPath: debugInitialPath)
+                SessionSetupFlowView(
+                    initialPath: debugInitialPath,
+                    handoffPreferenceID: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue
+                        ? UUID(uuidString: onboardingPreferenceIDString) : nil,
+                    hasPreferenceHandoff: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue,
+                    onHandoffConsumed: {
+                        onboardingPreferenceIDString = ""
+                        firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+                    }
+                )
                     #if DEBUG
                     .overlay(alignment: .top) {
                         if DebugFixtures.storeName != nil { DebugFixtureStatus() }
                     }
                     #endif
-            } else if welcomeOnboardingStarted, let preference = onboardingPreference {
+            } else if welcomeOnboardingStarted,
+                      ([FirstTimeOnboardingStep.preferenceSaved.rawValue,
+                        FirstTimeOnboardingStep.analyzing.rawValue,
+                        FirstTimeOnboardingStep.analysisComplete.rawValue,
+                        FirstTimeOnboardingStep.styleCard.rawValue]
+                        .contains(firstTimeOnboardingStep)),
+                      let preference = savedOnboardingPreference {
                 OnboardingFlowView(
                     preferenceID: preference.id,
                     startsAtStyleCard: shouldResumeStyleCard(for: preference),
+                    styleButtonTitle: "Continue",
                     onAnalysisCompleted: {
+                        pendingOnboardingPreferenceIDString = ""
                         firstTimeOnboardingStep = FirstTimeOnboardingStep.styleCard.rawValue
                     },
                     onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
-                    onFinish: completeOnboarding
+                    onFinish: continueToPreferenceSelection
                 )
+                .preferredColorScheme(.light)
+                .tint(GoPhotoDesign.purple)
+            } else if welcomeOnboardingStarted {
+                NavigationStack {
+                    PhotoSessionSetupView(
+                        savedPreference: savedOnboardingPreference,
+                        onCreatePreference: createOnboardingPreference,
+                        onStartAnalyzing: { id in
+                            guard savedOnboardingPreference?.id == id else { return }
+                            firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
+                        }
+                    )
+                }
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
             } else if !welcomeOnboardingStarted, PreferencesViewModel.shared.hasPreferences {
@@ -60,31 +97,39 @@ struct AppRootView: View {
         }
     }
 
-    /// Welcome → the existing photo picker (minimum photos, name prompt) → analysis.
+    /// Welcome → Photo Session Setup.
     private var welcome: some View {
         WelcomeOnboardingView {
             firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+            onboardingPreferenceIDString = ""
+            pendingOnboardingPreferenceIDString = ""
             welcomeOnboardingStarted = true
-            isPresentingOnboardingPicker = true
         }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.purple)
-        .fullScreenCover(isPresented: $isPresentingOnboardingPicker) {
-            PhotoSessionPhotoPicker(
-                onSave: { photos, name in
-                    switch PreferencesViewModel.shared.add(name: name, photos: photos) {
-                    case .success(let id):
-                        // Route 3 takes over (this screen and its picker go away).
-                        onboardingPreferenceID = id
-                        firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
-                        return nil
-                    case .failure(let error):
-                        return error.message
-                    }
-                },
-                onFinish: { isPresentingOnboardingPicker = false }
-            )
-            .ignoresSafeArea()
+    }
+
+    private func createOnboardingPreference(
+        photos: [PhotoItem],
+        name: String,
+        completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
+    ) {
+        let preferenceID = UUID()
+        onboardingPreferenceIDString = preferenceID.uuidString
+        pendingOnboardingPreferenceIDString = preferenceID.uuidString
+        firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSaved.rawValue
+        PreferencesViewModel.shared.addPersisted(id: preferenceID, name: name, photos: photos) { result in
+            switch result {
+            case .success(let id):
+                onboardingPreferenceIDString = id.uuidString
+                firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
+                completion(.success(id))
+            case .failure(let error):
+                onboardingPreferenceIDString = ""
+                pendingOnboardingPreferenceIDString = ""
+                firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+                completion(.failure(error))
+            }
         }
     }
 
@@ -102,8 +147,12 @@ struct AppRootView: View {
     }
 
     private var onboardingPreference: Preference? {
-        let preferences = PreferencesViewModel.shared
-        return onboardingPreferenceID.flatMap(preferences.preference(id:)) ?? activePreference
+        return savedOnboardingPreference ?? activePreference
+    }
+
+    private var savedOnboardingPreference: Preference? {
+        guard let id = UUID(uuidString: onboardingPreferenceIDString) else { return nil }
+        return PreferencesViewModel.shared.preference(id: id)
     }
 
     private func shouldResumeStyleCard(for preference: Preference) -> Bool {
@@ -113,18 +162,13 @@ struct AppRootView: View {
             || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue
     }
 
-    /// The style card's "Start shooting" at the end of onboarding: the new preference's session at
-    /// the initial 3/4 shot size. Onboarding is completed only once that session exists; on
-    /// failure the card stays with the error.
-    private func completeOnboarding() -> String? {
-        guard let preference = onboardingPreference else { return PhotoSessionError.preferenceNotFound.message }
-        if case .failure(let error) = PhotoSessionStore.shared.startSession(preferenceID: preference.id,
-                                                                            shotSize: .initialSelection) {
-            return error.message
-        }
+    /// Continues to the existing Preference Selection screen without starting a session.
+    private func continueToPreferenceSelection() -> String? {
+        guard savedOnboardingPreference != nil else { return PhotoSessionError.preferenceNotFound.message }
         welcomeOnboardingCompleted = true
         welcomeOnboardingStarted = false
-        firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+        firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSelection.rawValue
+        pendingOnboardingPreferenceIDString = ""
         return nil
     }
 
@@ -132,9 +176,9 @@ struct AppRootView: View {
     /// created a moment ago) and the picker opens again.
     private func chooseOtherOnboardingPhotos(_ id: UUID) {
         PreferencesViewModel.shared.delete(id: id, allowingLast: true)
-        onboardingPreferenceID = nil
+        onboardingPreferenceIDString = ""
+        pendingOnboardingPreferenceIDString = ""
         firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
-        isPresentingOnboardingPicker = true
     }
 
     /// Camera close: ends the session (once; the button disables itself) → session setup.

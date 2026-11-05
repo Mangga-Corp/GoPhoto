@@ -152,7 +152,17 @@ final class ChoosePhotosViewModel {
 
     func append(_ newItems: [PhotoItem]) {
         guard !newItems.isEmpty else { return }
-        items += newItems.prefix(Self.maxPhotos - items.count)
+        var assetIdentifiers = Set(items.compactMap(\.sourceAssetIdentifier))
+        var itemIdentifiers = Set(items.map(\.id))
+        for item in newItems {
+            guard items.count < Self.maxPhotos else { break }
+            if let sourceAssetIdentifier = item.sourceAssetIdentifier {
+                guard assetIdentifiers.insert(sourceAssetIdentifier).inserted else { continue }
+            } else {
+                guard itemIdentifiers.insert(item.id).inserted else { continue }
+            }
+            items.append(item)
+        }
         onItemsChange?()
         onPhotosChange?(items)
     }

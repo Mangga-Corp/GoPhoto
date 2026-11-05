@@ -57,7 +57,11 @@ final class ChoosePhotosService {
                                       contentMode: .aspectFit, options: options) { image, info in
                 if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
                 DispatchQueue.main.async {
-                    if let image { results[index] = PhotoItem(image: image) } else { failed = true }
+                    if let image {
+                        results[index] = PhotoItem(image: image, sourceAssetIdentifier: asset.localIdentifier)
+                    } else {
+                        failed = true
+                    }
                     group.leave()
                 }
             }
@@ -93,4 +97,3 @@ final class ChoosePhotosService {
         }
     }
 }
-

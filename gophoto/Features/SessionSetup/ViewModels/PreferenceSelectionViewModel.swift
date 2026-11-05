@@ -78,6 +78,27 @@ final class PreferenceSelectionViewModel {
         draftSelectedID = id
     }
 
+    /// Applies a one-time handoff without falling back to another preference if it is invalid.
+    func selectHandoff(_ id: UUID?) -> String? {
+        guard let id else {
+            userHasChosen = true
+            draftSelectedID = nil
+            return "The newly created preference could not be identified. Select a preference to continue."
+        }
+        guard preferences.preference(id: id) != nil else {
+            userHasChosen = true
+            draftSelectedID = nil
+            return "The newly created preference could not be found. Select a preference to continue."
+        }
+        guard isAvailable(id) else {
+            userHasChosen = true
+            draftSelectedID = nil
+            return "The newly created preference is not available yet. Select a preference to continue."
+        }
+        selectCreated(id)
+        return nil
+    }
+
     private var orderedIDs: [UUID] { preferences.preferences.map(\.id) }
 
     private func isAvailable(_ id: UUID) -> Bool {

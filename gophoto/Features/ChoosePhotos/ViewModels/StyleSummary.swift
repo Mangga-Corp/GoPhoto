@@ -27,9 +27,8 @@ struct StyleSummary {
     /// Up to three photos of the most common shot size.
     let highlights: [UIImage]
 
-    /// Share of photos at or above which a trait counts as the user's, and "Always".
+    /// Share of photos at or above which a trait counts as the user's.
     static let clearShare = 0.70
-    static let alwaysShare = 0.90
 
     init?(analysis: PresetAnalysis?, photos: [PhotoItem]) {
         guard let analysis, !photos.isEmpty else { return nil }
@@ -55,20 +54,18 @@ struct StyleSummary {
             if share >= Self.clearShare {
                 top = first
                 wide = first == .full || first == .threeQuarter
-                let copy = Self.shotCopy(first)
-                // "Full-body framing" stays as is (no "Always …"): the evidence line shows the count.
-                let always = share >= Self.alwaysShare && first != .full
-                traits.append(Trait(symbol: Self.shotSymbol(first),
-                                    title: always ? Self.always(copy.title) : copy.title,
-                                    line: copy.line, evidence: "\(k) of \(n) photos"))
+                if first == .full {
+                    traits.append(Trait(
+                        symbol: "figure.stand",
+                        title: "Full-body framing",
+                        line: "Keep your entire look in the frame.",
+                        evidence: "\(k) of \(n) photos"
+                    ))
+                }
             } else if ranked.count >= 2,
                       Double(k + counts[ranked[1]]!) / Double(n) >= Self.clearShare {
                 top = first
                 wide = first == .full || first == .threeQuarter
-                let both = Self.shotName(first) + " or " + Self.shotName(ranked[1]).lowercased()
-                traits.append(Trait(symbol: "rectangle.on.rectangle", title: both,
-                                    line: "You switch between the two. Pick one when you shoot.",
-                                    evidence: "\(k + counts[ranked[1]]!) of \(n) photos"))
             }
         }
 
@@ -79,48 +76,46 @@ struct StyleSummary {
         let source = analysis.eyeSideSource.flatMap(PresetAnalysis.EyeSideSource.init(rawValue:))
         if let side, source == .taste {
             angle = side == .below ? .below : .above
-            let n = analysis.eyeSidePhotoCount ?? 0
-            let share = side == .above ? (analysis.eyeAboveShare ?? 1) : 1 - (analysis.eyeAboveShare ?? 0)
-            let k = Int((share * Double(n)).rounded())
-            let title = side == .below ? "From slightly below" : "From slightly above"
-            traits.append(Trait(symbol: side == .below ? "arrow.up.circle" : "arrow.down.circle",
-                                title: share >= Self.alwaysShare ? Self.always(title) : title,
-                                line: side == .below ? "It makes you look taller." : "It feels soft and close.",
-                                evidence: n > 0 ? "\(k) of \(n) photos" : nil))
-        } else if source == .mixed {
-            // Angles vary: the camera picks the classic angle per shot (guidance unchanged).
-            traits.append(Trait(symbol: "arrow.up.and.down.circle", title: "Smart Angle",
-                                line: "We'll find the right angle for every shot.",
-                                evidence: nil))
-        } else {
-            traits.append(Trait(symbol: "sparkles", title: "Still learning your angle",
-                                line: "Add a few more photos and we'll find it.", evidence: nil))
         }
+        traits.append(Trait(
+            symbol: "arrow.up.and.down.circle",
+            title: "Smart Angle",
+            line: "We'll find the right angle for every shot.",
+            evidence: nil
+        ))
 
         // 3. Where they stand (median position over the photos).
-        var offSide = false
+        let offSide: Bool?
         if let box = analysis.subjectBox, analysis.subjectPhotoCount > 0 {
             let x = box.midX
             offSide = x < 0.4 || x > 0.6
-            traits.append(offSide
-                ? Trait(symbol: x < 0.5 ? "align.horizontal.left" : "align.horizontal.right",
-                        title: "Off to the side", line: "You leave room for the view.", evidence: nil)
-                : Trait(symbol: "align.horizontal.center", title: "Centered Composition",
-                        line: "Stay naturally positioned at the center of the frame.", evidence: nil))
+            if x >= 0.4 && x <= 0.6 {
+                traits.append(Trait(
+                    symbol: "align.horizontal.center",
+                    title: "Centered Composition",
+                    line: "Stay naturally positioned at the center of the frame.",
+                    evidence: nil
+                ))
+            }
+        } else {
+            offSide = nil
         }
 
         // Style name: shot (wide / close) × angle × position.
         let persona: (String, String)?
-        switch (wide, angle, offSide) {
-        case (true?, .below, true):    persona = ("The Explorer", "Big places, all of you, room for the view.")
-        case (true?, .below, false):   persona = ("The Main Character", "Center stage, head to toe, standing tall.")
-        case (true?, _, true):         persona = ("The Wanderer", "You and the place, side by side.")
-        case (true?, _, false):        persona = ("The Classic", "Clean, centered, timeless.")
-        case (false?, .above, false):  persona = ("The Portrait Lover", "Close, soft, and all about your face.")
-        case (false?, .above, true):   persona = ("The Daydreamer", "Close up, off to the side, a little dreamy.")
-        case (false?, _, false):       persona = ("The Icon", "Up close and confident.")
-        case (false?, _, true):        persona = ("The Storyteller", "Close enough to feel, wide enough to tell where.")
-        case (nil, _, _):              persona = nil
+        if let wide, let offSide {
+            switch (wide, angle, offSide) {
+            case (true, .below, true):    persona = ("The Explorer", "Big places, all of you, room for the view.")
+            case (true, .below, false):   persona = ("The Main Character", "Center stage, head to toe, standing tall.")
+            case (true, _, true):         persona = ("The Wanderer", "You and the place, side by side.")
+            case (true, _, false):        persona = ("The Classic", "Clean, centered, timeless.")
+            case (false, .above, false):  persona = ("The Portrait Lover", "Close, soft, and all about your face.")
+            case (false, .above, true):   persona = ("The Daydreamer", "Close up, off to the side, a little dreamy.")
+            case (false, _, false):       persona = ("The Icon", "Up close and confident.")
+            case (false, _, true):        persona = ("The Storyteller", "Close enough to feel, wide enough to tell where.")
+            }
+        } else {
+            persona = nil
         }
 
         let ordered = zip(photos, shots).sorted { a, b in (a.1 == top ? 0 : 1) < (b.1 == top ? 0 : 1) }
@@ -133,34 +128,4 @@ struct StyleSummary {
 
     // MARK: Copy
 
-    private static func shotCopy(_ shot: PresetAnalysis.ShotSize) -> (title: String, line: String) {
-        switch shot {
-        case .full:         ("Full-body framing", "Keep your entire look in the frame.")
-        case .threeQuarter: ("Knees up", "Enough to show the outfit, close enough to see your face.")
-        case .half:         ("Waist up", "You keep it personal, with a bit of the place around you.")
-        case .quarter:      ("Up close", "Your face does the talking.")
-        }
-    }
-
-    private static func shotName(_ shot: PresetAnalysis.ShotSize) -> String {
-        switch shot {
-        case .full: "Full body"
-        case .threeQuarter: "Knees up"
-        case .half: "Waist up"
-        case .quarter: "Up close"
-        }
-    }
-
-    private static func shotSymbol(_ shot: PresetAnalysis.ShotSize) -> String {
-        switch shot {
-        case .full, .threeQuarter: "figure.stand"
-        case .half: "person.crop.square"
-        case .quarter: "person.crop.circle"
-        }
-    }
-
-    /// "Head to toe" → "Always head to toe".
-    private static func always(_ title: String) -> String {
-        "Always " + title.prefix(1).lowercased() + title.dropFirst()
-    }
 }
