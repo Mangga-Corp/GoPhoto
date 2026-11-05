@@ -204,14 +204,80 @@ final class CameraViewModel {
     }
 
     /// The session the camera guides with, set by the view (`apply(sessionConfiguration:)`).
-    /// The camera never picks a preference or shot size itself. Nil = no preset (center target).
+    /// The camera never picks a preference itself; the session's shot size is the picker's first
+    /// selection. Nil = no preset (center target).
     private(set) var sessionConfiguration: PhotoSessionConfiguration?
 
     // The session's preset and what the AI learned from it (read from PreferencesViewModel).
     private(set) var presetName: String?
     private(set) var presetID: UUID?
+    /// The whole preset analysis (all shot sizes), for the shot size picker.
+    private(set) var presetAnalysis: PresetAnalysis?
+    /// The analysis guiding now: the picked shot size for the person's posture.
     private(set) var analysis: PresetAnalysis?
     private(set) var isAnalyzingPreset = false
+
+    // MARK: Shot size picker (above the shutter) and posture
+
+    /// Sitting / standing, smoothed over the last pose readings. Nil until read (or after the
+    /// person was lost): treated like standing. Sitting can only be read with the legs in frame,
+    /// so once read it is kept while the photographer frames tighter.
+    private(set) var posture: BodyPosture?
+    /// The photographer's pick among the standing shot sizes. Starts at the session's shot size;
+    /// kept while the person sits (sitting always uses full body) and restored when they stand.
+    private(set) var selectedShot: PresetAnalysis.ShotSize?
+    @ObservationIgnored private var postureReadings: [BodyPosture] = []
+    @ObservationIgnored private var personMissingSince: TimeInterval?
+    /// Pose readings kept, and how many must agree to switch posture (first reading: fewer).
+    private static let postureWindow = 6
+    private static let postureSwitchVotes = 4
+    private static let postureFirstVotes = 3
+
+    /// What the picker offers now: sitting → full body only; standing → the preset's shot sizes.
+    var shotOptions: [PresetAnalysis.ShotSize] {
+        presetAnalysis?.shotOptions(for: posture) ?? []
+    }
+
+    /// The shot size guiding now: the pick when it is offered, else the preset's default, else the first option.
+    var activeShot: PresetAnalysis.ShotSize? {
+        let options = shotOptions
+        if let selectedShot, options.contains(selectedShot) { return selectedShot }
+        if let fallback = presetAnalysis?.defaultShot, options.contains(fallback) { return fallback }
+        return options.first
+    }
+
+    /// A pick in the shot size picker: the guide starts over with that shot size.
+    func selectShot(_ shot: PresetAnalysis.ShotSize) {
+        guard shotOptions.contains(shot), shot != selectedShot else { return }
+        selectedShot = shot
+        updateInstruction()
+    }
+
+    /// One detection's pose reading. A posture switches once most recent readings agree; it is
+    /// forgotten after the person has been gone for `GuideFlow.lostReset`.
+    private func recordPosture(_ reading: BodyPosture?, personVisible: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard personVisible else {
+            let since = personMissingSince ?? now
+            personMissingSince = since
+            if now - since >= GuideFlow.lostReset {
+                postureReadings.removeAll()
+                if posture != nil { posture = nil }
+            }
+            return
+        }
+        personMissingSince = nil
+        guard let reading else { return }
+        postureReadings.append(reading)
+        if postureReadings.count > Self.postureWindow {
+            postureReadings.removeFirst(postureReadings.count - Self.postureWindow)
+        }
+        guard reading != posture else { return }
+        let votes = postureReadings.filter { $0 == reading }.count
+        if votes >= (posture == nil ? Self.postureFirstVotes : Self.postureSwitchVotes) {
+            posture = reading
+        }
+    }
 
     /// Phone pitch the camera aims for, or nil when there is no angle guidance.
     var targetPitch: Double? { Self.pitchTarget(for: analysis?.angle) }
@@ -280,6 +346,7 @@ final class CameraViewModel {
     func apply(sessionConfiguration configuration: PhotoSessionConfiguration?) {
         guard configuration != sessionConfiguration else { return }
         sessionConfiguration = configuration
+        selectedShot = configuration?.effectiveShotSize
         progress = GuideProgress()
         adaptiveFOVReset()
         updateInstruction()
@@ -329,6 +396,7 @@ final class CameraViewModel {
             face = detection?.face
             if let fov = detection?.verticalFOV { verticalFOV = fov }
             if let mp = detection?.photoMegapixels { photoMegapixels = mp }
+            recordPosture(detection?.posture, personVisible: detection != nil)
             recordDetection()
             updateInstruction()
             evaluateAdaptiveFOV()
@@ -361,15 +429,24 @@ final class CameraViewModel {
     }
 
     private func updateInstruction() {
-        // Targets come from the session's preset and its effective shot variant (read live, so a
-        // finished analysis applies at once). A deleted preset or a missing variant means no
-        // preset targets: another preset or shot size is never substituted here.
+        // Targets come from the session's preset and the shot size picked in the camera for the
+        // person's posture (read live, so a finished analysis applies at once). A deleted preset
+        // means no preset targets: another preset is never substituted here.
         let session = sessionConfiguration
         let preset = session.flatMap { preferences.preference(id: $0.preferenceID) }
         if preset?.id != presetID { presetID = preset?.id }
         if preset?.name != presetName { presetName = preset?.name }
-        let picked = session.flatMap { preset?.analysis?.shotVariant($0.effectiveShotSize) }
-        if picked != analysis { analysis = picked }
+        let whole = session == nil ? nil : preset?.analysis
+        if whole != presetAnalysis { presetAnalysis = whole }
+        let picked = activeShot.flatMap { whole?.guide(for: $0, posture: posture) }
+        if picked != analysis {
+            // Another shot size or posture: the guide starts over with the new targets.
+            if analysis != nil {
+                progress = GuideProgress()
+                adaptiveFOVReset()
+            }
+            analysis = picked
+        }
         lighting.setLightLevel(preset?.analysis?.lightLevel)
         let analyzing = preset.map { preferences.isAnalyzing($0.id) } ?? false
         if analyzing != isAnalyzingPreset { isAnalyzingPreset = analyzing }

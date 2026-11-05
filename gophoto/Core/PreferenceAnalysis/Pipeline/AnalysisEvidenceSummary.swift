@@ -115,6 +115,6 @@ extension PresetAnalysis {
     /// never assumed to have failed.
     var usability: Usability {
         if let failed = evidence?.failedRequiredSources, !failed.isEmpty { return .requiredAnalysisFailed(failed) }
-        return defaultShot == nil ? .noUsableFraming : .usable
+        return defaultShot == nil && sittingVariant == nil ? .noUsableFraming : .usable
     }
 }

@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 14
+    static let currentVersion = 15
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -77,6 +77,14 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// In a shot variant: its `ShotSize.rawValue` (debug panel).
     var shotSize: String?
 
+    /// The same analysis made from the seated full-body photos only, keyed by
+    /// `BodyPosture.rawValue` ("sitting"); version 15. Seated full-body photos are left out of
+    /// `shotVariants`, which are the standing shot sizes the camera offers a standing person.
+    /// Sitting is only read with the legs visible, so a seated person only gets full body.
+    var postureVariants: [String: PresetAnalysis]?
+    /// Posture of each photo whose posture was read (`PhotoItem.id.uuidString` → `BodyPosture.rawValue`).
+    var photoPostures: [String: String]?
+
     /// Where the half-body photos cut the body, from the skeleton (version 9): "chest" (shoulders
     /// in, hips out), "thigh" (hips in, knees out) or "shin" (knees in, ankles out). Majority over
     /// the half-body photos with a reading; nil without one.
@@ -114,6 +122,52 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
         shotVariants?[shot.rawValue]
     }
 
+    /// The analysis made from the seated full-body photos, or nil when the preset has none.
+    var sittingVariant: PresetAnalysis? { postureVariants?[BodyPosture.sitting.rawValue] }
+
+    /// Whether the camera can guide this shot size: a standing variant, or for full body the
+    /// seated one (a preset of seated photos only).
+    func hasGuide(for shot: ShotSize) -> Bool {
+        shotVariant(shot) != nil || (shot == .full && sittingVariant != nil)
+    }
+
+    /// Shot sizes the camera offers for a person in this posture, widest first:
+    /// - sitting: full body only (a seated body can't be read when cut above the knees);
+    /// - standing or not read yet: the standing shot sizes this preset has photos of (a preset of
+    ///   seated photos only still offers full body).
+    func shotOptions(for posture: BodyPosture?) -> [ShotSize] {
+        if posture == .sitting { return [.full] }
+        let standing = availableShots
+        return standing.isEmpty && sittingVariant != nil ? [.full] : standing
+    }
+
+    /// The analysis that guides `shot` for a person in `posture`.
+    /// Sitting: the seated photos' analysis, else the standing full body adjusted to a seated
+    /// height (`seatedEstimate`), else nil (no preset target). Standing: that shot size's variant,
+    /// else the seated one (a preset of seated photos only).
+    func guide(for shot: ShotSize, posture: BodyPosture?) -> PresetAnalysis? {
+        if posture == .sitting {
+            return sittingVariant ?? shotVariant(.full)?.seatedEstimate()
+        }
+        return shotVariant(shot) ?? (shot == .full ? sittingVariant : nil)
+    }
+
+    /// Seated person's box is about this share of their standing box's height.
+    static let seatedHeightRatio = 0.72
+
+    /// A standing full-body analysis adapted to a seated person, for presets without seated photos:
+    /// the person box is shorter (same bottom, same centre) so the distance guide doesn't ask to
+    /// come closer until a seated person is as tall in the frame as a standing one.
+    func seatedEstimate() -> PresetAnalysis {
+        var seated = self
+        if let box = subjectBox {
+            let height = box.height * Self.seatedHeightRatio
+            seated.subjectBox = CGRect(x: box.minX, y: box.maxY - height, width: box.width, height: height)
+        }
+        seated.bodyAngle = bodyAngle.map { $0 * Self.seatedHeightRatio }
+        return seated
+    }
+
     /// Shot sizes this preset has photos of, widest first.
     var availableShots: [ShotSize] {
         ShotSize.allCases.filter { shotVariants?[$0.rawValue] != nil }
@@ -140,6 +194,16 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
             case .threeQuarter: "Three-quarter"
             case .half: "Half body"
             case .quarter: "One-quarter"
+            }
+        }
+
+        /// Label of the camera's shot size picker (above the shutter).
+        var pickerTitle: String {
+            switch self {
+            case .full: "Full body"
+            case .threeQuarter: "3/4"
+            case .half: "Half body"
+            case .quarter: "1/4"
             }
         }
 
