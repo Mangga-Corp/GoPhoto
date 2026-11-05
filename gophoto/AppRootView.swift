@@ -40,7 +40,6 @@ struct AppRootView: View {
                     #endif
             } else if welcomeOnboardingCompleted {
                 SessionSetupFlowView(
-                    initialPath: debugInitialPath,
                     handoffPreferenceID: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue
                         ? UUID(uuidString: onboardingPreferenceIDString) : nil,
                     hasPreferenceHandoff: firstTimeOnboardingStep == FirstTimeOnboardingStep.preferenceSelection.rawValue,
@@ -131,14 +130,6 @@ struct AppRootView: View {
                 completion(.failure(error))
             }
         }
-    }
-
-    private var debugInitialPath: [SessionSetupRoute] {
-        #if DEBUG
-        DebugFixtures.initialRoute
-        #else
-        []
-        #endif
     }
 
     private var activePreference: Preference? {

@@ -124,18 +124,8 @@ enum DebugFixtures {
         switch scenario {
         case "showcase": seedShowcase(preferences)
         case "interaction": seedInteraction(preferences)
-        case "shotsizes": seedShotSizes(preferences)
         default: seedReal(scenario, preferences)
         }
-    }
-
-    /// `-GoPhotoShotSizeFor <name>`: open Shot Size Selection directly for that preference.
-    static var shotSizeTargetName: String? { UserDefaults.standard.string(forKey: "GoPhotoShotSizeFor") }
-
-    static var initialRoute: [SessionSetupRoute] {
-        guard storeName != nil, let name = shotSizeTargetName,
-              let id = PreferencesViewModel.shared.preferences.first(where: { $0.name == name })?.id else { return [] }
-        return [.shotSize(preferenceID: id)]
     }
 
     /// `-GoPhotoDeletePreferenceAfter <name>`: delete that fixture preference 4 s after launch
@@ -150,27 +140,6 @@ enum DebugFixtures {
                 preferences.delete(id: id, allowingLast: true)
             }
         }
-    }
-
-    /// Shot Size Selection checks (HAND-MADE fixture analyses):
-    /// - All Framings: Half, 3/4 and Full variants (last used).
-    /// - Full Body Only: Full variant only (3/4 and Half fall back to Full).
-    /// - Reanalyzing: Full variant; re-analysed for real when opened directly, which in the
-    ///   simulator ends without any variant (loading state, then the error state).
-    /// - No Framing: analysed, no variant at all (the simulator's real output).
-    private static func seedShotSizes(_ preferences: PreferencesViewModel) {
-        func add(_ name: String, _ numbers: [Int], _ shots: [PresetAnalysis.ShotSize]) -> UUID? {
-            let items = photos(numbers)
-            guard case .success(let id) = preferences.add(name: name, photos: items) else { return nil }
-            preferences.setAnalysis(fixtureAnalysis(items, shots: shots, light: 0.5, side: .below, centerX: 0.5), for: id)
-            return id
-        }
-        let all = add("All Framings", [1, 2, 3, 4, 5, 6], [.half, .threeQuarter, .full])
-        _ = add("Full Body Only", [7, 8, 9, 10], [.full])
-        let reanalyzing = add("Reanalyzing", [11, 12, 13, 14], [.full])
-        _ = add("No Framing", [15, 16, 17, 18], [])
-        if let all { preferences.recordLastSelected(id: all) }
-        if shotSizeTargetName == "Reanalyzing", let reanalyzing { preferences.reanalyze(id: reanalyzing) }
     }
 
     private static func photos(_ numbers: [Int]) -> [PhotoItem] {
