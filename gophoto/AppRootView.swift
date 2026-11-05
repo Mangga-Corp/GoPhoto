@@ -75,14 +75,16 @@ struct AppRootView: View {
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
             } else if welcomeOnboardingStarted {
-                PhotoSessionSetupView(
-                    savedPreference: savedOnboardingPreference,
-                    onCreatePreference: createOnboardingPreference,
-                    onStartAnalyzing: { id in
-                        guard savedOnboardingPreference?.id == id else { return }
-                        firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
-                    }
-                )
+                NavigationStack {
+                    PhotoSessionSetupView(
+                        savedPreference: savedOnboardingPreference,
+                        onCreatePreference: createOnboardingPreference,
+                        onStartAnalyzing: { id in
+                            guard savedOnboardingPreference?.id == id else { return }
+                            firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
+                        }
+                    )
+                }
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.purple)
             } else if !welcomeOnboardingStarted, PreferencesViewModel.shared.hasPreferences {

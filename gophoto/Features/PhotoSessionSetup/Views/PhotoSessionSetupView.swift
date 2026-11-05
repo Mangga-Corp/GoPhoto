@@ -29,42 +29,40 @@ struct PhotoSessionSetupView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                let thumbnailWidth = min(
-                    180,
-                    max(80, (geometry.size.width - GoPhotoDesign.sessionMargin * 2 - 24) / 3)
-                )
+        GeometryReader { geometry in
+            let thumbnailWidth = min(
+                180,
+                max(80, (geometry.size.width - GoPhotoDesign.sessionMargin * 2 - 24) / 3)
+            )
 
-                VStack(spacing: 0) {
-                    header
-                        .padding(.top, 24)
+            VStack(spacing: 0) {
+                header
+                    .padding(.top, 24)
 
-                    Spacer(minLength: 24)
+                Spacer(minLength: 24)
 
-                    if selection.photos.isEmpty {
-                        emptyState
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        selectedPhotos(thumbnailWidth: thumbnailWidth)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-
-                    Spacer(minLength: 24)
+                if selection.photos.isEmpty {
+                    emptyState
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    selectedPhotos(thumbnailWidth: thumbnailWidth)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding(.horizontal, GoPhotoDesign.sessionMargin)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(GoPhotoDesign.sessionBackground)
+
+                Spacer(minLength: 24)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                actions
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(isPresented: $isShowingCustomPreference) {
-                CustomPreferenceBuilderPlaceholderView()
-            }
-            .onAppear(perform: reloadSavedPreference)
+            .padding(.horizontal, GoPhotoDesign.sessionMargin)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(GoPhotoDesign.sessionBackground)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            actions
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $isShowingCustomPreference) {
+            CustomPreferenceBuilderPlaceholderView()
+        }
+        .onAppear(perform: reloadSavedPreference)
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.sessionAccent)
         .fullScreenCover(isPresented: $isPresentingPicker) {
