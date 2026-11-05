@@ -49,6 +49,10 @@ struct CameraView: View {
     @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
+    /// Onboarding kamera: hanya sekali, saat pertama kali install. Teksnya: Onboarding/CameraOnboardingCopy.swift
+    @AppStorage("cameraOnboardingCompleted") private var cameraOnboardingCompleted = false
+    @State private var onboardingFrames: [CameraOnboardingTarget: CGRect] = [:]
+    private var showsCameraOnboarding: Bool { !cameraOnboardingCompleted && viewModel.state == .running }
 
     var body: some View {
         ZStack {
@@ -60,6 +64,7 @@ struct CameraView: View {
 
             case .running:
                 liveCamera
+                    .overlay { cameraOnboarding }
 
             case .permissionDenied:
                 permissionDenied
@@ -125,10 +130,12 @@ struct CameraView: View {
             topBar
 
             cameraPreview
+                .reportOnboardingFrame(.preview, into: $onboardingFrames)
 
             VStack(spacing: 10) {
                 shotSizePicker
                 shutterButton
+                    .reportOnboardingFrame(.shutter, into: $onboardingFrames)
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
                         GalleryShortcutButton { isShowingGallery = true }
@@ -189,7 +196,7 @@ struct CameraView: View {
                 GuidanceMotionOverlay(
                     instruction: viewModel.instruction,
                     pitchError: viewModel.pitchError,
-                    isEnabled: !isShowingGallery && !isShowingAnalysis
+                    isEnabled: !isShowingGallery && !isShowingAnalysis && !showsCameraOnboarding
                 )
             }
             .overlay(alignment: .bottom) { bottomStepCard }
@@ -203,6 +210,17 @@ struct CameraView: View {
             .overlay { flashOverlay }
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .layoutPriority(1)
+    }
+
+    // MARK: Onboarding (first install only)
+
+    @ViewBuilder private var cameraOnboarding: some View {
+        if showsCameraOnboarding {
+            CameraOnboardingView(frames: onboardingFrames) {
+                withAnimation(.easeOut(duration: 0.25)) { cameraOnboardingCompleted = true }
+            }
+            .transition(.opacity)
+        }
     }
 
     // MARK: Preview layers
