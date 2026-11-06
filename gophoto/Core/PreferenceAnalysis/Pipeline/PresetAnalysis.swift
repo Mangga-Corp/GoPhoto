@@ -5,7 +5,7 @@ import CoreGraphics
 /// Built by `PreferenceAnalyzer` from the full analysis (`PreferenceProfile`).
 nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// Bump when a field changes meaning, so presets saved earlier are analysed again.
-    static let currentVersion = 15
+    static let currentVersion = 17
 
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
@@ -60,6 +60,26 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     var eyeAboveShare: Double?
     /// Photos that voted: camera-vs-eyes angle read, same framing as the preset.
     var eyeSidePhotoCount: Int?
+
+    // Anchor side (version 16), shot variants only: the photos vote camera above / below one body
+    // anchor (full body → knee, three-quarter → chest, half body → eyes); the winning side's
+    // biggest shooting style makes `eyeElevation` and the tilt. Nil when the vote was not used.
+
+    /// `AnchorSide.Anchor.rawValue` ("knee" / "chest" / "eye").
+    var anchorReference: String? = nil
+    /// Photos that voted above / below the anchor.
+    var anchorAbove: Int? = nil
+    var anchorBelow: Int? = nil
+    /// Shooting styles on the winning side (1 = not split) and the photos the target came from.
+    var anchorStyleCount: Int? = nil
+    var anchorTargetPhotoCount: Int? = nil
+    /// Cross-check of `eyeElevation`: mean over the same photos weighted by 1/σ² (debug panel).
+    var eyeElevationWeighted: Double? = nil
+
+    /// Camera height vs the eyes in face heights (version 17): median over the same photos as
+    /// `eyeElevation`, + = camera above the eyes. The guide's height step uses it instead of the
+    /// angle: walking closer or farther changes the angle but not this. Nil = no face read.
+    var eyeOffsetFaces: Double? = nil
 
     /// The same analysis made from one framing's photos only, keyed by `FramingCategory.rawValue`
     /// ("fullBody" / "halfBody"); version 7. Present only for framings with at least one photo.

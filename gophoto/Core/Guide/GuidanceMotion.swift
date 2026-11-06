@@ -79,7 +79,8 @@ nonisolated enum GuidanceMotion: Equatable, Sendable {
         case .tiltDown:
             self = .tilt(.down, degrees: Self.tiltDegrees(forPitchError: pitchError), view: tiltView)
         case .findPerson, .moveCloser, .moveFarther, .moveLeft, .moveRight,
-             .moveHigher, .moveLower, .setPhoneHeight, .straighten, .holdStill:
+             .moveHigher, .moveLower, .setPhoneHeight, .straighten, .holdStill,
+             .waitForZoom, .keepSteady:
             return nil
         }
     }

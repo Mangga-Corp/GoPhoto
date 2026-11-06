@@ -55,6 +55,48 @@ final class CameraViewModel {
     private(set) var roll: Double = 0                    // + = rotated clockwise
     private(set) var pitch: Double = 0                   // + = phone tilted down
     private(set) var face: CGRect?                       // normalized, origin top-left
+    /// Joints the latest live pose saw inside the frame, and when (the pose runs every few
+    /// detections). Older than `jointsMaxAge` = unknown, so the body-cut check waits.
+    @ObservationIgnored private var visibleJoints: (joints: Set<BodyJoint>, at: TimeInterval)?
+    private static let jointsMaxAge: TimeInterval = 1.0
+
+    // Zoom settling: boxes are only comparable within one zoom. While the zoom moves (and a
+    // moment after, frames still in flight) automatic zoom waits, and size samples restart.
+    @ObservationIgnored private var lastFrameZoom: Double?
+    @ObservationIgnored private var zoomQuietSince: TimeInterval?
+    private static let zoomSettle: TimeInterval = 0.3
+    /// Recent person / face boxes at the current zoom; automatic zoom uses their median.
+    @ObservationIgnored private var fovSamples: [(person: CGRect, face: CGRect?)] = []
+    /// Automatic zoom decided to change the size and has not finished (guide waits its turn).
+    @ObservationIgnored private var zoomSizeChangePending = false
+    /// Zoom the body-cut rule zoomed in to; size may not zoom out past it (no ping-pong).
+    @ObservationIgnored private var cutFloorZoom: Double?
+    /// Zoom moving / settling, or about to change: the distance step waits instead of "walk".
+    private var zoomWillHandleSize: Bool {
+        adaptiveFOVZoomInFlight || zoomSizeChangePending
+            || !zoomSettled(now: ProcessInfo.processInfo.systemUptime)
+    }
+    private static let fovSampleCount = 5, fovMinSamples = 3
+
+    /// Tracks the zoom of each frame. Returns true when the zoom changed (samples restart).
+    private func recordZoom(_ detection: PersonDetection?, now: TimeInterval) {
+        guard let zoom = detection?.zoomFactor else { return }
+        let changed = lastFrameZoom.map { abs(zoom - $0) / $0 > 0.01 } ?? false
+        lastFrameZoom = zoom
+        if changed || detection?.isZooming == true {
+            zoomQuietSince = nil
+            fovSamples.removeAll()
+            stillFrames.removeAll()
+            snapshot = nil              // measured at another zoom: start a new one
+            snapshotFrames = 0
+        } else if zoomQuietSince == nil {
+            zoomQuietSince = now
+        }
+    }
+
+    private func zoomSettled(now: TimeInterval) -> Bool {
+        zoomQuietSince.map { now - $0 >= Self.zoomSettle } ?? (lastFrameZoom == nil)
+    }
     private(set) var personOutline: CGImage?             // body outline, old-look mode only
     private(set) var exposure: ExposureStatus?           // backlight tip / ISO / shutter (debug panel)
     let lighting = LightingCoordinator()                 // sun / light tips; the camera owns the exposure
@@ -102,6 +144,21 @@ final class CameraViewModel {
     private(set) var evaluation = GuideEvaluation()
     @ObservationIgnored private var progress = GuideProgress()
     /// Keep finished steps done (no going back over small wobbles). Debug-panel toggle.
+    /// Developer mode only (temporary): also save a copy with the background blurred at half
+    /// strength (`BokehProcessor`). Off by default; the original is always saved.
+    var bokehEnabled = false {
+        didSet {
+            guard bokehEnabled != oldValue else { return }
+            let on = bokehEnabled
+            // On: the dual / triple camera, so photos carry Apple's depth (Off: the main camera).
+            Task { self.bokehUsesDepth = await self.cameraService.setDepthCapture(on) }
+        }
+    }
+    /// The camera delivers Apple depth now (Blur On on a phone with a depth camera).
+    private(set) var bokehUsesDepth = false
+    /// Which blur the last copy used ("apple depth · aperture …" or "custom").
+    private(set) var lastBlurNote: String?
+
     var latchSteps: Bool = UserDefaults.standard.object(forKey: "guideLatch") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(latchSteps, forKey: "guideLatch")
@@ -127,8 +184,10 @@ final class CameraViewModel {
     /// Still frames behind the current snapshot (debug).
     private(set) var snapshotFrames = 0
     @ObservationIgnored private var motionSamples: [(t: TimeInterval, pitch: Double, roll: Double)] = []
-    @ObservationIgnored private var stillFrames: [(person: CGRect, face: CGRect?, pitch: Double)] = []
-    @ObservationIgnored private var snapshot: (person: CGRect, face: CGRect?, pitch: Double)?
+    @ObservationIgnored private var stillFrames: [(person: CGRect, face: CGRect?, pitch: Double, fov: Double?)] = []
+    /// The snapshot keeps the field of view of its own frames: face, pitch and lens always come
+    /// from the same moment (a frozen face with a newer zoom's FOV misread the phone height).
+    @ObservationIgnored private var snapshot: (person: CGRect, face: CGRect?, pitch: Double, fov: Double?)?
     private static let stillWindow: TimeInterval = 0.3
     private static let stillTolerance = 1.0
     private static let snapshotSize = 8
@@ -153,15 +212,17 @@ final class CameraViewModel {
             snapshotFrames = 0
             return
         }
-        guard isPhoneStill else { return }
-        stillFrames.append((box, face, pitch))
+        // Only still frames of a settled zoom: frames from a moving zoom are not comparable.
+        guard isPhoneStill, zoomSettled(now: ProcessInfo.processInfo.systemUptime) else { return }
+        stillFrames.append((box, face, pitch, verticalFOV))
         if stillFrames.count > Self.snapshotSize { stillFrames.removeFirst(stillFrames.count - Self.snapshotSize) }
         let faces = stillFrames.compactMap { $0.face }
         // A face only counts when it was found in at least half of the still frames.
         let medianFace: CGRect? = faces.count * 2 >= stillFrames.count ? Self.medianRect(faces) : nil
         snapshot = (person: Self.medianRect(stillFrames.map { $0.person }),
                     face: medianFace,
-                    pitch: Self.median(stillFrames.map { $0.pitch }))
+                    pitch: Self.median(stillFrames.map { $0.pitch }),
+                    fov: stillFrames.last?.fov)
         snapshotFrames = stillFrames.count
     }
 
@@ -290,12 +351,16 @@ final class CameraViewModel {
             guard let angle, let d = e.distanceMeters, d > 0 else { return nil }
             return d * tan(angle * .pi / 180) * 100
         }
-        let heightOK = e.eyeElevation.flatMap { now in
+        // Face heights (version 17) → centimetres with a typical face; else the angle and distance.
+        let faceCm = GuideFlow.faceHeightMeters * 100
+        let heightOK = e.heightFaces.flatMap { now in
+            e.heightFacesTarget.map { abs(now - $0) <= GuideFlow.heightFacesEnter }
+        } ?? e.eyeElevation.flatMap { now in
             e.eyeElevationTarget.map { abs(now - $0) <= GuideFlow.heightEnter }
         } ?? true
         let tiltOK = pitchError.map { abs($0) <= GuideFlow.tiltEnter } ?? true
-        return PoseGuideState(heightNow: centimetres(e.eyeElevation),
-                              heightTarget: centimetres(e.eyeElevationTarget),
+        return PoseGuideState(heightNow: e.heightFaces.map { $0 * faceCm } ?? centimetres(e.eyeElevation),
+                              heightTarget: e.heightFacesTarget.map { $0 * faceCm } ?? centimetres(e.eyeElevationTarget),
                               tiltNow: -pitch, tiltTarget: targetPitch.map { -$0 },
                               distance: e.distanceMeters, heightOK: heightOK, tiltOK: tiltOK)
     }
@@ -394,6 +459,19 @@ final class CameraViewModel {
             personBox = detection?.box
             if detection?.outline != nil || personOutline != nil { personOutline = detection?.outline }
             face = detection?.face
+            let frameTime = ProcessInfo.processInfo.systemUptime
+            recordZoom(detection, now: frameTime)
+            if let box = detection?.box, zoomSettled(now: frameTime) {
+                fovSamples.append((box, detection?.face))
+                if fovSamples.count > Self.fovSampleCount { fovSamples.removeFirst(fovSamples.count - Self.fovSampleCount) }
+            } else if detection == nil {
+                fovSamples.removeAll()
+            }
+            if detection == nil {
+                visibleJoints = nil
+            } else if let joints = detection?.visibleJoints {
+                visibleJoints = (joints, ProcessInfo.processInfo.systemUptime)
+            }
             if let fov = detection?.verticalFOV { verticalFOV = fov }
             if let mp = detection?.photoMegapixels { photoMegapixels = mp }
             recordPosture(detection?.posture, personVisible: detection != nil)
@@ -472,8 +550,12 @@ final class CameraViewModel {
             // Distance, camera height and position from the still-phone snapshot; tilt and level live.
             let snap = personBox == nil || !guideMode.usesSnapshot ? nil : snapshot
             let live = GuideLive(person: snap?.person ?? personBox, face: snap.map { $0.face } ?? face,
-                                 verticalFOV: verticalFOV, roll: roll, pitch: pitch,
-                                 photoMegapixels: photoMegapixels, measurePitch: snap?.pitch)
+                                 verticalFOV: snap?.fov ?? verticalFOV, roll: roll, pitch: pitch,
+                                 photoMegapixels: photoMegapixels, measurePitch: snap?.pitch,
+                                 visibleJoints: visibleJoints.flatMap {
+                                     ProcessInfo.processInfo.systemUptime - $0.at <= Self.jointsMaxAge ? $0.joints : nil
+                                 },
+                                 zoomWillHandleSize: zoomWillHandleSize)
             let (result, nextProgress) = GuideFlow.evaluate(
                 mode: guideMode, live: live, analysis: analysis, target: target, targetPitch: targetPitch,
                 progress: progress, latch: latchSteps, now: ProcessInfo.processInfo.systemUptime)
@@ -483,6 +565,10 @@ final class CameraViewModel {
             // Size is smoothed in log space so "2x too close" and "2x too far" behave alike.
             barSizeRatio = smoothed("size", result.sizeRatio.map { log($0) }).map { exp($0) }
             let heightError: Double? = {
+                // Face heights (version 17), scaled to degrees like the step's tolerance.
+                if let now = result.heightFaces, let target = result.heightFacesTarget {
+                    return (now - target) * GuideFlow.heightFacesScale
+                }
                 guard let now = result.eyeElevation, let target = result.eyeElevationTarget else { return nil }
                 return now - target
             }()
@@ -507,6 +593,8 @@ final class CameraViewModel {
     // MARK: - Adaptive FOV
 
     private func adaptiveFOVReset() {
+        zoomSizeChangePending = false
+        cutFloorZoom = nil
         adaptiveFOVTargetZoom = nil
         adaptiveFOVLastAppliedZoom = nil
         adaptiveFOVLastChangeTime = nil
@@ -550,13 +638,10 @@ final class CameraViewModel {
                 return false
             }
         default:
-            if let activeStep = evaluation.activeStep {
-                return activeStep == .distance
-            }
-            if !isPhoneStill {
-                return false
-            }
-            return true
+            // Zoom only while the distance step is open. Once it is done the zoom is locked (it
+            // reopens only when the distance step breaks): a zoom after "ready" moved the framing
+            // just as the photographer was about to shoot.
+            return evaluation.activeStep == .distance
         }
     }
 
@@ -619,18 +704,27 @@ final class CameraViewModel {
               minZoom <= AdaptiveFOV.maximumAutomaticZoom,
               let person = personBox,
               target.rect.height > 0 else {
+            zoomSizeChangePending = false
             adaptiveFOVHideStatus(after: 0)
             return
         }
 
         guard adaptiveFOVMayAct() else {
+            zoomSizeChangePending = false
             adaptiveFOVHideStatus(after: 0.5)
             return
         }
 
+        // Judge only a settled zoom, from the median of a few frames (the box wobbles).
+        guard zoomSettled(now: now), fovSamples.count >= Self.fovMinSamples else { return }
+        let medianPerson = Self.medianRect(fovSamples.map { $0.person })
+        let faces = fovSamples.compactMap { $0.face }
+        let medianFace = faces.count * 2 >= fovSamples.count ? Self.medianRect(faces) : nil
+        _ = person
+
         let input = AdaptiveFOV.Input(
-            personBox: person,
-            face: face,
+            personBox: medianPerson,
+            face: medianFace,
             targetRect: target.rect,
             currentZoom: currentZoom,
             minZoom: minZoom,
@@ -642,7 +736,10 @@ final class CameraViewModel {
             distanceFactor: guideMode.distanceFactor,
             environment: liveEnvironmentSignal,
             preserveEnvironmentContext: shouldPreserveEnvironmentContext,
-            now: now
+            now: now,
+            shotSize: analysis?.shotSize.flatMap(PresetAnalysis.ShotSize.init(rawValue:)),
+            visibleJoints: visibleJoints.flatMap { now - $0.at <= Self.jointsMaxAge ? $0.joints : nil },
+            cutFloorZoom: cutFloorZoom
         )
         var decision = AdaptiveFOV.evaluate(input)
         decision = adaptiveFOVApplyHysteresis(decision)
@@ -654,27 +751,41 @@ final class CameraViewModel {
         case .widen(let tz, _):
             proposedTarget = tz
         case .hold:
+            zoomSizeChangePending = false
             adaptiveFOVHideStatus(after: 1.5)
             return
         }
         let effectiveMaxZoom = min(maxZoom, AdaptiveFOV.maximumAutomaticZoom)
-        let rateLimitedTarget = adaptiveFOVClampRate(proposedTarget, now: now)
+        // One target per decision; the camera's zoom ramp sets the speed (stepping the target
+        // by a rate limit every frame made the zoom move in visible little jumps).
+        let rateLimitedTarget = proposedTarget
         let clampedTarget = max(minZoom, min(effectiveMaxZoom, rateLimitedTarget))
 
         if let lastApplied = adaptiveFOVLastAppliedZoom,
            abs(clampedTarget - lastApplied) < 0.01 {
+            zoomSizeChangePending = false            // the zoom cannot get there: the guide asks
             adaptiveFOVHideStatus(after: 1.5)
             return
         }
 
         let directionText: String
-        if clampedTarget > currentZoom {
+        if abs(clampedTarget - currentZoom) < 0.02 {
+            // At its limit (or already there): nothing for the zoom to do, the guide asks.
+            zoomSizeChangePending = false
+            adaptiveFOVHideStatus(after: 0)
+            return
+        } else if clampedTarget > currentZoom {
             directionText = "Zooming in…"
         } else if clampedTarget < currentZoom {
             directionText = "Zooming out…"
         } else {
+            zoomSizeChangePending = false
             adaptiveFOVHideStatus(after: 0)
             return
+        }
+        zoomSizeChangePending = true
+        if case .narrow(_, let reason) = decision, reason.hasPrefix(AdaptiveFOV.cutReasonPrefix) {
+            cutFloorZoom = clampedTarget
         }
         adaptiveFOVShowStatus(directionText)
 
@@ -711,6 +822,8 @@ final class CameraViewModel {
             adaptiveFOVHideStatus(after: 0)
             return true
         case .step(let zoom):
+            cutFloorZoom = nil
+            zoomSizeChangePending = false
             // No "Zooming out…" capsule: nobody is being framed; the zoom label shows the change.
             adaptiveFOVHideStatus(after: 0)
             adaptiveFOVWasHold = false
@@ -799,6 +912,33 @@ final class CameraViewModel {
             }
             self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs · save %.2fs",
                                          self.shutterSeconds, captureSeconds, Date().timeIntervalSince(saveStart))
+            if self.bokehEnabled { await self.saveBokehCopy(of: capturedData) }
+        }
+    }
+
+    /// Saves a second photo with the background blurred (half strength). No person found = no copy.
+    private func saveBokehCopy(of data: Data) async {
+        let start = Date()
+        // Apple's portrait blur when the photo has depth, else our segmentation blur.
+        let result = await Task.detached(priority: .userInitiated) { () -> (Data, String)? in
+            if let apple = BokehProcessor.appleDepthBlur(imageData: data) { return (apple.data, apple.note) }
+            return BokehProcessor.blurBackground(imageData: data).map { ($0, "custom") }
+        }.value
+        guard let result else {
+            lastShotTiming = (lastShotTiming ?? "") + " · blur: no person"
+            return
+        }
+        let (blurred, kind) = result
+        lastBlurNote = kind
+        let thumbnail = Self.makeThumbnail(of: blurred)
+        do {
+            if let assetID = try await photoLibraryService.save(imageData: blurred) {
+                await Self.storeThumbnail(thumbnail, for: assetID)
+                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+            }
+            lastShotTiming = (lastShotTiming ?? "") + String(format: " · blur %.1fs (", Date().timeIntervalSince(start)) + kind + ")"
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
       

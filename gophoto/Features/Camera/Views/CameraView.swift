@@ -13,7 +13,7 @@ struct CameraView: View {
     /// 1 = testing: clean camera for testers. Guide B crop-framing mode, grid on, 4:3. No pose guide,
     ///     no debug, no pickers.
     /// 2 = developer: everything (debug panel, mode picker, pose guide picker, grid, ratio).
-    private static let appMode = 1
+    private static let appMode = 2
     private static var isTesting: Bool { appMode == 1 }
 
     /// The session to guide with, from the navigation that opened the camera. The camera never
@@ -134,6 +134,9 @@ struct CameraView: View {
                         GalleryShortcutButton { isShowingGallery = true }
                             .matchedTransitionSource(id: "gallery", in: galleryZoom)
                             .padding(.leading, 24)
+                    }
+                    .overlay(alignment: .trailing) {
+                        if isDeveloper { blurToggle.padding(.trailing, 16) }
                     }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
@@ -387,6 +390,36 @@ struct CameraView: View {
             }
         }
         .frame(minHeight: 44)
+    }
+
+    /// Developer mode only (temporary): background blur Off / On for the next photos.
+    private var blurToggle: some View {
+        VStack(spacing: 4) {
+            Text(viewModel.bokehEnabled ? (viewModel.bokehUsesDepth ? "Blur · Apple" : "Blur · custom") : "Blur")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            HStack(spacing: 0) {
+                blurOption("Off", on: false)
+                blurOption("On", on: true)
+            }
+            .background(Color.black.opacity(0.35), in: Capsule())
+        }
+    }
+
+    private func blurOption(_ title: String, on: Bool) -> some View {
+        let selected = viewModel.bokehEnabled == on
+        return Button {
+            viewModel.bokehEnabled = on
+        } label: {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(selected ? .black : .white)
+                .padding(.horizontal, 10)
+                .frame(minWidth: 44, minHeight: 44)
+                .background(selected ? Color.yellow : Color.clear, in: Capsule())
+        }
+        .accessibilityLabel("Background blur \(title)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     @ViewBuilder private var closeButton: some View {

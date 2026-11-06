@@ -98,6 +98,10 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     /// Requests a zoom factor, clamped to device limits and GoPhoto's automatic zoom cap.
     /// Returns the actual applied factor.
     func applyZoom(_ factor: Double) async -> Double
+    /// Developer blur (temporary): switch to the dual / triple camera so photos carry Apple's
+    /// depth + portrait matte (true), or back to the main camera (false). Returns whether depth
+    /// capture is on now (false when the phone has no depth camera).
+    func setDepthCapture(_ enabled: Bool) async -> Bool
 }
 
 // MARK: - Real implementation
@@ -130,8 +134,20 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     /// camera's photo pipeline gets the processor. The guide keeps its last values meanwhile.
     private var photosInFlight = 0
     private var isTakingPhoto: Bool { photosInFlight > 0 }
-    /// Vertical field of view of the upright (portrait) frame, degrees. Set in `configureSession`.
+    /// Vertical field of view of the upright (portrait) frame at zoom 1, degrees. Set in
+    /// `configureSession`. Each frame's field of view is narrowed by the zoom at that moment.
     private var verticalFOV: Double?
+    /// The camera, for the video queue: each frame reads the zoom it was taken with.
+    private var videoDevice: AVCaptureDevice?
+    /// How fast automatic zoom moves, in powers of two per second (1 = doubles in a second).
+    /// A ramp instead of a jump: the preview glides like the system camera.
+    static let zoomRampRate: Float = 1.0
+
+    /// Field of view after zooming by `zoom` (the zoom crops the sensor's centre).
+    static func effectiveFOV(_ fov: Double, zoom: Double) -> Double {
+        guard zoom > 0 else { return fov }
+        return 2 * atan(tan(fov * .pi / 360) / zoom) * 180 / .pi
+    }
     /// Largest photo size, megapixels (video queue copy for the guide).
     private var photoMegapixels: Double?
     /// Photo sizes (session queue): largest, and the one closest to 12 MP for normal shots.
@@ -140,7 +156,14 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private var highResolution = false
     /// The camera (session queue), for the exposure and focus points.
     private var device: AVCaptureDevice?
-    /// Current zoom factor on the active device.
+    /// Device zoom factor that the app calls 1×. 1 on the main camera; on a virtual (dual / triple)
+    /// camera its factor 1 is the ultra wide, so 1× = the switch-over to the main lens. All zoom
+    /// values the app sees are divided by it (session queue / video queue copies).
+    private var zoomScale: Double = 1
+    private var videoZoomScale: Double = 1
+    /// Depth capture is on (session queue).
+    private var depthActive = false
+    /// Current zoom factor on the active device (app units, see `zoomScale`).
     private var _currentZoom: Double = 1.0
     /// Supported zoom range for the active format.
     private var _minAvailableZoom: Double = 1.0
@@ -229,6 +252,16 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                 // Quality prioritization (benchmark): .quality = most multi-frame processing,
                 // slowest file. .balanced is Apple's default; .speed the fastest.
                 settings.photoQualityPrioritization = .quality
+                // Developer blur: Apple's depth + portrait matte, embedded in the file (the Photos
+                // app can then treat it as a Portrait photo; GoPhoto renders the blur from it).
+                if self.photoOutput.isDepthDataDeliveryEnabled {
+                    settings.isDepthDataDeliveryEnabled = true
+                    settings.embedsDepthDataInPhoto = true
+                    if self.photoOutput.isPortraitEffectsMatteDeliveryEnabled {
+                        settings.isPortraitEffectsMatteDeliveryEnabled = true
+                        settings.embedsPortraitEffectsMatteInPhoto = true
+                    }
+                }
                 self.photoContinuations[settings.uniqueID] = continuation
                 self.shutterCallbacks[settings.uniqueID] = onShutter
                 self.videoQueue.async { self.photosInFlight += 1 }
@@ -288,14 +321,15 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                 do {
                     try device.lockForConfiguration()
                     defer { device.unlockForConfiguration() }
-                    device.videoZoomFactor = clamped
-                    self._currentZoom = Double(device.videoZoomFactor)
-                    self.publishZoomSnapshot()
-                    self.zoomContinuation?.yield(self._currentZoom)
+                    // Glide to the target (a jump made the preview twitch). The frames report
+                    // the zoom they were taken with while the ramp runs.
+                    device.ramp(toVideoZoomFactor: CGFloat(clamped * self.zoomScale), withRate: Self.zoomRampRate)
+                    self._currentZoom = Double(clamped)   // target; the frames publish the live value
+                    self.zoomContinuation?.yield(Double(clamped))
                 } catch {
                     NSLog("GoPhoto camera zoom could not be applied: %@", error.localizedDescription)
                 }
-                continuation.resume(returning: self._currentZoom)
+                continuation.resume(returning: Double(clamped))
             }
         }
     }
@@ -331,68 +365,131 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             throw CameraError.cameraUnavailable
         }
+        try attach(device)
+
+        guard session.canAddOutput(photoOutput) else { throw CameraError.cannotAddOutput }
+        session.addOutput(photoOutput)
+        configurePhotoOutput(for: device, depth: false)
+
+        // live video frames → person detection
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
+        guard session.canAddOutput(videoOutput) else { throw CameraError.cannotAddOutput }
+        session.addOutput(videoOutput)
+        rotateVideoFrames()
+
+        isConfigured = true
+    }
+
+    /// Session queue, inside a configuration: connects `device` as the camera and resets the zoom
+    /// to the app's 1× (the main lens; on a virtual camera its switch-over factor).
+    private func attach(_ device: AVCaptureDevice) throws {
         let input = try AVCaptureDeviceInput(device: device)
+        guard session.canAddInput(input) else { throw CameraError.cannotAddInput }
+        session.addInput(input)
         self.device = device
-        _minAvailableZoom = device.minAvailableVideoZoomFactor
-        _maxAvailableZoom = device.maxAvailableVideoZoomFactor
+        let scale = device.isVirtualDevice
+            ? (device.virtualDeviceSwitchOverVideoZoomFactors.first.map { Double(truncating: $0) } ?? 1)
+            : 1
+        zoomScale = scale
+        // Never below the main lens (the guide and the zoom logic assume it).
+        _minAvailableZoom = max(1, Double(device.minAvailableVideoZoomFactor) / scale)
+        _maxAvailableZoom = Double(device.maxAvailableVideoZoomFactor) / scale
         // Every session starts at the baseline. The device object is shared, so it still has the
         // zoom the previous session left it at.
         let baseline = max(_minAvailableZoom, min(_maxAvailableZoom, AdaptiveFOV.baselineZoom))
         do {
             try device.lockForConfiguration()
-            device.videoZoomFactor = baseline
+            device.videoZoomFactor = CGFloat(baseline * scale)
             device.unlockForConfiguration()
         } catch {
             NSLog("GoPhoto camera zoom could not be reset: %@", error.localizedDescription)
         }
-        _currentZoom = Double(device.videoZoomFactor)
+        _currentZoom = Double(device.videoZoomFactor) / scale
         publishZoomSnapshot()
         zoomContinuation?.yield(_currentZoom)
-        // videoFieldOfView is across the sensor's long side, which is the height of a portrait frame.
+        // videoFieldOfView is across the sensor's long side, which is the height of a portrait
+        // frame, at the device's zoom factor 1 (each frame narrows it by the device zoom).
         let fov = Double(device.activeFormat.videoFieldOfView)
-        videoQueue.async { self.verticalFOV = fov > 0 ? fov : nil }
-        guard session.canAddInput(input) else { throw CameraError.cannotAddInput }
-        session.addInput(input)
+        // AVCaptureDevice is thread-safe to read; the video queue only reads its zoom.
+        nonisolated(unsafe) let zoomDevice = device
+        videoQueue.async {
+            self.verticalFOV = fov > 0 ? fov : nil
+            self.videoDevice = zoomDevice
+            self.videoZoomScale = scale
+        }
+    }
 
-        guard session.canAddOutput(photoOutput) else { throw CameraError.cannotAddOutput }
-        session.addOutput(photoOutput)
+    /// Upright live frames, same as the photo.
+    private func rotateVideoFrames() {
+        if let connection = videoOutput.connection(with: .video),
+           connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
+    }
+
+    /// Session queue, inside a configuration: photo settings for `device` (depth first: zero
+    /// shutter lag and responsive capture depend on it).
+    private func configurePhotoOutput(for device: AVCaptureDevice, depth: Bool) {
+        photoOutput.isPortraitEffectsMatteDeliveryEnabled = false
+        photoOutput.isDepthDataDeliveryEnabled = depth && photoOutput.isDepthDataDeliverySupported
+        if photoOutput.isDepthDataDeliveryEnabled {
+            photoOutput.isPortraitEffectsMatteDeliveryEnabled = photoOutput.isPortraitEffectsMatteDeliverySupported
+        }
 
         // Allow up to .quality per shot (the default ceiling is .balanced).
         photoOutput.maxPhotoQualityPrioritization = .quality
 
         // Faster shutter: take the frame from the moment of the tap (zero shutter lag) and let
         // the next shot start while the previous one is still processing (responsive capture).
-        if photoOutput.isZeroShutterLagSupported { photoOutput.isZeroShutterLagEnabled = true }
-        if photoOutput.isResponsiveCaptureSupported {
-            photoOutput.isResponsiveCaptureEnabled = true
-            if photoOutput.isFastCapturePrioritizationSupported {
-                photoOutput.isFastCapturePrioritizationEnabled = true
-            }
-        }
+        // (Set every time: depth capture can take these away, turning it off gives them back.)
+        photoOutput.isZeroShutterLagEnabled = photoOutput.isZeroShutterLagSupported
+        photoOutput.isResponsiveCaptureEnabled = photoOutput.isResponsiveCaptureSupported
+        photoOutput.isFastCapturePrioritizationEnabled = photoOutput.isResponsiveCaptureEnabled
+            && photoOutput.isFastCapturePrioritizationSupported
 
         // Crop-guide modes capture at the largest supported dimensions; saved framing stays untouched.
         let sizes = device.activeFormat.supportedMaxPhotoDimensions
         func pixels(_ d: CMVideoDimensions) -> Int { Int(d.width) * Int(d.height) }
-        if let largest = sizes.max(by: { pixels($0) < pixels($1) }) {
+        if var largest = sizes.max(by: { pixels($0) < pixels($1) }) {
+            // Depth photos: stay at about 12 MP (depth and the matte are made for that size).
+            if photoOutput.isDepthDataDeliveryEnabled,
+               let normal = sizes.min(by: { abs(pixels($0) - 12_000_000) < abs(pixels($1) - 12_000_000) }) {
+                largest = normal
+            }
             photoOutput.maxPhotoDimensions = largest
             largestPhotoDimensions = largest
             normalPhotoDimensions = sizes.min(by: { abs(pixels($0) - 12_000_000) < abs(pixels($1) - 12_000_000) })
             let megapixels = Double(pixels(largest)) / 1_000_000
             videoQueue.async { self.photoMegapixels = megapixels }
         }
-        
-        // live video frames → person detection
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
-        guard session.canAddOutput(videoOutput) else { throw CameraError.cannotAddOutput }
-        session.addOutput(videoOutput)
+    }
 
-        if let connection = videoOutput.connection(with: .video),
-           connection.isVideoRotationAngleSupported(90) {
-            connection.videoRotationAngle = 90   // upright frames, same as the photo
+    func setDepthCapture(_ enabled: Bool) async -> Bool {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                guard self.isConfigured else { continuation.resume(returning: false); return }
+                guard enabled != self.depthActive else { continuation.resume(returning: self.depthActive); return }
+                let target: AVCaptureDevice? = enabled
+                    ? [AVCaptureDevice.DeviceType.builtInDualWideCamera, .builtInDualCamera, .builtInTripleCamera]
+                        .lazy.compactMap { AVCaptureDevice.default($0, for: .video, position: .back) }.first
+                    : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                guard let target else { continuation.resume(returning: false); return }
+                let previous = self.device
+                self.session.beginConfiguration()
+                for input in self.session.inputs { self.session.removeInput(input) }
+                do {
+                    try self.attach(target)
+                } catch {
+                    if let previous { try? self.attach(previous) }   // keep a working camera
+                }
+                self.configurePhotoOutput(for: self.device ?? target, depth: enabled)
+                self.rotateVideoFrames()
+                self.session.commitConfiguration()
+                self.depthActive = enabled && self.photoOutput.isDepthDataDeliveryEnabled
+                continuation.resume(returning: self.depthActive)
+            }
         }
-
-        isConfigured = true
     }
 }
 
@@ -441,8 +538,16 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         scheduleEnvironmentAnalysis(from: pixelBuffer)
+        // The zoom this frame was taken with: the field of view narrows with it.
+        // Device factor for the field of view; app units (÷ `videoZoomScale`) for everything else.
+        let deviceZoom = videoDevice.map { Double($0.videoZoomFactor) }
+        let zoom = deviceZoom.map { $0 / videoZoomScale }
+        let ramping = videoDevice?.isRampingVideoZoom ?? false
+        if let zoom { zoomLock.withLock { if zoomSnapshot.current != nil { zoomSnapshot.current = zoom } } }
         var detection = personDetector.detect(in: pixelBuffer)
-        detection?.verticalFOV = verticalFOV
+        detection?.verticalFOV = verticalFOV.map { Self.effectiveFOV($0, zoom: deviceZoom ?? 1) }
+        detection?.zoomFactor = zoom
+        detection?.isZooming = ramping
         detection?.photoMegapixels = photoMegapixels
         continuation.yield(detection)
         updateMetering(for: detection)

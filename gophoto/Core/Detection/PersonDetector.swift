@@ -33,6 +33,14 @@ nonisolated struct PersonDetection: @unchecked Sendable {
     /// Sitting / standing read from this frame's body pose. Nil when the pose was not run this
     /// frame (it runs every `PersonDetector.poseInterval` frames) or the legs are not visible.
     var posture: BodyPosture? = nil
+    /// Reliable body joints inside the frame, from this frame's pose (nil when the pose was not
+    /// run this frame). The guide checks where the frame cuts the body with them (version 17):
+    /// real joints, so it does not assume body proportions.
+    var visibleJoints: Set<BodyJoint>? = nil
+    /// Zoom factor of this frame, and whether a zoom ramp was running (set by `CameraService`).
+    /// Boxes from different zooms must not be mixed, and a moving zoom is not judged.
+    var zoomFactor: Double? = nil
+    var isZooming = false
 }
 
 nonisolated final class PersonDetector {
@@ -186,14 +194,22 @@ nonisolated final class PersonDetector {
             .max { $0.height < $1.height }
 
         let outline = includeOutline ? maskRequest.results?.first.flatMap { makeOutline(from: $0.pixelBuffer) } : nil
-        let posture = readsPose ? posture(of: poseRequest.results ?? [], in: box) : nil
-        return PersonDetection(box: box, face: face, outline: outline, posture: posture)
+        let pose = readsPose ? pose(of: poseRequest.results ?? [], in: box) : nil
+        let posture = pose.flatMap { PostureClassifier.posture(of: $0) }
+        let visible: Set<BodyJoint>? = readsPose ? Set((pose?.reliableLandmarks() ?? []).filter {
+            $0.point.y >= Self.frameEdge && $0.point.y <= 1 - Self.frameEdge
+                && $0.point.x >= Self.frameEdge && $0.point.x <= 1 - Self.frameEdge
+        }.map(\.joint)) : nil
+        return PersonDetection(box: box, face: face, outline: outline, posture: posture, visibleJoints: visible)
     }
 
     // MARK: - Posture (sitting / standing)
 
-    /// Posture of the skeleton that belongs to the locked person's box (same rule as the photo analysis).
-    private func posture(of observations: [VNHumanBodyPoseObservation], in box: CGRect) -> BodyPosture? {
+    /// A joint closer than this to the frame edge counts as cut off.
+    static let frameEdge: CGFloat = 0.01
+
+    /// The skeleton that belongs to the locked person's box (same rule as the photo analysis).
+    private func pose(of observations: [VNHumanBodyPoseObservation], in box: CGRect) -> PoseCandidate? {
         let poses = observations.compactMap { observation -> PoseCandidate? in
             guard let points = try? observation.recognizedPoints(.all) else { return nil }
             let landmarks = points.compactMap { name, point -> BodyLandmark? in
@@ -204,8 +220,7 @@ nonisolated final class PersonDetector {
             }
             return PoseCandidate(landmarks: landmarks, observationConfidence: Double(observation.confidence))
         }
-        guard let pose = SubjectAssociation.pose(for: box, among: poses) else { return nil }
-        return PostureClassifier.posture(of: pose)
+        return SubjectAssociation.pose(for: box, among: poses)
     }
 
     /// The joints the posture rule reads (others are skipped).

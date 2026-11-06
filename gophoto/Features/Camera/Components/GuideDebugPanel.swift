@@ -108,6 +108,16 @@ struct GuideDebugPanel: View {
                 if let n = analysis.eyeSidePhotoCount { why.append("\(n) photos") }
                 if let framing = analysis.shotSize ?? analysis.framing { why.append(framing) }
                 line += " (\(why.joined(separator: ", ")))"
+                if let anchor = analysis.anchorReference {
+                    var vote = "\(anchor) \(analysis.anchorAbove ?? 0)↑/\(analysis.anchorBelow ?? 0)↓"
+                    if let styles = analysis.anchorStyleCount, styles > 1 {
+                        vote += " · style \(analysis.anchorTargetPhotoCount ?? 0) of \(styles)"
+                    }
+                    if let eye = analysis.eyeElevation, let weighted = analysis.eyeElevationWeighted {
+                        vote += String(format: " · eyes med %+.1f° w %+.1f°", eye, weighted)
+                    }
+                    line += " [\(vote)]"
+                }
             }
             return line + " · tilt \(Self.tilt(pitchDown)) \(tolerance)"
         case .noGuidance:
@@ -166,6 +176,7 @@ struct GuideDebugPanel: View {
         let e = viewModel.evaluation
         var line = "Distance from \(e.distanceSource)"
         if let r = e.sizeRatio { line += String(format: " · size ×%.2f", r) }
+        if let cut = e.cutGuard { line += " · \(cut)" }
         if let h = e.headAngle {
             line += String(format: " · head %.1f°", h)
             if let t = viewModel.analysis?.headAngle { line += String(format: " / %.1f°", t) }
@@ -180,7 +191,12 @@ struct GuideDebugPanel: View {
         let target = e.eyeElevationTarget.map(words) ?? "none"
         let capped = e.heightCapped ? " (capped to reach)" : ""
         let distance = e.distanceMeters.map { String(format: " · ~%.1f m", $0) } ?? ""
-        return "Camera vs eyes \(now) · target \(target)\(capped)\(distance)"
+        var faces = ""
+        if let f = e.heightFaces {
+            faces = String(format: " · faces %+.2f", f)
+            if let t = e.heightFacesTarget { faces += String(format: " / %+.2f (used)", t) }
+        }
+        return "Camera vs eyes \(now) · target \(target)\(capped)\(distance)\(faces)"
     }
 
     private var stepsLine: String {

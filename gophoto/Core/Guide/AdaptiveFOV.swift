@@ -20,7 +20,13 @@ nonisolated enum AdaptiveFOV: Sendable {
 
     /// Tighter than GuideFlow's `sizeEnter` (0.15) so adaptive FOV acts before the
     /// guide would ask the photographer to move closer or farther away.
-    static let deadband: CGFloat = 0.05
+    /// 10%: Vision's person box wobbles about ±5% frame to frame; 5% made the zoom chase it.
+    static let deadband: CGFloat = 0.10
+    /// Zooming out because the subject touches an edge: this much per step, not all the way out
+    /// (all the way out, then in again until the edge, made the zoom ping-pong).
+    static let edgeStep = 1.12
+    /// Room kept between the subject and an edge the references leave free, when zooming in.
+    static let edgeRoom: CGFloat = 0.03
 
     // MARK: - Input
 
@@ -39,7 +45,17 @@ nonisolated enum AdaptiveFOV: Sendable {
         let environment: LiveEnvironmentSignal?
         let preserveEnvironmentContext: Bool
         let now: TimeInterval
+        /// Shot size and the joints the live pose sees: the body-cut rule (`GuideFlow.cutGuard`)
+        /// decides first, the same rule the guide uses, so zoom and guide never pull apart.
+        var shotSize: PresetAnalysis.ShotSize? = nil
+        var visibleJoints: Set<BodyJoint>? = nil
+        /// Zoom the body cut needed (e.g. zoomed in until the feet left the frame): size alone
+        /// may not zoom out past it, or the cut breaks again and the zoom ping-pongs.
+        var cutFloorZoom: Double? = nil
     }
+
+    /// Reasons that come from the body-cut rule start with this.
+    static let cutReasonPrefix = "cut: "
 
     // MARK: - Output
 
@@ -71,7 +87,26 @@ nonisolated enum AdaptiveFOV: Sendable {
         let refTop = input.clippedTop, refBottom = input.clippedBottom
         if (!refTop && input.personBox.minY <= GuideFlow.edgeMargin) ||
            (!refBottom && input.personBox.maxY >= 1 - GuideFlow.edgeMargin) {
-            return .widen(targetZoom: input.minZoom, reason: "subject cut off at frame edge")
+            let target = max(input.minZoom, input.currentZoom / edgeStep)
+            return .widen(targetZoom: target, reason: "subject cut off at frame edge")
+        }
+
+        // Body cut first (same rule as the guide): e.g. three-quarter with the feet in frame →
+        // zoom in a step, whatever the size says.
+        if let shot = input.shotSize, let joints = input.visibleJoints,
+           let cut = GuideFlow.cutGuard(shot: shot, joints: joints,
+                                        bottomCut: input.personBox.maxY >= 1 - GuideFlow.edgeMargin) {
+            if cut.instruction == .moveCloser {
+                let target = min(effectiveMaxZoom, input.currentZoom * edgeStep)
+                return target > input.currentZoom * 1.01
+                    ? .narrow(targetZoom: target, reason: cutReasonPrefix + cut.reason)
+                    : .hold(reason: "\(cut.reason) · zoom at its limit")
+            } else if cut.instruction == .moveFarther {
+                let target = max(input.minZoom, input.currentZoom / edgeStep)
+                return target < input.currentZoom * 0.99
+                    ? .widen(targetZoom: target, reason: cutReasonPrefix + cut.reason)
+                    : .hold(reason: "\(cut.reason) · zoom at its limit")
+            }
         }
 
         let sizeRatio: CGFloat
@@ -94,11 +129,28 @@ nonisolated enum AdaptiveFOV: Sendable {
 
         if adjusted > 1 + deadband {
             let rawTarget = input.currentZoom / Double(adjusted)
-            let target = max(input.minZoom, min(effectiveMaxZoom, rawTarget))
+            let floor = max(input.minZoom, input.cutFloorZoom ?? input.minZoom)
+            let target = max(floor, min(effectiveMaxZoom, rawTarget))
+            if target >= input.currentZoom * 0.99 {
+                return .hold(reason: "\(source) too large, but the body cut needs this zoom")
+            }
             return .widen(targetZoom: target, reason: "\(source) too large")
         } else if adjusted < 1 - deadband {
             let rawTarget = input.currentZoom / Double(adjusted)
-            let target = max(input.minZoom, min(effectiveMaxZoom, rawTarget))
+            var target = max(input.minZoom, min(effectiveMaxZoom, rawTarget))
+            // Never zoom in so far that an edge the references leave free gets cut (zoom scales
+            // the box about the frame centre): that would only trigger the edge guard above.
+            var room = CGFloat.infinity
+            if !refBottom, input.personBox.maxY > 0.5 {
+                room = min(room, (0.5 - edgeRoom) / (input.personBox.maxY - 0.5))
+            }
+            if !refTop, input.personBox.minY < 0.5 {
+                room = min(room, (0.5 - edgeRoom) / (0.5 - input.personBox.minY))
+            }
+            if room.isFinite { target = min(target, input.currentZoom * Double(room)) }
+            if target <= input.currentZoom * 1.01 {
+                return .hold(reason: "zooming in would cut the subject")
+            }
             if input.preserveEnvironmentContext,
                let environment = input.environment,
                environment.isReliable(at: input.now),
