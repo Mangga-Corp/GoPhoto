@@ -5,16 +5,62 @@ import SwiftUI
 struct ResultsOverviewView: View {
     @ObservedObject var session: AnalysisSession
     let onOpenCamera: () -> Void
+    /// Which photos the overview shows: all, or one framing (shot size, or seated full body).
+    @State private var filter: FramingFilter = .all
+
+    nonisolated enum FramingFilter: Hashable, Identifiable {
+        case all
+        case shot(PresetAnalysis.ShotSize)
+        case sitting
+        var id: String { title }
+        var title: String {
+            switch self {
+            case .all: "All"
+            case .shot(.full): "Full"
+            case .shot(.threeQuarter): "3/4"
+            case .shot(.half): "Half"
+            case .shot(.quarter): "1/4"
+            case .sitting: "Sitting"
+            }
+        }
+    }
+
+    /// The framing group of one photo (same rules as the camera's shot sizes; seated full body apart).
+    nonisolated static func group(of result: PhotoResult) -> FramingFilter? {
+        guard let shot = PreferenceAnalyzer.shotSize(of: result) else { return nil }
+        if shot == .full, PreferenceAnalyzer.posture(of: result) == .sitting { return .sitting }
+        return .shot(shot)
+    }
+
+    private var options: [FramingFilter] {
+        let groups = session.results.compactMap(Self.group(of:))
+        let present = PresetAnalysis.ShotSize.allCases.map(FramingFilter.shot) + [.sitting]
+        return [.all] + present.filter { option in groups.contains(option) }
+    }
 
     var body: some View {
+        let results = filter == .all ? session.results : session.results.filter { Self.group(of: $0) == filter }
+        let profile = filter == .all ? session.profile : (results.isEmpty ? nil : ProfileAggregator.aggregate(results))
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let profile = session.profile {
-                    summaryCard(profile)
-                    if profile.isEmpty { noEvidenceCard(profile) } else { profileCard(profile) }
-                    warningsCard(profile)
+                if options.count > 1 {
+                    Picker("Framing", selection: $filter) {
+                        ForEach(options) { option in
+                            let count = option == .all ? session.results.count
+                                : session.results.filter { Self.group(of: $0) == option }.count
+                            Text("\(option.title) \(count)").tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Show photos by framing")
                 }
-                photosSection
+                if let profile {
+                    summaryCard(profile)
+                    if profile.isEmpty { noEvidenceCard(profile) } else { profileCard(profile, linked: true) }
+                    blurCard(results)
+                    warningsCard(profile, results: results)
+                }
+                photosSection(results)
                 cameraSection
             }
             .padding(16)
@@ -58,14 +104,25 @@ struct ResultsOverviewView: View {
 
     // MARK: Profile
 
-    private func profileCard(_ profile: PreferenceProfile) -> some View {
-        NavigationLink(value: ProfileRoute()) {
+    @ViewBuilder
+    private func profileCard(_ profile: PreferenceProfile, linked: Bool) -> some View {
+        if linked {
+            NavigationLink(value: ProfileRoute(filter: filter)) { profileCardBody(profile, linked: true) }
+                .buttonStyle(.plain)
+        } else {
+            profileCardBody(profile, linked: false)
+        }
+    }
+
+    private func profileCardBody(_ profile: PreferenceProfile, linked: Bool) -> some View {
             ResultCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Photo Preference Profile").font(.headline)
+                        Text(filter == .all ? "Photo Preference Profile" : "Photo Preference Profile · \(filter.title)").font(.headline)
                         Spacer()
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        if linked {
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
                     }
                     profileRow(.cameraAngle, finding: profile.cameraAngle.pattern, strength: profile.cameraAngle.strength,
                                text: profile.cameraAngle.dominant?.label, fallback: profile.cameraAngle.summary)
@@ -76,12 +133,11 @@ struct ResultsOverviewView: View {
                     profileRow(.environmentalDepth, finding: profile.depthStructure.pattern, strength: profile.depthStructure.strength,
                                text: profile.depthStructure.dominant?.label, fallback: profile.depthStructure.summary)
                     if let environment = profile.environment, !environment.isEmpty { environmentRow(environment) }
-                    Text("Tap for distributions, variation and the photos behind each finding.")
+                    Text(linked ? "Tap for distributions, variation and the photos behind each finding."
+                                : "Only this framing's photos. Choose All for the full details screen.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-        }
-        .buttonStyle(.plain)
     }
 
     /// One line each for the scene tendency and the composition tendency, stated only when a pattern exists.
@@ -144,11 +200,42 @@ struct ResultsOverviewView: View {
         }
     }
 
+    // MARK: Background blur
+
+    /// How blurred these photos' backgrounds are (v18): the blur copy is rendered to match it.
+    private func blurCard(_ results: [PhotoResult]) -> some View {
+        let values = results.compactMap { session.backgroundBlur[$0.id] }.sorted()
+        let median = values.isEmpty ? nil : (values[(values.count - 1) / 2] + values[values.count / 2]) / 2
+        return ResultCard {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Background blur", systemImage: "camera.aperture").font(.headline)
+                if let median {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(String(format: "%.2f", median)).font(.title2.bold().monospacedDigit())
+                        Text(Self.blurLook(median)).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Text("Median of \(values.count) of \(results.count) photos. Background sharpness ÷ person sharpness: about 1 = background as sharp as the person, about 0.2 = strong bokeh. Blur On matches this.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(session.backgroundBlur.isEmpty
+                         ? "Not measured in this run. Analyze the preset again to measure it."
+                         : "No photo here could be measured (no clear person, or the person is blurry).")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    static func blurLook(_ ratio: Double) -> String {
+        ratio >= BokehProcessor.sharpReferenceRatio ? "sharp background · no blur copy"
+            : ratio >= 0.6 ? "light blur" : ratio >= 0.35 ? "medium blur" : "strong blur"
+    }
+
     // MARK: Warnings
 
     @ViewBuilder
-    private func warningsCard(_ profile: PreferenceProfile) -> some View {
-        let problems = session.results.filter { $0.status != .complete }
+    private func warningsCard(_ profile: PreferenceProfile, results: [PhotoResult]) -> some View {
+        let problems = results.filter { $0.status != .complete }
         let notes = profile.limitations.prefix(3)
         if !problems.isEmpty || !notes.isEmpty {
             ResultCard {
@@ -160,7 +247,7 @@ struct ResultsOverviewView: View {
                     }
                     ForEach(Array(notes), id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
                     if profile.limitations.count > notes.count {
-                        NavigationLink("See all limitations", value: ProfileRoute()).font(.footnote)
+                        NavigationLink("See all limitations", value: ProfileRoute(filter: filter)).font(.footnote)
                     }
                 }
             }
@@ -169,12 +256,13 @@ struct ResultsOverviewView: View {
 
     // MARK: Photos
 
-    private var photosSection: some View {
+    private func photosSection(_ results: [PhotoResult]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Individual photos").font(.headline)
-            ForEach(session.results) { result in
+            Text(filter == .all ? "Individual photos" : "\(filter.title) photos (\(results.count))").font(.headline)
+            ForEach(results) { result in
                 NavigationLink(value: PhotoDetailRoute(photoID: result.id)) {
-                    PhotoResultRow(result: result, image: session.imageStore.image(for: result.id))
+                    PhotoResultRow(result: result, image: session.imageStore.image(for: result.id),
+                               blur: session.backgroundBlur[result.id])
                 }
                 .buttonStyle(.plain)
             }
@@ -207,6 +295,8 @@ struct ResultsOverviewView: View {
 struct PhotoResultRow: View {
     let result: PhotoResult
     let image: UIImage?
+    /// Background / person sharpness (v18), when measured.
+    var blur: Double? = nil
 
     var body: some View {
         ResultCard {
@@ -218,6 +308,10 @@ struct PhotoResultRow: View {
                         if result.status != .complete { statusTag }
                         Spacer()
                         Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    if let blur {
+                        Text(String(format: "Background blur %.2f · ", blur) + ResultsOverviewView.blurLook(blur))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
                               alignment: .leading, spacing: 6) {

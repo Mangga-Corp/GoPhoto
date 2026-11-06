@@ -5,6 +5,8 @@ import SwiftUI
 struct GuideDebugPanel: View {
     @Bindable var viewModel: CameraViewModel
     var onShowDetails: () -> Void
+    /// Opens the per-shot-size analysis (full / three-quarter / half / ...).
+    var onShowShots: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -25,6 +27,8 @@ struct GuideDebugPanel: View {
             Text(presetLine).fontWeight(.semibold)
             Text(angleLine)
             if let timing = viewModel.lastShotTiming { Text("Last shot: " + timing) }
+            Text(blurLine)
+            if let note = viewModel.lastBlurNote { Text("Last blur: " + note).lineLimit(3) }
             if let cut = cutLine { Text(cut) }
             Text(targetLine).fontWeight(.semibold).foregroundStyle(.yellow)
             Text(phoneLine)
@@ -53,9 +57,12 @@ struct GuideDebugPanel: View {
                 Text(stepsLine)
             }
             Text("Instruction: \(String(describing: viewModel.instruction))")
-            Button("Analysis details", action: onShowDetails)
-                .font(.caption2.weight(.semibold))
-                .padding(.top, 2)
+            HStack(spacing: 16) {
+                Button("Analysis details", action: onShowDetails)
+                Button("Per shot size", action: onShowShots)
+            }
+            .font(.caption2.weight(.semibold))
+            .padding(.top, 2)
         }
         .font(.caption2.monospacedDigit())
         .foregroundStyle(.white)
@@ -170,6 +177,18 @@ struct GuideDebugPanel: View {
         return "Light: \(advice.scene.rawValue) (weather \(weather)) · f/\(rule.aperture.lowerBound.formatted())–"
             + "\(rule.aperture.upperBound.formatted()) · shutter ≥1/\(Int((1 / advice.slowestShutter).rounded()))"
             + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) (all info only)"
+    }
+
+    /// Background blur the preset's references have (v18) and what Blur On will do with it.
+    private var blurLine: String {
+        let state = viewModel.bokehEnabled ? (viewModel.bokehUsesDepth ? "on · Apple depth" : "on · custom") : "off"
+        guard let ratio = viewModel.analysis?.backgroundBlur else {
+            return "Blur \(state) · references: not measured → 1/3 strength"
+        }
+        let n = viewModel.analysis?.backgroundBlurCount ?? 0
+        let look = ratio >= BokehProcessor.sharpReferenceRatio ? "sharp background → no copy"
+            : ratio >= 0.6 ? "light blur" : ratio >= 0.35 ? "medium blur" : "strong blur"
+        return String(format: "Blur %@ · references %.2f (%d photos) · %@", state, ratio, n, look)
     }
 
     private var distanceLine: String {

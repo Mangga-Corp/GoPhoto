@@ -68,3 +68,22 @@ Asal: debugphoto (anchor-side-v3 + agregat robust + gaya). Belum di-commit.
 | 5 | Pindah langkah tanpa stabil | Langkah OK hanya setelah 0,4 s di toleransi; sebelumnya `.keepSteady` ("Hold it there") | `GuideFlow.judge`, `GuideInstruction`, `InstructionPill`, `GuidanceMotion` |
 
 - Rotasi (2026-11-07): salinan blur Apple berputar 90° karena orientasi dipasang dua kali (filter sudah memutar). Sekarang diputar hanya kalau bentuk output (potret/lanskap) beda dari foto tegak.
+
+# Kekuatan blur dari referensi (v18, 2026-11-07)
+
+| File | Perubahan |
+|---|---|
+| `Core/PreferenceAnalysis/Pipeline/BackgroundBlurMeter.swift` | baru: rasio ketajaman latar/orang (RMS Laplacian, foto ~1024 px, segmentasi orang, pita tepi 2% dibuang) |
+| `PresetAnalysis.swift` | `backgroundBlur` + `backgroundBlurCount` per preset & tiap varian (`applyBackgroundBlur`), versi 18 |
+| `AnalysisSession.swift` | ukur rasio semua referensi setelah analisis |
+| `Core/Camera/BokehProcessor.swift` | ditulis ulang: `blurToTarget` cari kekuatan (6 langkah biner) sampai rasio salinan = target; referensi ≥0,85 → tanpa salinan; tanpa target → 1/3 dari lemah ke kuat; arah aperture Apple diukur; subjek tetap tajam, fokus wajah |
+| `CameraViewModel.swift` | `saveBokehCopy` kirim `analysis?.backgroundBlur`, catatan ke panel |
+
+# Layar analisis per ukuran shot (2026-11-07)
+
+- `Features/Camera/Components/ShotAnalysisScreen.swift` baru: pilih Full / 3/4 / Half / Quarter / Sitting (segmented), tampil foto referensinya, tinggi kamera (voting anchor, gaya, target satuan wajah & sudut), tilt, framing (kotak orang, potongan, ukuran wajah, aturan potongan), blur latar, versi.
+- Dibuka dari panel debug: tombol **Per shot size** (`GuideDebugPanel.onShowShots`), sheet di `CameraView`; foto dari `CameraViewModel.presetPhotos`.
+
+- Analysis details (`ResultsOverviewView`): pemilih framing di atas (All / Full / 3/4 / Half / 1/4 / Sitting + jumlah foto). Kartu ringkasan, profil (dihitung ulang dari foto framing itu via `ProfileAggregator.aggregate`), peringatan, dan daftar foto ikut terfilter. Layar detail profil (tap) tetap untuk All.
+
+- Profil per framing: `ProfileRoute(filter:)` → `ProfileDetailView` dibangun dari foto framing itu. Blur di Analysis details: kartu "Background blur" (median framing terpilih) + baris per foto (`AnalysisSession.backgroundBlur`, `PhotoResultRow.blur`).

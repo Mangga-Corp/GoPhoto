@@ -1,17 +1,29 @@
 import SwiftUI
 
 /// Route for the full consolidated profile.
-struct ProfileRoute: Hashable {}
+struct ProfileRoute: Hashable {
+    /// The framing whose photos the profile is built from (All = the session's profile).
+    var filter: ResultsOverviewView.FramingFilter = .all
+}
 
 /// The consolidated Photo Preference Profile in full: each characteristic's
 /// pattern, distribution, supporting photos, numeric summaries, coverage and
 /// limitations. Renders `PreferenceProfile` only; nothing is recomputed.
 struct ProfileDetailView: View {
     @ObservedObject var session: AnalysisSession
+    var filter: ResultsOverviewView.FramingFilter = .all
+
+    /// This framing's photos, and their profile (rebuilt from them; All = the session's).
+    private var results: [PhotoResult] {
+        filter == .all ? session.results : session.results.filter { ResultsOverviewView.group(of: $0) == filter }
+    }
+    private var profile: PreferenceProfile? {
+        filter == .all ? session.profile : (results.isEmpty ? nil : ProfileAggregator.aggregate(results))
+    }
 
     var body: some View {
         Group {
-            if let profile = session.profile {
+            if let profile {
                 content(profile)
             } else {
                 ContentUnavailableView("No profile yet", systemImage: "chart.bar.doc.horizontal",
@@ -19,7 +31,7 @@ struct ProfileDetailView: View {
             }
         }
         .background(AnalysisResultsPalette.pageBackground)
-        .navigationTitle("Preference Profile")
+        .navigationTitle(filter == .all ? "Preference Profile" : "Preference Profile · \(filter.title)")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -100,7 +112,7 @@ struct ProfileDetailView: View {
 
     private func positioningCard(_ profile: PreferenceProfile) -> some View {
         let kind = CharacteristicKind.subjectPositioning
-        let dots: [PositionMap.Dot] = session.results.compactMap { r in
+        let dots: [PositionMap.Dot] = results.compactMap { r in
             guard r.subjectPositioning.assessment.isDetermined, r.subjectPositioning.isMeasurementValid,
                   let c = r.subjectPositioning.center else { return nil }
             return PositionMap.Dot(id: r.id, point: c, index: r.selectionOrder + 1)

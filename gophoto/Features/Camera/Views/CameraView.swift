@@ -46,6 +46,7 @@ struct CameraView: View {
     /// Developer: the picked style. Testing: none.
     private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
+    @State private var isShowingShotAnalysis = false
     @State private var isShowingAcknowledgements = false
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
@@ -109,6 +110,10 @@ struct CameraView: View {
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
+        }
+        .sheet(isPresented: $isShowingShotAnalysis) {
+            ShotAnalysisScreen(analysis: viewModel.presetAnalysis, photos: viewModel.presetPhotos,
+                               presetName: viewModel.presetName ?? "Preset", initial: viewModel.activeShot)
         }
         .fullScreenCover(isPresented: $isShowingGallery) {
             // Its own view with no inputs: camera updates never rebuild the gallery
@@ -192,7 +197,7 @@ struct CameraView: View {
                 GuidanceMotionOverlay(
                     instruction: viewModel.instruction,
                     pitchError: viewModel.pitchError,
-                    isEnabled: !isShowingGallery && !isShowingAnalysis
+                    isEnabled: !isShowingGallery && !isShowingAnalysis && !isShowingShotAnalysis
                 )
             }
             .overlay(alignment: .bottom) { bottomStepCard }
@@ -304,7 +309,9 @@ struct CameraView: View {
 
     @ViewBuilder private var debugPanel: some View {
         if showsDebug {
-            GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
+            GuideDebugPanel(viewModel: viewModel,
+                            onShowDetails: { isShowingAnalysis = true },
+                            onShowShots: { isShowingShotAnalysis = true })
                 .padding(8)
         }
     }

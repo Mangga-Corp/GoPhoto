@@ -272,6 +272,8 @@ final class CameraViewModel {
     // The session's preset and what the AI learned from it (read from PreferencesViewModel).
     private(set) var presetName: String?
     private(set) var presetID: UUID?
+    /// The session preset's reference photos (developer per-shot analysis screen).
+    var presetPhotos: [PhotoItem] { presetID.flatMap { preferences.preference(id: $0)?.photos } ?? [] }
     /// The whole preset analysis (all shot sizes), for the shot size picker.
     private(set) var presetAnalysis: PresetAnalysis?
     /// The analysis guiding now: the picked shot size for the person's posture.
@@ -919,24 +921,23 @@ final class CameraViewModel {
     /// Saves a second photo with the background blurred (half strength). No person found = no copy.
     private func saveBokehCopy(of data: Data) async {
         let start = Date()
-        // Apple's portrait blur when the photo has depth, else our segmentation blur.
-        let result = await Task.detached(priority: .userInitiated) { () -> (Data, String)? in
-            if let apple = BokehProcessor.appleDepthBlur(imageData: data) { return (apple.data, apple.note) }
-            return BokehProcessor.blurBackground(imageData: data).map { ($0, "custom") }
+        // Blur matched to the references (preset analysis v18); nil target = fallback strength.
+        let target = analysis?.backgroundBlur
+        let result = await Task.detached(priority: .userInitiated) {
+            BokehProcessor.blurToTarget(imageData: data, target: target)
         }.value
-        guard let result else {
-            lastShotTiming = (lastShotTiming ?? "") + " · blur: no person"
+        lastBlurNote = result.note
+        guard let blurred = result.data else {
+            lastShotTiming = (lastShotTiming ?? "") + " · " + result.note
             return
         }
-        let (blurred, kind) = result
-        lastBlurNote = kind
         let thumbnail = Self.makeThumbnail(of: blurred)
         do {
             if let assetID = try await photoLibraryService.save(imageData: blurred) {
                 await Self.storeThumbnail(thumbnail, for: assetID)
                 galleryStore.addCaptured(assetID: assetID, presetID: nil)
             }
-            lastShotTiming = (lastShotTiming ?? "") + String(format: " · blur %.1fs (", Date().timeIntervalSince(start)) + kind + ")"
+            lastShotTiming = (lastShotTiming ?? "") + String(format: " · blur %.1fs (", Date().timeIntervalSince(start)) + result.note + ")"
         } catch {
             errorMessage = error.localizedDescription
         }
