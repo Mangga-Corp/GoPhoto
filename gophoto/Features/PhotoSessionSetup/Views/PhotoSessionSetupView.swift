@@ -122,7 +122,22 @@ struct PhotoSessionSetupView: View {
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
+
+            privacyNote
+                .padding(.top, 8)
         }
+    }
+
+    private var privacyNote: some View {
+        Label("Your photos stay on this iPhone. Vacato analyses them here and never uploads them.",
+              systemImage: "lock.fill")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(GoPhotoDesign.tagText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(GoPhotoDesign.tagBackground,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func selectedPhotos(thumbnailWidth: CGFloat) -> some View {
@@ -139,6 +154,7 @@ struct PhotoSessionSetupView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    addPhotoTile(width: thumbnailWidth)
                     ForEach(selection.photos, id: \.id) { photo in
                         selectedPhoto(photo, width: thumbnailWidth)
                     }
@@ -146,6 +162,8 @@ struct PhotoSessionSetupView: View {
                 .padding(.horizontal, 2)
             }
             .frame(height: thumbnailWidth * 4 / 3)
+
+            privacyNote
         }
         .frame(maxWidth: .infinity)
     }
@@ -175,6 +193,31 @@ struct PhotoSessionSetupView: View {
             .accessibilityLabel("Selected photo")
     }
 
+    private func addPhotoTile(width: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button(action: openPicker) {
+            shape
+                .fill(GoPhotoDesign.selectedCardBackground)
+                .overlay {
+                    shape.strokeBorder(GoPhotoDesign.sessionAccent.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                }
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(GoPhotoDesign.sessionAccent)
+                }
+                .frame(width: width, height: width * 4 / 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(isAddingDisabled)
+        .opacity(isAddingDisabled ? 0.4 : 1)
+        .accessibilityLabel("Add Photos")
+    }
+
+    private var isAddingDisabled: Bool {
+        selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
+    }
+
     private var actions: some View {
         VStack(spacing: 11) {
             if selection.hasSavedPreference {
@@ -183,16 +226,8 @@ struct PhotoSessionSetupView: View {
                     isEnabled: selection.canStartAnalyzing && !selection.isStartingAnalysis,
                     action: startAnalyzing
                 )
-
-                Button("Add New Photos", action: openPicker)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 40)
-                    .disabled(selection.isSavingPhotos || selection.isStartingAnalysis
-                        || !selection.isPersistedPreferenceLoaded)
             } else if selection.photos.isEmpty {
-                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus", action: openPicker)
+                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
 
                 Button("Create a Custom Preference") {
                     isShowingCustomPreference = true
@@ -207,18 +242,7 @@ struct PhotoSessionSetupView: View {
                     isEnabled: selection.canContinue,
                     action: { isPresentingNamePrompt = true }
                 )
-
-                Button("Add More Photos", action: openPicker)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 40)
             }
-
-            Label("Private on your iPhone.", systemImage: "lock.fill")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-                .padding(.top, 4)
         }
         .padding(.horizontal, GoPhotoDesign.sessionMargin)
         .padding(.top, 12)
