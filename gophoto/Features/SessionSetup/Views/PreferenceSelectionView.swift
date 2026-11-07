@@ -172,6 +172,9 @@ struct PreferenceSelectionView: View {
     }
 
     @ViewBuilder private func managementActions(_ card: PreferenceCardModel) -> some View {
+        Button("About This Style", systemImage: "info.circle") { showAbout(card) }
+            .disabled(styleSummary(for: card.id) == nil)
+            .accessibilityAction(named: "About This Style") { showAbout(card) }
         Button("Rename", systemImage: "pencil") { startRename(card) }
         Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
         Divider()
@@ -200,6 +203,21 @@ struct PreferenceSelectionView: View {
         let editor = PreferenceEditorPresenter(preferences: selection.preferences)
         editorPresenter = editor   // kept alive while the editor is open
         editor.presentEditor(for: card.id, from: presenter) { _ in editorPresenter = nil }
+    }
+
+    private func showAbout(_ card: PreferenceCardModel) {
+        guard let presenter = anchor.presenter,
+              let summary = styleSummary(for: card.id) else { return }
+        let styleCard = StyleCardViewController(summary: summary, buttonTitle: "Done")
+        styleCard.modalPresentationStyle = .fullScreen
+        styleCard.onDone = { [weak styleCard] in styleCard?.dismiss(animated: true)}
+        presenter.present(styleCard, animated: true)
+    }
+
+    private func styleSummary(for id: UUID) -> StyleSummary? {
+        guard let preference = selection.preferences.preference(id: id),
+              preference.analysis?.usability == .usable else { return nil }
+        return StyleSummary(analysis: preference.analysis, photos: preference.photos)
     }
 
     private func confirmDelete(_ card: PreferenceCardModel) {
