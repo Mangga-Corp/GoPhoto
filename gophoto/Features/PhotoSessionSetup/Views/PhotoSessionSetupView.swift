@@ -63,7 +63,7 @@ struct PhotoSessionSetupView: View {
         }
         .toolbar(showsBackButton ? .visible : .hidden, for: .navigationBar)
         .navigationDestination(isPresented: $isShowingCustomPreference) {
-            CustomPreferenceBuilderPlaceholderView()
+            DefaultPreferenceSelectionView()
         }
         .onAppear(perform: reloadSavedPreference)
         .preferredColorScheme(.light)
@@ -356,25 +356,5 @@ final class PhotoSessionSetupSelection {
             }
             photos.append(photo)
         }
-    }
-}
-
-private struct CustomPreferenceBuilderPlaceholderView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Custom Preference Builder")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(GoPhotoDesign.primaryText)
-
-            Text("This builder is a placeholder for a future phase.")
-                .font(.body)
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .padding(GoPhotoDesign.sessionMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GoPhotoDesign.sessionBackground)
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
