@@ -6,6 +6,8 @@
 //
 
 import UIKit
+import Photos
+import PhotosUI
 
 final class SelectPhotoViewController: UIViewController {
     var onCancel: (() -> Void)?
@@ -50,6 +52,18 @@ final class SelectPhotoViewController: UIViewController {
         [collectionView, closeButton, title, doneButton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false; view.addSubview($0)
         }
+        var gridTopAnchor = closeButton.bottomAnchor
+        if viewModel.isLimitedAccess {
+            let banner = makeLimitedAccessBanner()
+            banner.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(banner)
+            NSLayoutConstraint.activate([
+                banner.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 12),
+                banner.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+                banner.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            ])
+            gridTopAnchor = banner.bottomAnchor
+        }
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             closeButton.topAnchor.constraint(equalTo: safe.topAnchor, constant: 12),
@@ -60,7 +74,7 @@ final class SelectPhotoViewController: UIViewController {
             title.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
             doneButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
             doneButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            collectionView.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 16),
+            collectionView.topAnchor.constraint(equalTo: gridTopAnchor, constant: 16),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -80,6 +94,74 @@ final class SelectPhotoViewController: UIViewController {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+    private func makeLimitedAccessBanner() -> UIView {
+        let icon = UIImageView(image: UIImage(systemName: "photo.on.rectangle.angled"))
+        icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        icon.tintColor = Theme.accent
+        icon.contentMode = .center
+        icon.backgroundColor = .white
+        icon.layer.cornerRadius = 10
+        icon.clipsToBounds = true
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 40),
+            icon.heightAnchor.constraint(equalToConstant: 40),
+        ])
+
+        let message = NSMutableAttributedString(
+            string: "You've limited access to selected items. ",
+            attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: Theme.text])
+        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+            message.append(NSAttributedString(
+                string: "Settings",
+                attributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold), .link: settingsURL]))
+        }
+
+        let text = UITextView()
+        text.attributedText = message
+        text.linkTextAttributes = [.foregroundColor: Theme.accent]
+        text.isEditable = false
+        text.isScrollEnabled = false
+        text.backgroundColor = .clear
+        text.textContainerInset = .zero
+        text.textContainer.lineFragmentPadding = 0
+
+        var config = UIButton.Configuration.filled()
+        config.title = "Add more"
+        config.cornerStyle = .capsule
+        config.baseBackgroundColor = Theme.accent
+        config.baseForegroundColor = .white
+        let addMore = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
+            self?.presentLimitedPicker()
+        })
+        addMore.setContentHuggingPriority(.required, for: .horizontal)
+        addMore.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let stack = UIStackView(arrangedSubviews: [icon, text, addMore])
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.spacing = 12
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+        stack.backgroundColor = Theme.tagBackground
+        stack.layer.cornerRadius = 14
+        return stack
+    }
+
+    private func presentLimitedPicker() {
+        Task {
+            _ = await PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: self)
+            limitedSelectionChanged()
+        }
+    }
+
+    private func limitedSelectionChanged() {
+        let selectedIDs = Set((collectionView.indexPathsForSelectedItems ?? []).map { viewModel.identifier(at: $0.item) })
+        viewModel.reload()
+        collectionView.reloadData()
+        for index in 0..<viewModel.count where selectedIDs.contains(viewModel.identifier(at: index)) {
+            collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
+        }
     }
 }
 
