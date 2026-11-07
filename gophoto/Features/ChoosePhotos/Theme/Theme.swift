@@ -14,5 +14,6 @@ enum Theme {
     static let stroke = UIColor(GoPhotoDesign.secondaryText).withAlphaComponent(0.22)
     static let text = UIColor(GoPhotoDesign.primaryText)
     static let accent = UIColor(GoPhotoDesign.purple)
+    static let tagBackground = UIColor(GoPhotoDesign.tagBackground)
     static let onAccent = UIColor.white
 }

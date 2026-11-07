@@ -7,6 +7,8 @@ struct PhotoSessionSetupView: View {
     @State private var isPresentingNamePrompt = false
     @State private var isShowingCustomPreference = false
     @State private var updateError: String?
+    @State private var isConfirmingLeave = false
+    @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
     let onCreatePreference: ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void
@@ -62,6 +64,26 @@ struct PhotoSessionSetupView: View {
             actions
         }
         .toolbar(showsBackButton ? .visible : .hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(showsBackButton && hasUnsavedPhotos)
+        .toolbar {
+            if showsBackButton && hasUnsavedPhotos {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isConfirmingLeave = true
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel("Back")
+                }
+            }
+        }
+        .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
+            Button("Leave", role: .destructive) { dismiss() }
+            Button("Stay", role: .cancel) { }
+        } message: {
+            Text("You have unfinished changes. If you leave now, your selected photos won't be saved.")
+        }
         .navigationDestination(isPresented: $isShowingCustomPreference) {
             DefaultPreferenceSelectionView()
         }
@@ -216,6 +238,10 @@ struct PhotoSessionSetupView: View {
 
     private var isAddingDisabled: Bool {
         selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
+    }
+
+    private var hasUnsavedPhotos: Bool {
+        !selection.photos.isEmpty && !selection.hasSavedPreference
     }
 
     private var actions: some View {
