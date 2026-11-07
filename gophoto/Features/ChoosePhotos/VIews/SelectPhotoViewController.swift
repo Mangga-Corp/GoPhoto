@@ -16,6 +16,17 @@ final class SelectPhotoViewController: UIViewController {
     private let viewModel: SelectPhotoViewModel
     private let closeButton = CircleButton(symbol: "xmark", accessibilityLabel: "Close")
     private let doneButton = PillButton(title: "Done", prominent: true)
+    private lazy var selectPan: UIPanGestureRecognizer = {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleSelectPan(_:)))
+        pan.delegate = self
+        return pan
+    }()
+    private var panStartIndex: Int?
+    private var panSelects = true
+    private var panInitialSelection: Set<Int> = []
+    private var panLastRange: ClosedRange<Int>?
+    private var panHitLimit = false
+    private let selectionHaptic = UISelectionFeedbackGenerator()
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
         item.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
@@ -43,6 +54,8 @@ final class SelectPhotoViewController: UIViewController {
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: PhotoCell.reuseID)
+        collectionView.addGestureRecognizer(selectPan)
+        collectionView.panGestureRecognizer.require(toFail: selectPan)
         viewModel.onLoadingChange = { [weak self] on in self?.setLoading(on) }
         viewModel.onError = { [weak self] message in self?.showError(message) }
         viewModel.onFinish = { [weak self] items in self?.onDone?(items) }
@@ -163,6 +176,61 @@ final class SelectPhotoViewController: UIViewController {
             collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
         }
     }
+
+    @objc private func handleSelectPan(_ pan: UIPanGestureRecognizer) {
+        let point = pan.location(in: collectionView)
+        switch pan.state {
+        case .began:
+            guard let index = collectionView.indexPathForItem(at: point)?.item else { return }
+            panStartIndex = index
+            panInitialSelection = selectedIndexes
+            panSelects = !panInitialSelection.contains(index)
+            panLastRange = nil
+            panHitLimit = false
+            applyPanRange(to: index)
+        case .changed:
+            guard panStartIndex != nil,
+                  let index = collectionView.indexPathForItem(at: point)?.item else { return }
+            applyPanRange(to: index)
+        default:
+            panStartIndex = nil
+            panLastRange = nil
+        }
+    }
+
+    private var selectedIndexes: Set<Int> {
+        Set((collectionView.indexPathsForSelectedItems ?? []).map(\.item))
+    }
+
+    private func applyPanRange(to index: Int) {
+        guard let start = panStartIndex else { return }
+        let range = min(start, index)...max(start, index)
+        guard range != panLastRange else { return }
+        let touched = Set(range).union(panLastRange.map { Set($0) } ?? [])
+        for item in touched.sorted() {
+            let shouldSelect = range.contains(item) ? panSelects : panInitialSelection.contains(item)
+            setSelected(shouldSelect, at: item)
+        }
+        panLastRange = range
+        selectionHaptic.selectionChanged()
+    }
+
+    private func setSelected(_ selected: Bool, at item: Int) {
+        let indexPath = IndexPath(item: item, section: 0)
+        guard selected != selectedIndexes.contains(item) else { return }
+        if selected {
+            guard viewModel.hasRoom(currentCount: selectedIndexes.count) else {
+                if !panHitLimit {
+                    panHitLimit = true
+                    _ = viewModel.canSelect(currentCount: selectedIndexes.count)
+                }
+                return
+            }
+            collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
+        } else {
+            collectionView.deselectItem(at: indexPath, animated: false)
+        }
+    }
 }
 
 extension SelectPhotoViewController: UICollectionViewDataSource, UICollectionViewDelegate {
@@ -182,5 +250,13 @@ extension SelectPhotoViewController: UICollectionViewDataSource, UICollectionVie
 
     func collectionView(_ cv: UICollectionView, shouldSelectItemAt ip: IndexPath) -> Bool {
         viewModel.canSelect(currentCount: cv.indexPathsForSelectedItems?.count ?? 0)
+    }
+}
+
+extension SelectPhotoViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === selectPan else { return true }
+        let velocity = selectPan.velocity(in: collectionView)
+        return abs(velocity.x) > abs(velocity.y)
     }
 }

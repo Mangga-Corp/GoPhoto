@@ -49,6 +49,8 @@ final class SelectPhotoViewModel {
         return true
     }
 
+    func hasRoom(currentCount: Int) -> Bool { currentCount < remaining }
+
     func done(selectedIndexes: [Int]) {
         let picked = selectedIndexes.sorted().map { assets.object(at: $0) }
         guard !picked.isEmpty else { onFinish?([]); return }
