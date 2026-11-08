@@ -110,7 +110,7 @@ struct CameraView: View {
         .sheet(isPresented: $isShowingAcknowledgements) {
             AcknowledgementsView()
                 .preferredColorScheme(.light)
-                .tint(GoPhotoDesign.purple)
+                .tint(GoPhotoDesign.primary)
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
@@ -463,7 +463,7 @@ struct CameraView: View {
                     openURL(url)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.goPhotoPrimary)
         }
         .foregroundStyle(.white)
     }

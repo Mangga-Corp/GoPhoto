@@ -60,10 +60,10 @@ struct ShotSizeSelectionView: View {
             .animation(.easeInOut(duration: 0.2), value: model.notice)
         }
         .scrollIndicators(.hidden)
-        .background(GoPhotoDesign.sessionBackground.ignoresSafeArea())
+        .background(GoPhotoDesign.background.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .sessionBottomBar {
-            SessionPrimaryButton(title: "START SHOOTING", systemImage: "arrow.right",
+            SessionPrimaryButton(title: "Start Shooting", systemImage: "arrow.right",
                                  isEnabled: model.canStartShooting && !isStarting) {
                 startShooting()
             }
@@ -110,22 +110,18 @@ struct ShotSizeSelectionView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 52)
-        .background(GoPhotoDesign.sessionBarBackground.ignoresSafeArea(edges: .top))
+        .background(GoPhotoDesign.background.ignoresSafeArea(edges: .top))
     }
 
     private var eyebrow: some View {
         Label {
-            Text("SET YOUR FRAMING")
-                .font(.system(size: 12, weight: .semibold))
-                .tracking(0.4)
+            Text("Set Your Framing")
+                .font(GoPhotoDesign.smallLabel)
         } icon: {
             Image(systemName: "viewfinder")
-                .font(.system(size: 12, weight: .medium))
+                .font(GoPhotoDesign.smallLabel)
         }
-        .foregroundStyle(GoPhotoDesign.tagText)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(GoPhotoDesign.tagBackground, in: Capsule())
+        .goPhotoTag()
     }
 }
 
@@ -141,24 +137,23 @@ private struct ShotSizeCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     Text(shot.title)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(GoPhotoDesign.cardTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .lineLimit(1)
                         .fixedSize()
                     if shot.isRecommended {
-                        Text("RECOMMENDED")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(0.2)
+                        Text("Recommended")
+                            .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(GoPhotoDesign.onPrimary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(GoPhotoDesign.sessionAccent, in: Capsule())
+                            .background(GoPhotoDesign.primary, in: Capsule())
                     }
                 }
                 Text(shot.detail)
-                    .font(.system(size: 14))
+                    .font(GoPhotoDesign.secondaryBody)
                     .foregroundStyle(GoPhotoDesign.secondaryText)
                 SessionChip(text: shot.cropLabel, onSelectedCard: isSelected)
                     .padding(.top, 2)
@@ -168,10 +163,7 @@ private struct ShotSizeCard: View {
             SelectionIndicator(isSelected: isSelected)
         }
         .padding(14)
-        .background(isSelected ? GoPhotoDesign.selectedCardBackground : Color.white,
-                    in: RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
-        .shadow(color: .black.opacity(isSelected ? 0 : 0.04), radius: 10, x: 0, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
+        .goPhotoCard(isSelected: isSelected)
     }
 }
 
@@ -183,20 +175,20 @@ private struct ShotSizeNoticeView: View {
         HStack(alignment: .top, spacing: 10) {
             switch notice.kind {
             case .fallback:
-                Image(systemName: "info.circle.fill").foregroundStyle(GoPhotoDesign.sessionAccent)
+                Image(systemName: "info.circle.fill").foregroundStyle(GoPhotoDesign.primary)
             case .loading:
                 ProgressView().controlSize(.small)
             case .error:
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.orange)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(GoPhotoDesign.warning)
             }
             Text(notice.text)
-                .font(.system(size: 14))
-                .foregroundStyle(GoPhotoDesign.primaryText.opacity(0.8))
+                .font(GoPhotoDesign.secondaryBody)
+                .foregroundStyle(GoPhotoDesign.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
-        .background(notice.kind == .error ? Color.orange.opacity(0.10) : GoPhotoDesign.tagBackground.opacity(0.6),
+        .background(notice.kind == .error ? GoPhotoDesign.warning.opacity(0.10) : GoPhotoDesign.primarySubtle,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("shotSize.notice")

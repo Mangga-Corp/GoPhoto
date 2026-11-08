@@ -40,7 +40,7 @@ struct AnalysisResultsScreen: View {
             }
         }
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.purple)
+        .tint(GoPhotoDesign.primary)
         .onAppear {
             if let presetID { session = preferences.session(for: presetID) }
         }

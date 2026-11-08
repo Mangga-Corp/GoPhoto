@@ -16,13 +16,13 @@ struct SelectionIndicator: View {
     var body: some View {
         ZStack {
             if isSelected {
-                Circle().fill(GoPhotoDesign.sessionAccent)
+                Circle().fill(GoPhotoDesign.primary)
                 Image(systemName: "checkmark")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(GoPhotoDesign.onPrimary)
             } else {
-                Circle().fill(GoPhotoDesign.chipBackground)
-                Circle().strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                Circle().fill(GoPhotoDesign.secondaryBackground)
+                Circle().strokeBorder(GoPhotoDesign.border, lineWidth: 1)
             }
         }
         .frame(width: 30, height: 30)
@@ -30,27 +30,23 @@ struct SelectionIndicator: View {
     }
 }
 
-/// The fixed bottom capsule button ("Continue", "START SHOOTING").
+/// The fixed bottom primary button ("Continue", "Start Shooting"): `.goPhotoPrimary`.
 struct SessionPrimaryButton: View {
     let title: String
     var systemImage: String?
     var isEnabled = true
+    var isLoading = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            if let systemImage {
+                Label(title, systemImage: systemImage)
+            } else {
                 Text(title)
-                if let systemImage { Image(systemName: systemImage) }
             }
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 58)
-            .background(GoPhotoDesign.sessionAccent.opacity(isEnabled ? 1 : 0.4), in: Capsule())
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.goPhotoPrimary(isLoading: isLoading))
         .disabled(!isEnabled)
     }
 }
@@ -65,9 +61,9 @@ extension View {
                 .padding(.bottom, 10)
                 .frame(maxWidth: .infinity)
                 .background {
-                    GoPhotoDesign.sessionBarBackground
+                    GoPhotoDesign.background
                         .overlay(alignment: .top) {
-                            Rectangle().fill(Color.black.opacity(0.05)).frame(height: 1)
+                            Rectangle().fill(GoPhotoDesign.divider).frame(height: 1)
                         }
                         .ignoresSafeArea(edges: .bottom)
                 }
@@ -82,12 +78,12 @@ struct SessionChip: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(GoPhotoDesign.primaryText.opacity(0.78))
+            .font(GoPhotoDesign.smallLabel)
+            .foregroundStyle(GoPhotoDesign.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .background(onSelectedCard ? Color.white : GoPhotoDesign.chipBackground, in: Capsule())
+            .background(onSelectedCard ? GoPhotoDesign.surface : GoPhotoDesign.secondaryBackground, in: Capsule())
     }
 }
 
@@ -144,7 +140,7 @@ struct PreferenceThumbnail: View {
 
     var body: some View {
         ZStack {
-            GoPhotoDesign.chipBackground
+            GoPhotoDesign.secondaryBackground
             if let thumbnail {
                 Image(uiImage: thumbnail).resizable().scaledToFill()
             } else if image == nil {

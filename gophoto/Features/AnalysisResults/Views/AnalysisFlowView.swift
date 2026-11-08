@@ -23,7 +23,7 @@ struct AnalysisFlowView: View {
         }
         .background(AnalysisResultsPalette.pageBackground)
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.purple)
+        .tint(GoPhotoDesign.primary)
         .navigationTitle(session.phase == .completed ? "Analysis Results" : "Analyzing Photos")
         .navigationBarTitleDisplayMode(.inline)
         .task { session.start(photos: photos) }
@@ -80,9 +80,9 @@ struct AnalysisProgressPanel: View {
             HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Analyzing").font(.footnote) }
         case .finished(let status):
             switch status {
-            case .complete: Label("Done", systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green)
-            case .partial: Label("Done, partial", systemImage: "checkmark.circle").font(.footnote).foregroundStyle(.orange)
-            case .failed: Label("Could not analyze", systemImage: "xmark.octagon.fill").font(.footnote).foregroundStyle(.red)
+            case .complete: Label("Done", systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(GoPhotoDesign.success)
+            case .partial: Label("Done, partial", systemImage: "checkmark.circle").font(.footnote).foregroundStyle(GoPhotoDesign.warning)
+            case .failed: Label("Could not analyze", systemImage: "xmark.octagon.fill").font(.footnote).foregroundStyle(GoPhotoDesign.error)
             }
         }
     }

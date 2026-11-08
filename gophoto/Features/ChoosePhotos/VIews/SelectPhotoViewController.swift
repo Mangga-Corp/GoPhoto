@@ -113,7 +113,7 @@ final class SelectPhotoViewController: UIViewController {
         icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
         icon.tintColor = Theme.accent
         icon.contentMode = .center
-        icon.backgroundColor = .white
+        icon.backgroundColor = Theme.surface
         icon.layer.cornerRadius = 10
         icon.clipsToBounds = true
         NSLayoutConstraint.activate([
@@ -123,11 +123,11 @@ final class SelectPhotoViewController: UIViewController {
 
         let message = NSMutableAttributedString(
             string: "You've limited access to selected items. ",
-            attributes: [.font: UIFont.systemFont(ofSize: 15), .foregroundColor: Theme.text])
+            attributes: [.font: UIFont.preferredFont(forTextStyle: .subheadline), .foregroundColor: Theme.text])
         if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
             message.append(NSAttributedString(
                 string: "Settings",
-                attributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold), .link: settingsURL]))
+                attributes: [.font: UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold), .link: settingsURL]))
         }
 
         let text = UITextView()
@@ -143,7 +143,7 @@ final class SelectPhotoViewController: UIViewController {
         config.title = "Add more"
         config.cornerStyle = .capsule
         config.baseBackgroundColor = Theme.accent
-        config.baseForegroundColor = .white
+        config.baseForegroundColor = Theme.onAccent
         let addMore = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
             self?.presentLimitedPicker()
         })
@@ -157,7 +157,7 @@ final class SelectPhotoViewController: UIViewController {
         stack.isLayoutMarginsRelativeArrangement = true
         stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
         stack.backgroundColor = Theme.tagBackground
-        stack.layer.cornerRadius = 14
+        stack.layer.cornerRadius = GoPhotoDesign.controlCornerRadius + 2
         return stack
     }
 

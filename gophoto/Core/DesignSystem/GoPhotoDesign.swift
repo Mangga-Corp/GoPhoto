@@ -1,30 +1,113 @@
 import SwiftUI
+import UIKit
 
+extension Color {
+    /// `Color(hex: 0x6C30A6)`, sRGB.
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: 1
+        )
+    }
+}
+
+/// The single source of design tokens: color, typography, shape, spacing.
+/// UIKit screens read the same values through `Theme` (which wraps these tokens).
 enum GoPhotoDesign {
-    static let background = Color.white
-    static let primaryText = Color(red: 17 / 255, green: 17 / 255, blue: 17 / 255)
-    static let secondaryText = Color(red: 133 / 255, green: 133 / 255, blue: 133 / 255)
-    static let purple = Color(red: 146 / 255, green: 131 / 255, blue: 189 / 255)
-    static let groupedBackground = Color(red: 0.96, green: 0.96, blue: 0.97)
-    static let subtleSurface = purple.opacity(0.10)
 
-    // Session setup screens (Preference Selection, Shot Size Selection), from the approved mockups.
-    static let sessionBackground = Color(red: 248 / 255, green: 247 / 255, blue: 251 / 255)
-    static let sessionBarBackground = Color(red: 252 / 255, green: 251 / 255, blue: 254 / 255)
-    /// Deeper purple of the mockups' Continue button and checkmarks.
-    static let sessionAccent = Color(red: 99 / 255, green: 84 / 255, blue: 143 / 255)
-    static let selectedCardBackground = Color(red: 238 / 255, green: 234 / 255, blue: 246 / 255)
-    static let neutralCardBackground = Color(red: 241 / 255, green: 240 / 255, blue: 245 / 255)
-    static let chipBackground = Color(red: 241 / 255, green: 241 / 255, blue: 244 / 255)
-    static let tagBackground = Color(red: 231 / 255, green: 227 / 255, blue: 242 / 255)
-    static let tagText = Color(red: 94 / 255, green: 83 / 255, blue: 131 / 255)
+    // MARK: Brand
+
+    /// Canonical brand purple `#6C30A6`. White text on it has a contrast ratio of about 8:1.
+    static let primary = Color(hex: 0x6C30A6)
+    /// Pressed state of a primary surface.
+    static let primaryPressed = Color(hex: 0x55238A)
+    /// Selected / tinted background behind primary-colored content.
+    static let primarySubtle = Color(hex: 0xEEE5F5)
+    /// Border of selected or purple-tinted surfaces.
+    static let primaryBorder = Color(hex: 0xDCC9ED)
+    static let onPrimary = Color.white
+
+    // MARK: Neutrals
+
+    static let background = Color(hex: 0xF7F2FA)
+    static let secondaryBackground = Color(hex: 0xEFE9F3)
+    /// Cards and sheets.
+    static let surface = Color.white
+    static let inputBackground = Color.white
+
+    static let primaryText = Color(hex: 0x29232F)
+    /// 5.3:1 on `background`, 4.8:1 on `primarySubtle`.
+    static let secondaryText = Color(hex: 0x6A6173)
+    static let disabledText = Color(hex: 0x9A91A2)
+    static let placeholderText = Color(hex: 0x8A8092)
+
+    static let border = Color(hex: 0xE3DAEA)
+    static let divider = Color(hex: 0xEAE3F0)
+
+    // MARK: Semantic (state only, never decoration)
+
+    static let success = Color(hex: 0x1E7A45)
+    static let warning = Color(hex: 0x9A5B00)
+    static let error = Color(hex: 0xB3261E)
+    static let info = Color(hex: 0x1F5FA8)
+
+    // MARK: Typography
+    // System font (San Francisco) on Dynamic Type text styles, so every role scales.
+
+    static let largeTitle = Font.system(.largeTitle, design: .default, weight: .bold)
+    static let pageTitle = Font.system(.title, design: .default, weight: .bold)
+    static let sectionTitle = Font.system(.title3, design: .default, weight: .semibold)
+    static let cardTitle = Font.system(.headline, design: .default, weight: .semibold)
+    static let body = Font.system(.body, design: .default, weight: .regular)
+    static let secondaryBody = Font.system(.subheadline, design: .default, weight: .regular)
+    static let caption = Font.system(.caption, design: .default, weight: .regular)
+    static let buttonLabel = Font.system(.headline, design: .default, weight: .semibold)
+    static let smallLabel = Font.system(.caption, design: .default, weight: .medium)
+
+    // MARK: Shape & spacing
+
     static let cardCornerRadius: CGFloat = 18
+    static let controlCornerRadius: CGFloat = 12
     static let sessionMargin: CGFloat = 20
+    static let horizontalMargin: CGFloat = 24
+    static let buttonHeight: CGFloat = 56
+    static let compactButtonHeight: CGFloat = 44
+}
 
-    static let headline = Font.system(size: 34, weight: .bold)
-    static let body = Font.system(size: 18, weight: .regular)
-    static let primaryButton = Font.system(size: 17, weight: .semibold)
-    static let buttonHeight: CGFloat = 62
-    static let buttonCornerRadius: CGFloat = 24
-    static let horizontalMargin: CGFloat = 30
+/// Chip / tag look, shared by "Last Used", "N saved", privacy note and similar labels.
+extension GoPhotoDesign {
+    static let tagBackground = primarySubtle
+    /// Darker purple for text on `primarySubtle` (8.6:1).
+    static let tagText = primaryPressed
+}
+
+// MARK: - Shared surfaces
+
+extension View {
+    /// Card surface: white with a neutral border, or `primarySubtle` with a purple border when selected.
+    func goPhotoCard(
+        isSelected: Bool = false,
+        fill: Color? = nil,
+        cornerRadius: CGFloat = GoPhotoDesign.cardCornerRadius
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return self
+            .background(fill ?? (isSelected ? GoPhotoDesign.primarySubtle : GoPhotoDesign.surface), in: shape)
+            .overlay(shape.strokeBorder(isSelected ? GoPhotoDesign.primary : GoPhotoDesign.border,
+                                        lineWidth: isSelected ? 1.5 : 1))
+            .contentShape(shape)
+    }
+
+    /// Tag / chip look ("Last Used", "3 saved").
+    func goPhotoTag() -> some View {
+        self
+            .font(GoPhotoDesign.smallLabel)
+            .foregroundStyle(GoPhotoDesign.tagText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(GoPhotoDesign.tagBackground, in: Capsule())
+    }
 }

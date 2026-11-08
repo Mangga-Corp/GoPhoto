@@ -92,7 +92,7 @@ struct CameraOnboardingView: View {
                 .padding(.bottom, 16)
  
             Text(step.title)
-                .font(GoPhotoDesign.headline)
+                .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -107,24 +107,15 @@ struct CameraOnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
  
-            Button(action: advance) {
-                Text(step == Self.lastStep ? CameraOnboardingCopy.finishButton : CameraOnboardingCopy.continueButton)
-                    .font(GoPhotoDesign.primaryButton)
-                    .tracking(1.2)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: GoPhotoDesign.buttonHeight)
-                    .background(GoPhotoDesign.purple)
-                    .clipShape(RoundedRectangle(cornerRadius: GoPhotoDesign.buttonCornerRadius, style: .continuous))
-                    .shadow(color: .black.opacity(0.14), radius: 14, x: 0, y: 7)
-            }
-            .buttonStyle(.plain)
+            Button(step == Self.lastStep ? CameraOnboardingCopy.finishButton : CameraOnboardingCopy.continueButton,
+                   action: advance)
+            .buttonStyle(.goPhotoPrimary)
             .padding(.top, 22)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 22)
         .frame(maxWidth: .infinity)
-        .background(GoPhotoDesign.background, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(GoPhotoDesign.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.25), radius: 20, x: 0, y: 8)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -136,7 +127,7 @@ struct CameraOnboardingView: View {
         HStack(spacing: 6) {
             ForEach(CameraOnboardingStep.allCases, id: \.self) { item in
                 Capsule()
-                    .fill(item == step ? GoPhotoDesign.purple : GoPhotoDesign.secondaryText.opacity(0.3))
+                    .fill(item == step ? GoPhotoDesign.primary : GoPhotoDesign.primaryBorder)
                     .frame(width: item == step ? 20 : 6, height: 6)
             }
         }

@@ -58,7 +58,7 @@ struct PhotoSessionSetupView: View {
             }
             .padding(.horizontal, GoPhotoDesign.sessionMargin)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(GoPhotoDesign.sessionBackground)
+            .background(GoPhotoDesign.background)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             actions
@@ -89,7 +89,7 @@ struct PhotoSessionSetupView: View {
         }
         .onAppear(perform: reloadSavedPreference)
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.sessionAccent)
+        .tint(GoPhotoDesign.primary)
         .fullScreenCover(isPresented: $isPresentingPicker) {
             PhotoSessionPhotoPicker(
                 initialPhotos: selection.photos,
@@ -121,12 +121,12 @@ struct PhotoSessionSetupView: View {
     private var header: some View {
         VStack(spacing: 10) {
             Text("Photo Session Setup")
-                .font(.system(size: 30, weight: .bold))
+                .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
 
             Text("Choose how you'd like to create your photography preference.")
-                .font(.system(size: 16, weight: .regular))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -137,11 +137,11 @@ struct PhotoSessionSetupView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Text("No photos yet")
-                .font(.system(size: 23, weight: .semibold))
+                .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
             Text("Add your favorite photos to get started.")
-                .font(.system(size: 17, weight: .regular))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
 
@@ -153,7 +153,7 @@ struct PhotoSessionSetupView: View {
     private var privacyNote: some View {
         Label("Your photos stay on this iPhone. Vacato analyses them here and never uploads them.",
               systemImage: "lock.fill")
-            .font(.system(size: 14, weight: .medium))
+            .font(GoPhotoDesign.secondaryBody)
             .foregroundStyle(GoPhotoDesign.tagText)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 14)
@@ -165,13 +165,13 @@ struct PhotoSessionSetupView: View {
     private func selectedPhotos(thumbnailWidth: CGFloat) -> some View {
         VStack(spacing: 24) {
             Text("\(selection.photos.count) photos selected")
-                .font(.system(size: 17, weight: .medium))
+                .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
             if selection.hasSavedPreference {
                 Text("Preference saved")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
+                    .font(GoPhotoDesign.cardTitle)
+                    .foregroundStyle(GoPhotoDesign.primary)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -219,14 +219,14 @@ struct PhotoSessionSetupView: View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button(action: openPicker) {
             shape
-                .fill(GoPhotoDesign.selectedCardBackground)
+                .fill(GoPhotoDesign.primarySubtle)
                 .overlay {
-                    shape.strokeBorder(GoPhotoDesign.sessionAccent.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                    shape.strokeBorder(GoPhotoDesign.primaryBorder, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 }
                 .overlay {
                     Image(systemName: "plus")
                         .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(GoPhotoDesign.sessionAccent)
+                        .foregroundStyle(GoPhotoDesign.primary)
                 }
                 .frame(width: width, height: width * 4 / 3)
         }
@@ -258,10 +258,7 @@ struct PhotoSessionSetupView: View {
                 Button("Create a Custom Preference") {
                     isShowingCustomPreference = true
                 }
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(GoPhotoDesign.sessionAccent)
-                .buttonStyle(.plain)
-                .frame(minHeight: 40)
+                .buttonStyle(.goPhotoText)
             } else {
                 SessionPrimaryButton(
                     title: "Continue",
@@ -274,7 +271,7 @@ struct PhotoSessionSetupView: View {
         .padding(.top, 12)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
-        .background(GoPhotoDesign.sessionBackground.ignoresSafeArea(edges: .bottom))
+        .background(GoPhotoDesign.background.ignoresSafeArea(edges: .bottom))
         .alert("Couldn't update saved photos", isPresented: Binding(
             get: { updateError != nil },
             set: { if !$0 { updateError = nil } }

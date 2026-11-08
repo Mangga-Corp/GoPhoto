@@ -149,10 +149,10 @@ extension EvidenceQuality {
 
     var color: Color {
         switch self {
-        case .high: return .green
-        case .moderate: return .teal
-        case .low: return .orange
-        case .none: return .gray
+        case .high: return GoPhotoDesign.success
+        case .moderate: return GoPhotoDesign.primary
+        case .low: return GoPhotoDesign.warning
+        case .none: return GoPhotoDesign.secondaryText
         }
     }
 }
@@ -181,7 +181,7 @@ extension Assessment {
     /// Badge text: evidence quality when determined, otherwise the reason there is no result.
     var badgeLabel: String { isDetermined ? quality.label : status.label }
     var badgeSymbol: String { isDetermined ? quality.symbol : status.symbol }
-    var badgeColor: Color { isDetermined ? quality.color : .gray }
+    var badgeColor: Color { isDetermined ? quality.color : GoPhotoDesign.secondaryText }
 }
 
 extension PatternKind {
@@ -274,9 +274,9 @@ enum PhotoValueText {
 // MARK: - Card container
 
 enum AnalysisResultsPalette {
-    static let pageBackground = GoPhotoDesign.groupedBackground
-    static let cardBackground = GoPhotoDesign.background
-    static let subtleSurface = GoPhotoDesign.subtleSurface
+    static let pageBackground = GoPhotoDesign.background
+    static let cardBackground = GoPhotoDesign.surface
+    static let subtleSurface = GoPhotoDesign.primarySubtle
 }
 
 struct ResultCard<Content: View>: View {

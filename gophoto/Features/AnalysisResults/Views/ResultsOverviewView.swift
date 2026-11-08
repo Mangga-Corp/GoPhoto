@@ -135,7 +135,7 @@ struct ResultsOverviewView: View {
     private func noEvidenceCard(_ profile: PreferenceProfile) -> some View {
         ResultCard {
             VStack(alignment: .leading, spacing: 8) {
-                Label("No profile could be built", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(.orange)
+                Label("No profile could be built", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(GoPhotoDesign.warning)
                 Text("None of the photos produced a measurable result, so no preferences are reported. This usually means the photos do not clearly show a person, or an analysis step could not run on this device.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Text("Try photos in which a person is clearly visible and reasonably large in the frame.")
@@ -232,9 +232,9 @@ struct PhotoResultRow: View {
     private var statusTag: some View {
         Text(result.status == .failed ? "Failed" : "Partial")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(result.status == .failed ? Color.red : Color.orange)
+            .foregroundStyle(result.status == .failed ? GoPhotoDesign.error : GoPhotoDesign.warning)
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background((result.status == .failed ? Color.red : Color.orange).opacity(0.14), in: Capsule())
+            .background((result.status == .failed ? GoPhotoDesign.error : GoPhotoDesign.warning).opacity(0.14), in: Capsule())
     }
 
     private func chip(_ kind: CharacteristicKind) -> some View {

@@ -90,6 +90,7 @@ final class PhotoPreferencePickerFlow {
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
             self?.onCancel()
         })
+        alert.view.tintColor = Theme.accent
         presenter?.present(alert, animated: true)
     }
 
@@ -132,6 +133,7 @@ final class PhotoPreferencePickerFlow {
     private func showAlert(message: String, onDismiss: @escaping () -> Void = {}) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in onDismiss() })
+        alert.view.tintColor = Theme.accent
         presenter?.present(alert, animated: true)
     }
 
@@ -150,6 +152,7 @@ final class PhotoPreferencePickerFlow {
             }
             self?.onCancel()
         })
+        alert.view.tintColor = Theme.accent
         presenter?.present(alert, animated: true)
     }
 }
@@ -186,6 +189,7 @@ enum PreferenceNamePrompt {
         alert.addAction(confirm)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in onCancel() })
         alert.preferredAction = confirm
+        alert.view.tintColor = Theme.accent
         presenter.present(alert, animated: true)
     }
 }

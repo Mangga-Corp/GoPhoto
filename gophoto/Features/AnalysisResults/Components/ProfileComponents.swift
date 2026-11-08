@@ -29,7 +29,7 @@ struct CoverageSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: coverage.fraction)
-                .tint(coverage.determinedCount == 0 ? .gray : GoPhotoDesign.purple)
+                .tint(coverage.determinedCount == 0 ? GoPhotoDesign.secondaryText : GoPhotoDesign.primary)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
@@ -86,7 +86,7 @@ struct FindingSection<Category: Hashable & Sendable>: View {
     private var patternBadge: some View {
         let text = finding.pattern == .recurring || finding.pattern == .mixed
             ? "\(finding.pattern.label) · \(finding.strength.label)" : finding.pattern.label
-        let color: Color = finding.pattern == .recurring ? .green : (finding.pattern == .mixed ? .orange : .gray)
+        let color: Color = finding.pattern == .recurring ? GoPhotoDesign.success : (finding.pattern == .mixed ? GoPhotoDesign.warning : GoPhotoDesign.secondaryText)
         return Text(text)
             .font(.caption.weight(.semibold))
             .foregroundStyle(color)
@@ -104,15 +104,15 @@ struct FindingSection<Category: Hashable & Sendable>: View {
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label(category)).font(.subheadline.weight(isDominant ? .bold : .regular))
-                if isDominant { tag("Dominant", .green) }
-                else if isIsolated { tag("Isolated", .gray) }
+                if isDominant { tag("Dominant", GoPhotoDesign.success) }
+                else if isIsolated { tag("Isolated", GoPhotoDesign.secondaryText) }
                 Spacer(minLength: 8)
                 Text("\(count) of \(finding.validObservationCount)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(AnalysisResultsPalette.subtleSurface)
-                    Capsule().fill(isDominant ? Color.green : GoPhotoDesign.purple.opacity(0.7))
+                    Capsule().fill(isDominant ? GoPhotoDesign.success : GoPhotoDesign.primary.opacity(0.7))
                         .frame(width: max(6, geo.size.width * share))
                 }
             }
@@ -155,13 +155,13 @@ struct PositionMap: View {
                 .stroke(Color.secondary.opacity(0.4), lineWidth: 1)
 
                 if let typical {
-                    Circle().strokeBorder(Color.green, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+                    Circle().strokeBorder(GoPhotoDesign.success, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
                         .frame(width: 34, height: 34)
                         .position(x: typical.x * geo.size.width, y: typical.y * geo.size.height)
                 }
                 ForEach(dots) { dot in
                     ZStack {
-                        Circle().fill(GoPhotoDesign.purple)
+                        Circle().fill(GoPhotoDesign.primary)
                         Text("\(dot.index)").font(.caption2.bold()).foregroundStyle(.white)
                     }
                     .frame(width: 20, height: 20)
