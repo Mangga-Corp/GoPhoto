@@ -37,17 +37,17 @@ final class AnalyzingViewController: UIViewController {
         overrideUserInterfaceStyle = .light
         view.backgroundColor = UIColor(GoPhotoDesign.background)
 
-        iconView.tintColor = UIColor(GoPhotoDesign.purple)
+        iconView.tintColor = UIColor(GoPhotoDesign.primary)
         iconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 40)
         iconView.isAccessibilityElement = false
         titleLabel.textColor = UIColor(GoPhotoDesign.primaryText)
         messageLabel.text = viewModel.initialMessage
         messageLabel.textColor = UIColor(GoPhotoDesign.secondaryText)
 
-        progressTrack.backgroundColor = UIColor(GoPhotoDesign.purple).withAlphaComponent(0.2)
+        progressTrack.backgroundColor = Theme.accentBorder
         progressTrack.layer.cornerRadius = 4
         progressTrack.clipsToBounds = true
-        progressFill.backgroundColor = UIColor(GoPhotoDesign.purple)
+        progressFill.backgroundColor = UIColor(GoPhotoDesign.primary)
         progressFill.layer.cornerRadius = 4
         progressFill.translatesAutoresizingMaskIntoConstraints = false
         progressTrack.addSubview(progressFill)

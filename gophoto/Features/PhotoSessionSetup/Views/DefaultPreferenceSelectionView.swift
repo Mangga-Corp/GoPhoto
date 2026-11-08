@@ -23,7 +23,7 @@ struct DefaultPreferenceSelectionView: View {
         .padding(.top, 24)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GoPhotoDesign.sessionBackground)
+        .background(GoPhotoDesign.background)
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: centredCard == .starter) { }
         }
@@ -34,10 +34,10 @@ struct DefaultPreferenceSelectionView: View {
     private var header: some View {
         VStack(spacing: 10) {
             Text("Pick a starting style")
-                .font(.system(size: 30, weight: .bold))
+                .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
             Text("No photos yet? Start with one of ours. You can add your own photos later.")
-                .font(.system(size: 16))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -97,7 +97,7 @@ private struct StarterPresetCard: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Starter style")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(GoPhotoDesign.sectionTitle)
                     .foregroundStyle(GoPhotoDesign.primaryText)
                 PresetAspectRow(icon: "square.split.2x1", label: "Composition",
                                 text: "You on the left third, the view on the right")
@@ -121,10 +121,10 @@ private struct ComingSoonCard: View {
                 .font(.system(size: 40))
                 .foregroundStyle(GoPhotoDesign.tagText)
             Text("More styles coming soon")
-                .font(.system(size: 20, weight: .semibold))
+                .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
             Text("We're preparing more ready-made styles.")
-                .font(.system(size: 15))
+                .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
         }
         .multilineTextAlignment(.center)
@@ -143,13 +143,13 @@ private struct PresetAspectRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(label, systemImage: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(GoPhotoDesign.smallLabel)
                 .foregroundStyle(GoPhotoDesign.tagText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(GoPhotoDesign.tagBackground, in: Capsule())
             Text(text)
-                .font(.system(size: 15))
+                .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .lineLimit(2)
         }
@@ -160,10 +160,10 @@ private extension View {
     func presetCardSurface(isSelected: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous)
         return self
-            .background(isSelected ? GoPhotoDesign.selectedCardBackground : GoPhotoDesign.background)
+            .background(isSelected ? GoPhotoDesign.primarySubtle : GoPhotoDesign.surface)
             .clipShape(shape)
             .overlay {
-                shape.strokeBorder(isSelected ? GoPhotoDesign.sessionAccent : GoPhotoDesign.secondaryText.opacity(0.22),
+                shape.strokeBorder(isSelected ? GoPhotoDesign.primary : GoPhotoDesign.border,
                                    lineWidth: isSelected ? 2 : 1)
             }
     }

@@ -45,8 +45,8 @@ enum CameraOnboardingStep: Int, CaseIterable {
 }
  
 enum CameraOnboardingCopy {
-    static let continueButton = "CONTINUE"
-    static let finishButton = "FINISH"
+    static let continueButton = "Continue"
+    static let finishButton = "Finish"
  
     // Sama dengan ShotSizePicker.postureCaption
     static let standingCaption = "Standing"

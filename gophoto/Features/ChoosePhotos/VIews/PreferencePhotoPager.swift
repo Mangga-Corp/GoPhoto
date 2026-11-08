@@ -46,7 +46,7 @@ struct PreferencePhotoPager: View {
                         .font(.body.weight(.semibold))
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .frame(width: 44, height: 44)
-                        .background(GoPhotoDesign.subtleSurface, in: Circle())
+                        .background(GoPhotoDesign.primarySubtle, in: Circle())
                 }
                 .accessibilityLabel("Close")
                 Spacer()
@@ -54,7 +54,7 @@ struct PreferencePhotoPager: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(GoPhotoDesign.subtleSurface, in: Capsule())
+                    .background(GoPhotoDesign.primarySubtle, in: Capsule())
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)
             }

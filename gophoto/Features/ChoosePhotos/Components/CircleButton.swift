@@ -8,7 +8,7 @@
 import UIKit
 
 /// Round icon button (SF Symbol). Liquid Glass on iOS 26, system gray before that. At least 44 x 44 pt.
-/// Pass `tint: .systemRed` for destructive actions.
+/// Pass `tint: Theme.destructive` for destructive actions.
 final class CircleButton: UIButton {
     init(symbol: String, accessibilityLabel label: String, tint: UIColor? = nil) {
         super.init(frame: .zero)

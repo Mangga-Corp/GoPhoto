@@ -247,7 +247,7 @@ struct EvidenceLayerPicker: View {
                             .font(.footnote.weight(.medium))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(isOn ? GoPhotoDesign.purple : AnalysisResultsPalette.subtleSurface, in: Capsule())
+                            .background(isOn ? GoPhotoDesign.primary : AnalysisResultsPalette.subtleSurface, in: Capsule())
                             .foregroundStyle(isOn ? Color.white : Color.primary)
                     }
                     .buttonStyle(.plain)

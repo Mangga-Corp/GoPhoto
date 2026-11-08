@@ -47,7 +47,7 @@ struct CameraAngleSourcesView: View {
                 if let decision = result.decision {
                     ForEach(decision.conflicts, id: \.self) { conflict in
                         Label(conflict, systemImage: "arrow.left.arrow.right")
-                            .font(.caption).foregroundStyle(.orange).labelStyle(TopAlignedLabelStyle())
+                            .font(.caption).foregroundStyle(GoPhotoDesign.warning).labelStyle(TopAlignedLabelStyle())
                     }
                     ForEach(decision.notes, id: \.self) { note in
                         Label(note, systemImage: "info.circle")
@@ -67,9 +67,9 @@ struct CameraAngleSourcesView: View {
     private func row(_ o: CameraAngleObservation, used: Bool) -> some View {
         let symbol: String, color: Color
         switch o.validity {
-        case .valid: (symbol, color) = used ? ("checkmark.circle.fill", .green) : ("circle.fill", .secondary)
-        case .notApplicable: (symbol, color) = ("minus.circle", .gray)
-        case .invalid: (symbol, color) = ("exclamationmark.triangle", .orange)
+        case .valid: (symbol, color) = used ? ("checkmark.circle.fill", GoPhotoDesign.success) : ("circle.fill", .secondary)
+        case .notApplicable: (symbol, color) = ("minus.circle", GoPhotoDesign.secondaryText)
+        case .invalid: (symbol, color) = ("exclamationmark.triangle", GoPhotoDesign.warning)
         }
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: symbol).foregroundStyle(color).frame(width: 18).accessibilityHidden(true)

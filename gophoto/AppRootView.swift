@@ -72,7 +72,7 @@ struct AppRootView: View {
                     onFinish: continueToPreferenceSelection
                 )
                 .preferredColorScheme(.light)
-                .tint(GoPhotoDesign.purple)
+                .tint(GoPhotoDesign.primary)
             } else if welcomeOnboardingStarted {
                 NavigationStack {
                     PhotoSessionSetupView(
@@ -85,7 +85,7 @@ struct AppRootView: View {
                     )
                 }
                 .preferredColorScheme(.light)
-                .tint(GoPhotoDesign.purple)
+                .tint(GoPhotoDesign.primary)
             } else if !welcomeOnboardingStarted, PreferencesViewModel.shared.hasPreferences {
                 // Older releases completed onboarding without setting the flag: returning users.
                 SessionSetupFlowView()
@@ -105,7 +105,7 @@ struct AppRootView: View {
             welcomeOnboardingStarted = true
         }
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.purple)
+        .tint(GoPhotoDesign.primary)
     }
 
     private func createOnboardingPreference(
