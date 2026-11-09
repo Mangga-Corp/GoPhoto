@@ -137,7 +137,7 @@ struct PhotoSessionSetupView: View {
                 .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
-            Text("Add your favorite photos to get started.")
+            Text("Add at least \(ChoosePhotosViewModel.minPhotos) of your favorite photos to get started.")
                 .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -235,6 +235,13 @@ struct PhotoSessionSetupView: View {
         !selection.photos.isEmpty && !selection.hasSavedPreference
     }
 
+    private var minimumPhotosHint: String? {
+        let missing = ChoosePhotosViewModel.minPhotos - selection.photos.count
+        guard missing > 0 else { return nil }
+        let photos = missing == 1 ? "photo" : "photos"
+        return "Add \(missing) more \(photos) to continue. Need at least \(ChoosePhotosViewModel.minPhotos)."
+    }
+
     private var actions: some View {
         VStack(spacing: 11) {
             if selection.hasSavedPreference {
@@ -251,11 +258,19 @@ struct PhotoSessionSetupView: View {
                 }
                 .buttonStyle(.goPhotoText)
             } else {
+                if let hint = minimumPhotosHint {
+                    Text(hint)
+                        .font(.footnote)
+                        .foregroundStyle(GoPhotoDesign.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 SessionPrimaryButton(
                     title: "Continue",
                     isEnabled: selection.canContinue,
                     action: { isPresentingNamePrompt = true }
                 )
+                .accessibilityHint(minimumPhotosHint ?? "")
             }
         }
         .padding(.horizontal, GoPhotoDesign.sessionMargin)
