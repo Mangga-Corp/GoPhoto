@@ -64,9 +64,9 @@ extension ElementRole {
 
     var color: Color {
         switch self {
-        case .dominant: return .orange
-        case .secondary: return .blue
-        case .uncertain: return .gray
+        case .dominant: return GoPhotoDesign.warning
+        case .secondary: return GoPhotoDesign.primary
+        case .uncertain: return GoPhotoDesign.secondaryText
         }
     }
 }

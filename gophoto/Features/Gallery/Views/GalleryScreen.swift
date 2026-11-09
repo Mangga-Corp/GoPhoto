@@ -29,6 +29,6 @@ struct GalleryScreen: View {
                 }
         }
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.purple)
+        .tint(GoPhotoDesign.primary)
     }
 }

@@ -139,10 +139,10 @@ struct ModelOutputSection: View {
 
     private func color(_ s: SourceRunRecord.State) -> Color {
         switch s {
-        case .produced: return .green
+        case .produced: return GoPhotoDesign.success
         case .nothingDetected: return .secondary
-        case .failed: return .red
-        case .skipped: return .gray
+        case .failed: return GoPhotoDesign.error
+        case .skipped: return GoPhotoDesign.secondaryText
         }
     }
 

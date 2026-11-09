@@ -18,31 +18,27 @@ struct PreferenceSelectionCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(card.name)
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(GoPhotoDesign.cardTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .lineLimit(1)
                         .layoutPriority(0)
                     if card.isLastUsed {
                         Text("Last Used")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(GoPhotoDesign.tagText)
                             .lineLimit(1)
                             .fixedSize()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(GoPhotoDesign.tagBackground, in: Capsule())
+                            .goPhotoTag()
                             .layoutPriority(1)
                     }
                 }
 
                 Text(card.summary)
-                    .font(.system(size: 14))
+                    .font(GoPhotoDesign.secondaryBody)
                     .foregroundStyle(GoPhotoDesign.secondaryText)
                     .lineLimit(card.isAvailable ? 1 : 2)
 
                 if card.isUpdating {
                     Label("Updating analysis…", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(GoPhotoDesign.smallLabel)
                         .foregroundStyle(GoPhotoDesign.tagText)
                 } else if !card.chips.isEmpty {
                     ChipFlowLayout {
@@ -56,10 +52,7 @@ struct PreferenceSelectionCard: View {
             trailingIndicator
         }
         .padding(14)
-        .background(isSelected ? GoPhotoDesign.selectedCardBackground : Color.white,
-                    in: RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
-        .shadow(color: .black.opacity(isSelected ? 0 : 0.04), radius: 10, x: 0, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
+        .goPhotoCard(isSelected: isSelected)
     }
 
     @ViewBuilder private var trailingIndicator: some View {
@@ -88,17 +81,17 @@ struct AddPreferenceCard: View {
             HStack(spacing: 14) {
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
+                    .foregroundStyle(GoPhotoDesign.primary)
                     .frame(width: 44, height: 44)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(GoPhotoDesign.surface, in: RoundedRectangle(cornerRadius: GoPhotoDesign.controlCornerRadius, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Add New Preference")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(GoPhotoDesign.cardTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     // The app analyses the photos with its bundled models; it does not train a model.
                     Text("Add reference portraits to personalize your guidance")
-                        .font(.system(size: 14))
+                        .font(GoPhotoDesign.secondaryBody)
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -106,12 +99,10 @@ struct AddPreferenceCard: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(GoPhotoDesign.primaryText.opacity(0.7))
+                    .foregroundStyle(GoPhotoDesign.secondaryText)
             }
             .padding(16)
-            .background(GoPhotoDesign.neutralCardBackground,
-                        in: RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
+            .goPhotoCard(fill: GoPhotoDesign.secondaryBackground)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens the photo picker to create a preference")

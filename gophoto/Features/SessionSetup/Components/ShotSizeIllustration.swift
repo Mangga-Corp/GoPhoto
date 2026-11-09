@@ -33,7 +33,7 @@ struct ShotSizeIllustration: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let figureColor = isSelected ? GoPhotoDesign.sessionAccent : Color(white: 0.30)
+            let figureColor = isSelected ? GoPhotoDesign.primary : Color(white: 0.30)
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(isSelected
@@ -55,10 +55,10 @@ struct ShotSizeIllustration: View {
                     }
 
                 ViewfinderFrame(cut: cut)
-                    .stroke(GoPhotoDesign.sessionAccent.opacity(isSelected ? 0.9 : 0.6),
+                    .stroke(GoPhotoDesign.primary.opacity(isSelected ? 0.9 : 0.6),
                             style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
                 ViewfinderCorners(cut: cut)
-                    .stroke(GoPhotoDesign.sessionAccent, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    .stroke(GoPhotoDesign.primary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
             }
         }
         .aspectRatio(0.86, contentMode: .fit)

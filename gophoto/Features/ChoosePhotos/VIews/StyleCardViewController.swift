@@ -32,7 +32,7 @@ final class StyleCardViewController: UIViewController {
         let background = UIColor(GoPhotoDesign.background)
         let primaryText = UIColor(GoPhotoDesign.primaryText)
         let secondaryText = UIColor(GoPhotoDesign.secondaryText)
-        let accent = UIColor(GoPhotoDesign.purple)
+        let accent = UIColor(GoPhotoDesign.primary)
         overrideUserInterfaceStyle = .light
         view.backgroundColor = background
 
@@ -67,10 +67,7 @@ final class StyleCardViewController: UIViewController {
         traitStack.axis = .vertical
         traitStack.spacing = 12
 
-        let button = PillButton(title: buttonTitle, prominent: true)
-        button.configuration?.baseBackgroundColor = accent
-        button.configuration?.baseForegroundColor = .white
-        button.tintColor = accent
+        let button = PillButton(title: buttonTitle, prominent: true, fullWidthHeight: true)
         button.addAction(UIAction { [weak self] _ in self?.onDone?() }, for: .touchUpInside)
 
         let content = UIStackView(arrangedSubviews: [headerStack, traitStack])
@@ -143,7 +140,7 @@ final class StyleCardViewController: UIViewController {
 
     private func makeTraitRow(_ trait: StyleSummary.Trait) -> UIView {
         let icon = UIImageView(image: UIImage(systemName: trait.symbol))
-        icon.tintColor = UIColor(GoPhotoDesign.purple)
+        icon.tintColor = UIColor(GoPhotoDesign.primary)
         icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .title2)
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)
@@ -156,7 +153,7 @@ final class StyleCardViewController: UIViewController {
         var texts: [UIView] = [title, line]
         if let evidence = trait.evidence {
             let label = UILabel.make(evidence, style: .footnote)
-            label.textColor = UIColor(GoPhotoDesign.purple)
+            label.textColor = UIColor(GoPhotoDesign.primary)
             texts.append(label)
         }
         for case let label as UILabel in texts { label.textAlignment = .natural }
@@ -169,8 +166,8 @@ final class StyleCardViewController: UIViewController {
         row.alignment = .center
         row.isLayoutMarginsRelativeArrangement = true
         row.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
-        row.backgroundColor = UIColor(GoPhotoDesign.subtleSurface)
-        row.layer.cornerRadius = 14
+        row.backgroundColor = UIColor(GoPhotoDesign.primarySubtle)
+        row.layer.cornerRadius = GoPhotoDesign.cardCornerRadius
 
         row.isAccessibilityElement = true
         row.accessibilityLabel = [trait.title, trait.line, trait.evidence].compactMap { $0 }.joined(separator: ". ")

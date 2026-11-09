@@ -56,6 +56,10 @@ struct CameraView: View {
     @State private var replayPhotoItem: PhotosPickerItem?
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
+    /// Onboarding kamera: hanya sekali, saat pertama kali install. Teksnya: Onboarding/CameraOnboardingCopy.swift
+    @AppStorage("cameraOnboardingCompleted") private var cameraOnboardingCompleted = false
+    @State private var onboardingFrames: [CameraOnboardingTarget: CGRect] = [:]
+    private var showsCameraOnboarding: Bool { !cameraOnboardingCompleted && viewModel.state == .running }
 
     var body: some View {
         ZStack {
@@ -67,6 +71,7 @@ struct CameraView: View {
 
             case .running:
                 liveCamera
+                    .overlay { cameraOnboarding }
 
             case .permissionDenied:
                 permissionDenied
@@ -114,7 +119,7 @@ struct CameraView: View {
         .sheet(isPresented: $isShowingAcknowledgements) {
             AcknowledgementsView()
                 .preferredColorScheme(.light)
-                .tint(GoPhotoDesign.purple)
+                .tint(GoPhotoDesign.primary)
         }
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
@@ -158,6 +163,7 @@ struct CameraView: View {
             topBar
 
             cameraPreview
+                .reportOnboardingFrame(.preview, into: $onboardingFrames)
 
             VStack(spacing: 10) {
                 if isDeveloper {
@@ -170,6 +176,7 @@ struct CameraView: View {
                     replayControls
                 } else {
                 shutterButton
+                    .reportOnboardingFrame(.shutter, into: $onboardingFrames)
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
                         GalleryShortcutButton { isShowingGallery = true }
@@ -252,7 +259,7 @@ struct CameraView: View {
                 GuidanceMotionOverlay(
                     instruction: viewModel.isPhased ? viewModel.phasedMotion : viewModel.instruction,
                     pitchError: viewModel.isPhased ? viewModel.phasedPitchError : viewModel.pitchError,
-                    isEnabled: !isShowingGallery && !isShowingAnalysis && !isShowingShotAnalysis
+                    isEnabled: !isShowingGallery && !isShowingAnalysis && !isShowingShotAnalysis && !showsCameraOnboarding
                 )
             }
             .overlay(alignment: .bottom) { bottomStepCard }
@@ -266,6 +273,17 @@ struct CameraView: View {
             .overlay { flashOverlay }
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .layoutPriority(1)
+    }
+
+    // MARK: Onboarding (first install only)
+
+    @ViewBuilder private var cameraOnboarding: some View {
+        if showsCameraOnboarding {
+            CameraOnboardingView(frames: onboardingFrames) {
+                withAnimation(.easeOut(duration: 0.25)) { cameraOnboardingCompleted = true }
+            }
+            .transition(.opacity)
+        }
     }
 
     // MARK: Preview layers
@@ -623,7 +641,7 @@ struct CameraView: View {
                     openURL(url)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.goPhotoPrimary)
         }
         .foregroundStyle(.white)
     }

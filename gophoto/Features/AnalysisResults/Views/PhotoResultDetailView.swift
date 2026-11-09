@@ -88,7 +88,7 @@ struct PhotoResultDetailView: View {
         ResultCard {
             VStack(alignment: .leading, spacing: 6) {
                 Label("Some analysis steps did not complete", systemImage: "exclamationmark.triangle")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(GoPhotoDesign.warning)
                 ForEach(photo.errors, id: \.self) { error in
                     Text(error).font(.footnote).foregroundStyle(.secondary)
                 }

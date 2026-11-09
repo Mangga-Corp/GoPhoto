@@ -35,15 +35,11 @@ struct PreferenceSelectionView: View {
 
                 HStack(alignment: .center) {
                     Text("Your Preferences")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(GoPhotoDesign.sectionTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     Spacer(minLength: 12)
                     Text(selection.savedCountText)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(GoPhotoDesign.tagText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(GoPhotoDesign.tagBackground, in: Capsule())
+                        .goPhotoTag()
                 }
                 .padding(.top, 28)
 
@@ -63,7 +59,7 @@ struct PreferenceSelectionView: View {
             .padding(.horizontal, GoPhotoDesign.sessionMargin)
         }
         .scrollIndicators(.hidden)
-        .background(GoPhotoDesign.sessionBackground.ignoresSafeArea())
+        .background(GoPhotoDesign.background.ignoresSafeArea())
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: selection.continueTarget != nil) {
                 // Re-validated at the tap: never hands on a deleted or unusable preference.
@@ -111,12 +107,12 @@ struct PreferenceSelectionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("What would you like to shoot today?")
-                .font(.system(size: 32, weight: .bold))
+                .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             Text("Choose a photography preference for your next session.")
-                .font(.system(size: 17))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -127,19 +123,19 @@ struct PreferenceSelectionView: View {
         VStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 30))
-                .foregroundStyle(GoPhotoDesign.sessionAccent)
+                .foregroundStyle(GoPhotoDesign.primary)
             Text("No preferences yet")
-                .font(.system(size: 17, weight: .semibold))
+                .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
             Text("Add reference portraits below to create your first photography preference.")
-                .font(.system(size: 14))
+                .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 20)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: GoPhotoDesign.cardCornerRadius, style: .continuous))
+        .goPhotoCard()
     }
 
     private func cardView(_ card: PreferenceCardModel) -> some View {
@@ -172,6 +168,9 @@ struct PreferenceSelectionView: View {
     }
 
     @ViewBuilder private func managementActions(_ card: PreferenceCardModel) -> some View {
+        Button("About This Style", systemImage: "info.circle") { showAbout(card) }
+            .disabled(styleSummary(for: card.id) == nil)
+            .accessibilityAction(named: "About This Style") { showAbout(card) }
         Button("Rename", systemImage: "pencil") { startRename(card) }
         Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
         Divider()
@@ -200,6 +199,21 @@ struct PreferenceSelectionView: View {
         let editor = PreferenceEditorPresenter(preferences: selection.preferences)
         editorPresenter = editor   // kept alive while the editor is open
         editor.presentEditor(for: card.id, from: presenter) { _ in editorPresenter = nil }
+    }
+
+    private func showAbout(_ card: PreferenceCardModel) {
+        guard let presenter = anchor.presenter,
+              let summary = styleSummary(for: card.id) else { return }
+        let styleCard = StyleCardViewController(summary: summary, buttonTitle: "Done")
+        styleCard.modalPresentationStyle = .fullScreen
+        styleCard.onDone = { [weak styleCard] in styleCard?.dismiss(animated: true)}
+        presenter.present(styleCard, animated: true)
+    }
+
+    private func styleSummary(for id: UUID) -> StyleSummary? {
+        guard let preference = selection.preferences.preference(id: id),
+              preference.analysis?.usability == .usable else { return nil }
+        return StyleSummary(analysis: preference.analysis, photos: preference.photos)
     }
 
     private func confirmDelete(_ card: PreferenceCardModel) {

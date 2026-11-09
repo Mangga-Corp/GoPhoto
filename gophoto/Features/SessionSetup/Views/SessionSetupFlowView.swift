@@ -86,13 +86,13 @@ struct SessionSetupFlowView: View {
                         }
                     )
                     .preferredColorScheme(.light)
-                    .tint(GoPhotoDesign.purple)
+                    .tint(GoPhotoDesign.primary)
                 }
             }
         }
         // This flow only: the camera (another root) keeps its dark look.
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.sessionAccent)
+        .tint(GoPhotoDesign.primary)
     }
 
     /// Starts the selected preference with the existing default shot size; the store revalidates it.

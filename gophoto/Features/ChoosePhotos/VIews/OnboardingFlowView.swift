@@ -143,22 +143,23 @@ private struct AnalysisRetryScreen: View {
             Image(systemName: failure == .noUsableFraming ? "person.fill.questionmark"
                                                           : "exclamationmark.triangle")
                 .font(.system(size: 36))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(failure == .noUsableFraming ? GoPhotoDesign.secondaryText : GoPhotoDesign.warning)
             Text(failure == .noUsableFraming ? "We couldn't find a person in these photos."
                                              : "We couldn't finish your photo analysis.")
-                .font(.title3.weight(.semibold))
+                .font(GoPhotoDesign.sectionTitle)
+                .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
             Text(failure == .noUsableFraming ? "Choose photos that clearly show one person."
                                              : "Your photos are saved. Try the analysis again.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(GoPhotoDesign.secondaryBody)
+                .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
             Button("Try again", action: onRetry)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.goPhotoPrimary)
                 .accessibilityIdentifier("analysis.retry")
             if let onChooseOtherPhotos {
                 Button("Choose Other Photos", action: onChooseOtherPhotos)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.goPhotoSecondary)
                     .accessibilityIdentifier("analysis.chooseOtherPhotos")
             }
             #if DEBUG
@@ -172,7 +173,7 @@ private struct AnalysisRetryScreen: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: Theme.background))
+        .background(GoPhotoDesign.background)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("analysis.failure")
     }

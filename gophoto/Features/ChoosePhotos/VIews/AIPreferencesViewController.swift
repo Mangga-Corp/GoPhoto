@@ -44,7 +44,7 @@ final class AIPreferencesViewController: UIViewController {
     private let emptyLabel = UILabel.make("You haven’t input any photo", style: .subheadline)
     private let selectButton = PillButton(title: "Select")
     private let addButton = CircleButton(symbol: "plus", accessibilityLabel: "Add photos")
-    private let trashButton = CircleButton(symbol: "trash", accessibilityLabel: "Delete", tint: .systemRed)
+    private let trashButton = CircleButton(symbol: "trash", accessibilityLabel: "Delete", tint: Theme.destructive)
     private let backButton = CircleButton(symbol: "chevron.left", accessibilityLabel: "Back")
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, _ in
