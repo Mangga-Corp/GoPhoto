@@ -41,6 +41,25 @@ nonisolated struct PersonDetection: @unchecked Sendable {
     /// Boxes from different zooms must not be mixed, and a moving zoom is not judged.
     var zoomFactor: Double? = nil
     var isZooming = false
+
+    // Phased guide (strict lock, `PersonDetector.strictLock`). Other guides leave these defaults.
+    /// Every person box this frame (normalized, origin top-left).
+    var candidates: [CGRect] = []
+    /// `box` is the locked subject. False (strict lock only): nobody is locked; `box` is empty and
+    /// only `candidates` count.
+    var subjectLocked = true
+    /// Reliable joints of the subject's pose (normalized, origin top-left), when the pose ran.
+    var landmarks: [BodyLandmark]? = nil
+    /// The subject's instance mask: bounding box (hair and clothes included) and the frame edges
+    /// it touches, when the mask ran this frame.
+    var extent: CGRect? = nil
+    var extentEdges: FrameEdges = []
+    /// Selection UI: semi-transparent black where no person is, clear on people (frame size).
+    var dimMask: CGImage? = nil
+
+    // Video replay (appMode 2 testing): the frame's media time and the run it belongs to.
+    var mediaTime: TimeInterval? = nil
+    var replayRun: Int? = nil
 }
 
 nonisolated final class PersonDetector {
@@ -98,6 +117,25 @@ nonisolated final class PersonDetector {
     /// Below this overlap between tracker and detector, the tracker is re-seeded.
     private let reseedOverlap: CGFloat = 0.6
 
+    /// Phased guide: never choose a person on its own (no "largest person" pick, no fallback):
+    /// only `lock(to:)` chooses, and a person lost for good is released, not replaced.
+    var strictLock = false {
+        didSet { if strictLock != oldValue { resetSubjectLock() } }
+    }
+    /// Phased guide: build `dimMask` (while the photographer chooses a person).
+    var wantsDimMask = false
+
+    // Each person's own mask (Phased): coverage incl. clothes, and the dimming for the selection.
+    private let instanceRequest = VNGeneratePersonInstanceMaskRequest()
+
+    /// Phased guide: follow the person in `box` (top-left origin) from now on.
+    func lock(to box: CGRect) {
+        lockedBox = box
+        missedFrames = 0
+        trackedOnlyFrames = 0
+        seedTracker(box)
+    }
+
     /// Forget the locked person (the next detection picks the largest again).
     func resetSubjectLock() {
         lockedBox = nil
@@ -143,6 +181,8 @@ nonisolated final class PersonDetector {
         var requests: [VNRequest] = [boxRequest, faceRequest]
         if includeOutline { requests.append(maskRequest) }
         if readsPose { requests.append(poseRequest) }
+        let readsInstances = strictLock && (readsPose || (wantsDimMask && detectionCount.isMultiple(of: 2)))
+        if readsInstances { requests.append(instanceRequest) }
         do {
             try handler.perform(requests)
         } catch {
@@ -172,7 +212,11 @@ nonisolated final class PersonDetector {
             trackedOnlyFrames += 1
         } else if lockedBox != nil, missedFrames < maxMissedFrames {
             missedFrames += 1                            // locked person hidden for a moment: wait
-            return nil
+            return strictLock ? candidatesOnly(boxes, readsInstances: readsInstances) : nil
+        } else if strictLock {
+            // Strict: nobody locked, or the locked person is gone. Never pick someone else here.
+            if lockedBox != nil { resetSubjectLock() }
+            return boxes.isEmpty && !wantsDimMask ? nil : candidatesOnly(boxes, readsInstances: readsInstances)
         } else if let largest = boxes.max(by: { $0.width * $0.height < $1.width * $1.height }) {
             box = largest                                // first person, or the old one is gone
             trackedOnlyFrames = 0
@@ -200,7 +244,109 @@ nonisolated final class PersonDetector {
             $0.point.y >= Self.frameEdge && $0.point.y <= 1 - Self.frameEdge
                 && $0.point.x >= Self.frameEdge && $0.point.x <= 1 - Self.frameEdge
         }.map(\.joint)) : nil
-        return PersonDetection(box: box, face: face, outline: outline, posture: posture, visibleJoints: visible)
+        var detection = PersonDetection(box: box, face: face, outline: outline, posture: posture, visibleJoints: visible)
+        if strictLock {
+            detection.candidates = boxes
+            if readsPose { detection.landmarks = pose?.reliableLandmarks() ?? [] }
+            if readsInstances, let labels = instanceLabels() {
+                if let mine = labels.instances.max(by: { Self.overlap($0.box, box) < Self.overlap($1.box, box) }),
+                   Self.overlap(mine.box, box) > 0.2 {
+                    detection.extent = mine.box
+                    detection.extentEdges = mine.edges
+                }
+                if wantsDimMask { detection.dimMask = labels.dim }
+            }
+        }
+        return detection
+    }
+
+    /// Strict lock without a locked subject: the people this frame (and the dimming), nothing else.
+    private func candidatesOnly(_ boxes: [CGRect], readsInstances: Bool) -> PersonDetection {
+        var detection = PersonDetection(box: .zero)
+        detection.subjectLocked = false
+        detection.candidates = boxes
+        if readsInstances, wantsDimMask { detection.dimMask = instanceLabels()?.dim }
+        return detection
+    }
+
+    // MARK: - Person instances (Phased)
+
+    private struct Instance { var box: CGRect; var edges: FrameEdges }
+
+    /// Each person's mask box and touched edges from the last instance-mask request, and the
+    /// dimming image (when `wantsDimMask`).
+    private func instanceLabels() -> (instances: [Instance], dim: CGImage?)? {
+        // Each person's own mask via `generateMask(forInstances:)` (documented path; the first version
+        // read the label image directly and every person came out as the whole frame).
+        guard let observation = instanceRequest.results?.first else { return nil }
+        var instances: [Instance] = []
+        for index in observation.allInstances {
+            guard let mask = try? observation.generateMask(forInstances: IndexSet(integer: index)),
+                  let cover = Self.coverage(of: mask, dim: false), cover.box.width > 0 else { continue }
+            // A "person" filling the whole frame is not a usable reading.
+            if cover.box.width > 0.98, cover.box.height > 0.98 { continue }
+            instances.append(Instance(box: cover.box, edges: cover.edges))
+        }
+        var image: CGImage?
+        if wantsDimMask, let all = try? observation.generateMask(forInstances: observation.allInstances) {
+            image = Self.coverage(of: all, dim: true)?.dim
+        }
+        return (instances, image)
+    }
+
+    /// Normalized box of the mask's person pixels (> 0.5), the frame edges they touch, and (optionally)
+    /// the dimming image (black 55% where no person is). Reads 8-bit, 16-bit half and 32-bit float masks.
+    nonisolated static func coverage(of buffer: CVPixelBuffer, dim: Bool)
+        -> (box: CGRect, edges: FrameEdges, dim: CGImage?)? {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        let w = CVPixelBufferGetWidth(buffer), h = CVPixelBufferGetHeight(buffer)
+        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        let format = CVPixelBufferGetPixelFormatType(buffer)
+        guard w > 0, h > 0, let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        func value(_ row: UnsafeRawPointer, _ x: Int) -> Float {
+            switch format {
+            case kCVPixelFormatType_OneComponent32Float:
+                return row.load(fromByteOffset: x * 4, as: Float32.self)
+            case kCVPixelFormatType_OneComponent16Half:
+                return Float(Float16(bitPattern: row.load(fromByteOffset: x * 2, as: UInt16.self)))
+            default:
+                return Float(row.load(fromByteOffset: x, as: UInt8.self)) / 255
+            }
+        }
+        var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+        var pixels: [UInt8] = dim ? [UInt8](repeating: 0, count: w * h * 4) : []
+        for y in 0..<h {
+            let row = UnsafeRawPointer(base.advanced(by: y * rowBytes))
+            for x in 0..<w {
+                if value(row, x) > 0.5 {
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                } else if dim {
+                    pixels[(y * w + x) * 4 + 3] = 140          // black, premultiplied
+                }
+            }
+        }
+        var image: CGImage?
+        if dim {
+            let space = CGColorSpaceCreateDeviceRGB()
+            image = pixels.withUnsafeMutableBytes { raw -> CGImage? in
+                CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+            }
+        }
+        guard maxX >= 0 else { return (CGRect.zero, [], image) }
+        let edgeX = max(1, w / 100), edgeY = max(1, h / 100)
+        var edges: FrameEdges = []
+        if minY < edgeY { edges.insert(.top) }
+        if maxY >= h - edgeY { edges.insert(.bottom) }
+        if minX < edgeX { edges.insert(.left) }
+        if maxX >= w - edgeX { edges.insert(.right) }
+        let box = CGRect(x: CGFloat(minX) / CGFloat(w), y: CGFloat(minY) / CGFloat(h),
+                         width: CGFloat(maxX - minX + 1) / CGFloat(w), height: CGFloat(maxY - minY + 1) / CGFloat(h))
+        return (box, edges, image)
     }
 
     // MARK: - Posture (sitting / standing)
@@ -213,7 +359,7 @@ nonisolated final class PersonDetector {
         let poses = observations.compactMap { observation -> PoseCandidate? in
             guard let points = try? observation.recognizedPoints(.all) else { return nil }
             let landmarks = points.compactMap { name, point -> BodyLandmark? in
-                guard let joint = Self.joint(name) else { return nil }
+                guard let joint = Self.joint(name, extended: strictLock) else { return nil }
                 // Vision's origin is BOTTOM-left → flip Y
                 return BodyLandmark(joint: joint, point: CGPoint(x: point.location.x, y: 1 - point.location.y),
                                     confidence: Double(point.confidence))
@@ -223,9 +369,23 @@ nonisolated final class PersonDetector {
         return SubjectAssociation.pose(for: box, among: poses)
     }
 
-    /// The joints the posture rule reads (others are skipped).
-    private static func joint(_ name: VNHumanBodyPoseObservation.JointName) -> BodyJoint? {
-        switch name {
+    /// The joints the posture rule reads (others are skipped). Phased (`extended`) also reads the
+    /// eyes, ears, elbows and wrists: the head-from-pose vantage fallback needs them.
+    private static func joint(_ name: VNHumanBodyPoseObservation.JointName, extended: Bool = false) -> BodyJoint? {
+        if extended {
+            switch name {
+            case .leftEye: return .leftEye
+            case .rightEye: return .rightEye
+            case .leftEar: return .leftEar
+            case .rightEar: return .rightEar
+            case .leftElbow: return .leftElbow
+            case .rightElbow: return .rightElbow
+            case .leftWrist: return .leftWrist
+            case .rightWrist: return .rightWrist
+            default: break
+            }
+        }
+        return switch name {
         case .neck: .neck
         case .leftShoulder: .leftShoulder
         case .rightShoulder: .rightShoulder

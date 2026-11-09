@@ -19,6 +19,16 @@ import CoreMedia
 
 // MARK: - Model
 
+/// Whether live native depth can run (Phased + Depth), and why not.
+nonisolated struct LiveDepthSupport: Sendable, Equatable {
+    var available: Bool
+    /// The reason when not available; the depth format / accuracy when it is.
+    var note: String
+}
+
+/// Depth on the subject from one depth frame (Phased + Depth).
+typealias LiveDepthFrame = DepthSample
+
 /// A photo straight from iPhone Camera
 nonisolated struct CapturedPhoto: Sendable {
     let data: Data      // Original file-data (HEIC/ JPEG + metadata) -> For saving to phone
@@ -102,6 +112,22 @@ nonisolated protocol CameraServiceProtocol: AnyObject {
     /// depth + portrait matte (true), or back to the main camera (false). Returns whether depth
     /// capture is on now (false when the phone has no depth camera).
     func setDepthCapture(_ enabled: Bool) async -> Bool
+
+    // Phased guide (appMode 2 experiment)
+    /// Strict subject lock: the detector never picks a person on its own (see `PersonDetector.strictLock`).
+    func setStrictSubjectLock(_ enabled: Bool)
+    /// Dim everything but people in the detections (`PersonDetection.dimMask`), for choosing a person.
+    func setSelectionDimming(_ enabled: Bool)
+    /// Follow the person in `box` (normalized, origin top-left) from the next frame on.
+    func lockSubject(to box: CGRect)
+    /// Zoom factors (app units) that use the lens / a sensor crop rather than digital zoom, e.g. [2]
+    /// on a 48 MP main camera. Empty when the format reports none.
+    var nativeZoomFactors: [Double] { get }
+    /// Phased + Depth: stream native depth with the video (needs the dual / triple camera, see
+    /// `setDepthCapture`). Returns what is available now.
+    func setLiveDepth(_ enabled: Bool) async -> LiveDepthSupport
+    /// Depth on the subject for each depth frame while live depth is on.
+    func depthUpdates() -> AsyncStream<LiveDepthFrame>
 }
 
 // MARK: - Real implementation
@@ -120,6 +146,15 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     
     // for the apple vision framework
     private let videoOutput = AVCaptureVideoDataOutput()
+    // Phased + Depth: live depth next to the video (dual / triple camera only).
+    private let depthOutput = AVCaptureDepthDataOutput()
+    private var liveDepthOn = false                   // session queue
+    private var depthContinuation: AsyncStream<LiveDepthFrame>.Continuation?   // video queue
+    /// The locked subject's box (video queue) where the depth is sampled.
+    private var depthSubjectBox: CGRect?
+    /// Depth frames are rotated upright by their connection (else mapped from the sensor's landscape).
+    private var depthUpright = false
+    private var depthFrameCount = 0
     private let videoQueue = DispatchQueue(label: "gophoto.camera.video")
     private let personDetector = PersonDetector()
     private var personContinuation: AsyncStream<PersonDetection?>.Continuation?
@@ -174,6 +209,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     private struct ZoomSnapshot { var current, min, max: Double? }
     private let zoomLock = NSLock()
     private var zoomSnapshot = ZoomSnapshot()
+    /// Lens / sensor-crop zoom factors of the active format, app units (under `zoomLock`).
+    private var nativeZooms: [Double] = []
     /// Where exposure and focus last aimed (video queue), upright frame, origin top-left;
     /// nil = the camera's default (frame centre).
     private var meteringPoint: CGPoint?
@@ -277,6 +314,20 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
     func setOutlineEnabled(_ enabled: Bool) {
         videoQueue.async { self.personDetector.includeOutline = enabled }
     }
+
+    func setStrictSubjectLock(_ enabled: Bool) {
+        videoQueue.async { self.personDetector.strictLock = enabled }
+    }
+
+    func setSelectionDimming(_ enabled: Bool) {
+        videoQueue.async { self.personDetector.wantsDimMask = enabled }
+    }
+
+    func lockSubject(to box: CGRect) {
+        videoQueue.async { self.personDetector.lock(to: box) }
+    }
+
+    var nativeZoomFactors: [Double] { zoomLock.withLock { nativeZooms } }
 
     // MARK: - Zoom control
 
@@ -406,6 +457,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             NSLog("GoPhoto camera zoom could not be reset: %@", error.localizedDescription)
         }
         _currentZoom = Double(device.videoZoomFactor) / scale
+        let native = device.activeFormat.secondaryNativeResolutionZoomFactors.map { Double($0) / scale }
+        zoomLock.withLock { nativeZooms = native }
         publishZoomSnapshot()
         zoomContinuation?.yield(_currentZoom)
         // videoFieldOfView is across the sensor's long side, which is the height of a portrait
@@ -470,6 +523,8 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
             sessionQueue.async {
                 guard self.isConfigured else { continuation.resume(returning: false); return }
                 guard enabled != self.depthActive else { continuation.resume(returning: self.depthActive); return }
+                // The main camera has no depth: live depth stops before switching back to it.
+                if !enabled, self.liveDepthOn { self.removeLiveDepth() }
                 let target: AVCaptureDevice? = enabled
                     ? [AVCaptureDevice.DeviceType.builtInDualWideCamera, .builtInDualCamera, .builtInTripleCamera]
                         .lazy.compactMap { AVCaptureDevice.default($0, for: .video, position: .back) }.first
@@ -490,6 +545,144 @@ nonisolated final class CameraService: NSObject, CameraServiceProtocol, @uncheck
                 continuation.resume(returning: self.depthActive)
             }
         }
+    }
+
+    // MARK: - Live depth (Phased + Depth)
+
+    /// Whether this iPhone has a camera that streams native depth (checked without the session).
+    static func liveDepthSupport() -> LiveDepthSupport {
+        let types: [AVCaptureDevice.DeviceType] = [.builtInDualWideCamera, .builtInDualCamera, .builtInTripleCamera]
+        guard let device = types.lazy.compactMap({ AVCaptureDevice.default($0, for: .video, position: .back) }).first else {
+            return LiveDepthSupport(available: false, note: "no dual camera on this iPhone")
+        }
+        guard device.formats.contains(where: { !$0.supportedDepthDataFormats.isEmpty }) else {
+            return LiveDepthSupport(available: false, note: "\(device.localizedName) has no depth formats")
+        }
+        return LiveDepthSupport(available: true, note: device.localizedName)
+    }
+
+    func depthUpdates() -> AsyncStream<LiveDepthFrame> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            videoQueue.async { self.depthContinuation = continuation }
+            continuation.onTermination = { _ in
+                self.videoQueue.async { self.depthContinuation = nil }
+            }
+        }
+    }
+
+    func setLiveDepth(_ enabled: Bool) async -> LiveDepthSupport {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                guard self.isConfigured else {
+                    continuation.resume(returning: LiveDepthSupport(available: false, note: "camera not ready")); return
+                }
+                guard enabled else {
+                    if self.liveDepthOn { self.removeLiveDepth() }
+                    continuation.resume(returning: LiveDepthSupport(available: false, note: "off")); return
+                }
+                guard self.depthActive, let device = self.device else {
+                    continuation.resume(returning: LiveDepthSupport(available: false, note: "needs the dual camera")); return
+                }
+                if self.liveDepthOn {
+                    continuation.resume(returning: LiveDepthSupport(available: true, note: self.depthFormatNote(device))); return
+                }
+                let wanted: [OSType] = [kCVPixelFormatType_DepthFloat16, kCVPixelFormatType_DepthFloat32,
+                                        kCVPixelFormatType_DisparityFloat16, kCVPixelFormatType_DisparityFloat32]
+                let formats = device.activeFormat.supportedDepthDataFormats.filter {
+                    wanted.contains(CMFormatDescriptionGetMediaSubType($0.formatDescription))
+                }
+                guard let best = formats.max(by: {
+                    CMVideoFormatDescriptionGetDimensions($0.formatDescription).width
+                        < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width
+                }) else {
+                    continuation.resume(returning: LiveDepthSupport(available: false, note: "no depth format for this photo format")); return
+                }
+                self.session.beginConfiguration()
+                guard self.session.canAddOutput(self.depthOutput) else {
+                    self.session.commitConfiguration()
+                    continuation.resume(returning: LiveDepthSupport(available: false, note: "depth output cannot be added")); return
+                }
+                self.session.addOutput(self.depthOutput)
+                self.depthOutput.isFilteringEnabled = false      // holes stay holes: counted as invalid
+                self.depthOutput.alwaysDiscardsLateDepthData = true
+                self.depthOutput.setDelegate(self, callbackQueue: self.videoQueue)
+                do {
+                    try device.lockForConfiguration()
+                    device.activeDepthDataFormat = best
+                    device.unlockForConfiguration()
+                } catch {
+                    NSLog("GoPhoto depth format could not be set: %@", error.localizedDescription)
+                }
+                var upright = false
+                if let connection = self.depthOutput.connection(with: .depthData),
+                   connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                    upright = true
+                }
+                self.session.commitConfiguration()
+                self.liveDepthOn = true
+                self.videoQueue.async { self.depthUpright = upright }
+                continuation.resume(returning: LiveDepthSupport(available: true, note: self.depthFormatNote(device)))
+            }
+        }
+    }
+
+    /// Session queue, outside a configuration.
+    private func removeLiveDepth() {
+        session.beginConfiguration()
+        if session.outputs.contains(depthOutput) { session.removeOutput(depthOutput) }
+        session.commitConfiguration()
+        liveDepthOn = false
+    }
+
+    private func depthFormatNote(_ device: AVCaptureDevice) -> String {
+        guard let format = device.activeDepthDataFormat else { return "depth format unknown" }
+        let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        let type = CMFormatDescriptionGetMediaSubType(format.formatDescription)
+        let kind = type == kCVPixelFormatType_DisparityFloat16 || type == kCVPixelFormatType_DisparityFloat32 ? "disparity" : "depth"
+        return "\(device.localizedName) · \(kind) \(d.width)×\(d.height)"
+    }
+}
+
+// MARK: - Depth delegate (Phased + Depth, video queue)
+
+nonisolated extension CameraService: AVCaptureDepthDataOutputDelegate {
+    func depthDataOutput(_ output: AVCaptureDepthDataOutput, didOutput depthData: AVDepthData,
+                         timestamp: CMTime, connection: AVCaptureConnection) {
+        guard let continuation = depthContinuation, let box = depthSubjectBox else { return }
+        depthFrameCount += 1
+        guard depthFrameCount.isMultiple(of: 2) else { return }     // about 15 a second is enough
+        let converted = depthData.depthDataType == kCVPixelFormatType_DepthFloat32
+            ? depthData : depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
+        let map = converted.depthDataMap
+        CVPixelBufferLockBaseAddress(map, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+        let w = CVPixelBufferGetWidth(map), h = CVPixelBufferGetHeight(map)
+        let rowBytes = CVPixelBufferGetBytesPerRow(map)
+        guard w > 0, h > 0, let base = CVPixelBufferGetBaseAddress(map) else { return }
+        // Torso: inside the box, away from its edges (background) and the arms; a grid of points.
+        var values: [Double] = []
+        let grid = 10
+        var total = 0
+        for iy in 0..<grid {
+            for ix in 0..<grid {
+                let ux = Double(box.minX) + Double(box.width) * (0.32 + 0.36 * Double(ix) / Double(grid - 1))
+                let uy = Double(box.minY) + Double(box.height) * (0.22 + 0.33 * Double(iy) / Double(grid - 1))
+                // Upright (top-left) → buffer: rotated connection = same; else the sensor's landscape.
+                let (px, py) = depthUpright ? (ux, uy) : (uy, 1 - ux)
+                let x = Int(px * Double(w)), y = Int(py * Double(h))
+                guard x >= 0, x < w, y >= 0, y < h else { continue }
+                total += 1
+                let value = Double(base.advanced(by: y * rowBytes).assumingMemoryBound(to: Float32.self)[x])
+                if value.isFinite, value > 0 { values.append(value) }
+            }
+        }
+        guard total > 0 else { return }
+        values.sort()
+        let median = values.isEmpty ? 0 : values[values.count / 2]
+        continuation.yield(DepthSample(value: median, validFraction: Double(values.count) / Double(total),
+                                       absolute: depthData.depthDataAccuracy == .absolute,
+                                       sampleCount: values.count, time: ProcessInfo.processInfo.systemUptime))
     }
 }
 
@@ -549,9 +742,12 @@ nonisolated extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegat
         detection?.zoomFactor = zoom
         detection?.isZooming = ramping
         detection?.photoMegapixels = photoMegapixels
+        // Strict lock without a subject: only candidates, no box to aim at or to sample depth on.
+        let subject = detection?.subjectLocked == false ? nil : detection
+        depthSubjectBox = subject.map { $0.extent ?? $0.box }
         continuation.yield(detection)
-        updateMetering(for: detection)
-        updateBacklight(face: detection?.face, person: detection?.box, pixelBuffer: pixelBuffer)
+        updateMetering(for: subject)
+        updateBacklight(face: subject?.face, person: subject?.box, pixelBuffer: pixelBuffer)
     }
 
     /// Backlight rule (video queue): measures the face against the frame, the brightest light behind

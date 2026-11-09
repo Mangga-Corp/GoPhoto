@@ -48,6 +48,9 @@ nonisolated final class GeoCalibEstimator: @unchecked Sendable {
     private let computeUnits: MLComputeUnits
     /// One compiled function per input size (h416_w320, h544_w320, …), loaded on first use.
     private var models: [String: MLModel] = [:]
+    /// CPU-only copies, used when the GPU refuses work (e.g. the app went to the background:
+    /// "Insufficient Permission (to submit GPU work from background)"); the photo is not lost.
+    private var cpuModels: [String: MLModel] = [:]
     /// Serialises loading and prediction (photos are analysed two at a time).
     private let lock = NSLock()
 
@@ -64,15 +67,15 @@ nonisolated final class GeoCalibEstimator: @unchecked Sendable {
     }
 
     /// The fixed-shape function for this input size. Sizes come from `GeoCalibPreprocessor.supportedLongSides`.
-    private func model(width: Int, height: Int) throws -> MLModel {
+    private func model(width: Int, height: Int, cpuOnly: Bool = false) throws -> MLModel {
         let name = "h\(height)_w\(width)"
         lock.lock(); defer { lock.unlock() }
-        if let m = models[name] { return m }
+        if let m = (cpuOnly ? cpuModels : models)[name] { return m }
         let config = MLModelConfiguration()
-        config.computeUnits = computeUnits
+        config.computeUnits = cpuOnly ? .cpuOnly : computeUnits
         config.functionName = name
         let m = try MLModel(contentsOf: url, configuration: config)
-        models[name] = m
+        if cpuOnly { cpuModels[name] = m } else { models[name] = m }
         return m
     }
 
@@ -94,8 +97,15 @@ nonisolated final class GeoCalibEstimator: @unchecked Sendable {
         let provider = try MLDictionaryFeatureProvider(dictionary: ["image": MLFeatureValue(multiArray: array)])
         let network = try model(width: w, height: h)
         lock.lock()
-        let prediction = Result { try network.prediction(from: provider) }
+        var prediction = Result { try network.prediction(from: provider) }
         lock.unlock()
+        // The GPU can refuse the work (app in the background): run the same model on the CPU once.
+        if case .failure = prediction, computeUnits != .cpuOnly {
+            let cpu = try model(width: w, height: h, cpuOnly: true)
+            lock.lock()
+            prediction = Result { try cpu.prediction(from: provider) }
+            lock.unlock()
+        }
         let out = try prediction.get()
         let predictMs = Date().timeIntervalSince(t1) * 1000
 

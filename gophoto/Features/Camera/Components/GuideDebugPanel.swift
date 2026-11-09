@@ -10,15 +10,23 @@ struct GuideDebugPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Picker("Guide mode", selection: $viewModel.guideMode) {
-                ForEach(GuideMode.visible) { mode in
-                    Text(mode.title).tag(mode)
+            // The guide picker moved to the camera screen (ExperimentBar, appMode 2).
+            HStack(spacing: 10) {
+                Text(viewModel.experiment.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.yellow)
+                if let url = viewModel.guideLog?.fileURL {
+                    ShareLink(item: url) {
+                        Label("Share log", systemImage: "square.and.arrow.up")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .tint(.yellow)
                 }
             }
-            .pickerStyle(.menu)
-            .tint(.yellow)
-            .font(.caption.weight(.semibold))
-            if !viewModel.guideMode.steps.isEmpty {
+            if viewModel.isPhased {
+                ForEach(viewModel.phasedDebugLines, id: \.self) { Text($0) }
+            }
+            if !viewModel.isPhased, !viewModel.guideMode.steps.isEmpty {
                 Toggle("Keep finished steps", isOn: $viewModel.latchSteps)
                     .font(.caption2.weight(.semibold))
                     .tint(.yellow)
