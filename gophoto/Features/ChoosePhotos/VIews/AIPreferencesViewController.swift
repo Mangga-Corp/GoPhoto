@@ -170,6 +170,10 @@ final class AIPreferencesViewController: UIViewController {
                 return nil
             }
         )
+        if viewModel.mode == .editor {
+            // Done in the picker goes straight to analysis (training) instead of back to this screen.
+            photoPickerFlow?.onPhotosAddedToExisting = { [weak self] in self?.backTapped() }
+        }
         addButton.addAction(UIAction { [weak self] _ in self?.photoPickerFlow?.start() }, for: .touchUpInside)
         trashButton.addAction(UIAction { [weak self] _ in self?.confirmDelete() }, for: .touchUpInside)
 
@@ -278,7 +282,10 @@ final class AIPreferencesViewController: UIViewController {
     private func confirmDelete() {
         let sheet = UIAlertController(title: nil, message: viewModel.deleteConfirmMessage, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: viewModel.deleteConfirmTitle, style: .destructive) { [weak self] _ in
-            self?.viewModel.deleteChecked()
+            guard let self else { return }
+            self.viewModel.deleteChecked()
+            // Editor: retrain right away (same path as Back) instead of waiting for the user to leave.
+            if self.viewModel.mode == .editor { self.backTapped() }
         })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         sheet.popoverPresentationController?.sourceView = trashButton
