@@ -93,6 +93,7 @@ struct PhotoSessionSetupView: View {
         .fullScreenCover(isPresented: $isPresentingPicker) {
             PhotoSessionPhotoPicker(
                 initialPhotos: selection.photos,
+                canRemove: !selection.hasSavedPreference,
                 onSelection: selectedPhotosChanged,
                 onFinish: { isPresentingPicker = false }
             )

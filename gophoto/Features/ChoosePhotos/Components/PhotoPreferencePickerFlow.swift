@@ -57,11 +57,12 @@ final class PhotoPreferencePickerFlow {
                 self?.onCancel()
             }
         }
-        picker.onDone = { [weak self, weak picker] newItems in
+        picker.onDone = { [weak self, weak picker] pickedItems in
             guard let self else { return }
-            self.viewModel.append(newItems)
+            let changed = self.viewModel.differs(from: pickedItems)
+            if changed { self.viewModel.replaceItems(pickedItems) }
             picker?.dismiss(animated: true) {
-                guard !newItems.isEmpty else {
+                guard changed else {
                     self.onPickerFinished?()
                     return
                 }
