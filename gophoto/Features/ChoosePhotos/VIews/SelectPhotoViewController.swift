@@ -27,6 +27,7 @@ final class SelectPhotoViewController: UIViewController {
     private var panLastRange: ClosedRange<Int>?
     private var panHitLimit = false
     private let selectionHaptic = UISelectionFeedbackGenerator()
+    private var didSelectAlreadyAdded = false
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
         item.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
@@ -94,8 +95,31 @@ final class SelectPhotoViewController: UIViewController {
         ])
     }
 
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        guard !didSelectAlreadyAdded else { return }
+        didSelectAlreadyAdded = true
+        collectionView.layoutIfNeeded()
+        for index in viewModel.alreadyAddedIndexes() {
+            collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
+        }
+    }
+
     private func doneTapped() {
-        viewModel.done(selectedIndexes: (collectionView.indexPathsForSelectedItems ?? []).map(\.item))
+        let selected = (collectionView.indexPathsForSelectedItems ?? []).map(\.item)
+        guard selected.isEmpty else {
+            viewModel.done(selectedIndexes: selected)
+            return
+        }
+        let alert = UIAlertController(
+            title: "No photos selected",
+            message: "This preference won't have any photos. Select at least \(ChoosePhotosViewModel.minPhotos) photos to create it.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Keep Selecting", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Leave Anyway", style: .destructive) { [weak self] _ in
+            self?.viewModel.done(selectedIndexes: [])
+        })
+        present(alert, animated: true)
     }
 
     private func setLoading(_ on: Bool) {
@@ -172,7 +196,7 @@ final class SelectPhotoViewController: UIViewController {
         let selectedIDs = Set((collectionView.indexPathsForSelectedItems ?? []).map { viewModel.identifier(at: $0.item) })
         viewModel.reload()
         collectionView.reloadData()
-        for index in 0..<viewModel.count where selectedIDs.contains(viewModel.identifier(at: index)) {
+        for index in 0..<viewModel.count where selectedIDs.contains(viewModel.identifier(at: index)) || viewModel.isAlreadyAdded(at: index) {
             collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
         }
     }
@@ -228,6 +252,7 @@ final class SelectPhotoViewController: UIViewController {
             }
             collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
         } else {
+            guard viewModel.canRemoveExisting || !viewModel.isAlreadyAdded(at: item) else  { return }
             collectionView.deselectItem(at: indexPath, animated: false)
         }
     }
@@ -250,6 +275,10 @@ extension SelectPhotoViewController: UICollectionViewDataSource, UICollectionVie
 
     func collectionView(_ cv: UICollectionView, shouldSelectItemAt ip: IndexPath) -> Bool {
         viewModel.canSelect(currentCount: cv.indexPathsForSelectedItems?.count ?? 0)
+    }
+
+    func collectionView(_ cv: UICollectionView, shouldDeselectItemAt ip: IndexPath) -> Bool {
+        viewModel.canRemoveExisting || !viewModel.isAlreadyAdded(at: ip.item)
     }
 }
 
