@@ -174,16 +174,18 @@ struct PhotoSessionSetupView: View {
                     .foregroundStyle(GoPhotoDesign.primary)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.fixed(thumbnailWidth), spacing: 12), count: 3),
+                    spacing: 12
+                ) {
                     addPhotoTile(width: thumbnailWidth)
                     ForEach(selection.photos, id: \.id) { photo in
                         selectedPhoto(photo, width: thumbnailWidth)
                     }
                 }
-                .padding(.horizontal, 2)
+                .frame(maxWidth: .infinity)
             }
-            .frame(height: thumbnailWidth * 4 / 3)
 
             privacyNote
         }
