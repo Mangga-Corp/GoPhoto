@@ -1250,36 +1250,41 @@ final class CameraViewModel {
 
         // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
         let capturedData = photo.data
-        // Gallery thumbnail, made from the file while Photos is still saving it
-        let thumbnail = Self.makeThumbnail(of: capturedData)
+        let presetAtShot = presetID
         Task { [weak self] in
             guard let self else { return }
             let saveStart = Date()
             var originalID: String?
-            do {
-                if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
-                    await Self.storeThumbnail(thumbnail, for: assetID)   // before the grid shows it
-                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
-                    originalID = assetID
+            // Phased · Auto crop: only the crop is saved (Reynard, 9 Nov: no second photo). The full
+            // photo is saved only when no crop was made (nothing measurable yet, or the export failed).
+            var crop: (result: PhasedCrop.Result, assetID: String?)?
+            if let wanted = shot.phasedCrop {
+                crop = await self.savePhasedCrop(of: capturedData, crop: wanted.rect, roll: wanted.roll,
+                                                 floor: wanted.floor, presetID: presetAtShot)
+            }
+            if crop?.assetID == nil {
+                // Gallery thumbnail, made from the file while Photos is still saving it
+                let thumbnail = Self.makeThumbnail(of: capturedData)
+                do {
+                    if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
+                        await Self.storeThumbnail(thumbnail, for: assetID)   // before the grid shows it
+                        self.galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
+                        originalID = assetID
+                    }
+                } catch {
+                    self.errorMessage = error.localizedDescription
                 }
-            } catch {
-                self.errorMessage = error.localizedDescription
             }
             self.lastShotTiming = String(format: "shutter %.2fs · file %.2fs · save %.2fs",
                                          self.shutterSeconds, captureSeconds, Date().timeIntervalSince(saveStart))
-            // Phased · Auto crop: the crop the preview showed at the shutter, as its own photo.
-            var crop: PhasedCrop.Result?
-            if let wanted = shot.phasedCrop {
-                crop = await self.savePhasedCrop(of: capturedData, crop: wanted.rect, roll: wanted.roll, floor: wanted.floor)
-            }
-            if self.bokehEnabled { await self.saveBokehCopy(of: capturedData) }
-            self.logCapture(shot, data: capturedData, originalID: originalID, crop: crop,
+            if self.bokehEnabled { await self.saveBokehCopy(of: capturedData, presetID: presetAtShot) }
+            self.logCapture(shot, data: capturedData, originalID: originalID, crop: crop?.result,
                             seconds: Date().timeIntervalSince(shutterAt))
         }
     }
 
     /// Saves a second photo with the background blurred (half strength). No person found = no copy.
-    private func saveBokehCopy(of data: Data) async {
+    private func saveBokehCopy(of data: Data, presetID presetAtShot: UUID?) async {
         let start = Date()
         // Blur matched to the references (preset analysis v18); nil target = fallback strength.
         let target = analysis?.backgroundBlur
@@ -1295,7 +1300,7 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: blurred) {
                 await Self.storeThumbnail(thumbnail, for: assetID)
-                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
             }
             lastShotTiming = (lastShotTiming ?? "") + String(format: " · blur %.1fs (", Date().timeIntervalSince(start)) + result.note + ")"
         } catch {
@@ -1320,7 +1325,7 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
                 await Self.storeThumbnail(thumbnail, for: assetID)
-                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                galleryStore.addCaptured(assetID: assetID, presetID: presetID)
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {
@@ -1728,25 +1733,27 @@ extension CameraViewModel {
     /// starved the guide (no detections, no instruction) — log 16:59. appMode 1 keeps its priority.
     private var postCapturePriority: TaskPriority { experimentEnabled ? .utility : .userInitiated }
 
-    /// Saves the Auto crop as its own photo (the original is already saved).
-    func savePhasedCrop(of data: Data, crop: CGRect, roll: Double, floor: Double) async -> PhasedCrop.Result {
+    /// Saves the Auto crop as THE photo (no full-frame copy). Asset ID nil = not saved (no crop
+    /// made or the save failed): the caller then saves the full photo instead.
+    func savePhasedCrop(of data: Data, crop: CGRect, roll: Double, floor: Double,
+                        presetID presetAtShot: UUID?) async -> (result: PhasedCrop.Result, assetID: String?) {
         let result = await Task.detached(priority: postCapturePriority) {
             PhasedCrop.apply(imageData: data, crop: crop, rollDegrees: roll, floorMegapixels: floor)
         }.value
-        guard let cropped = result.data else { return result }
+        guard let cropped = result.data else { return (result, nil) }
         let thumbnail = Self.makeThumbnail(of: cropped)
         do {
             if let assetID = try await photoLibraryService.save(imageData: cropped) {
                 await Self.storeThumbnail(thumbnail, for: assetID)
-                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
                 var r = result
                 r.note += " · saved " + assetID
-                return r
+                return (r, assetID)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
-        return result
+        return (result, nil)
     }
 
     func logCapture(_ shot: CaptureContext, data: Data, originalID: String?, crop: PhasedCrop.Result?, seconds: Double) {
@@ -1757,6 +1764,7 @@ extension CameraViewModel {
         let size = crop?.sourceSize ?? Self.pixelSize(of: data)
         f["sourceSize"] = .string(String(format: "%.0f×%.0f", size.width, size.height))
         f.set("originalAsset", originalID)
+        f["saved"] = .string(originalID == nil && crop?.data != nil ? "crop only" : "full photo")
         if let crop {
             f["cropNote"] = .string(crop.note)
             if let out = crop.outputSize { f["outputSize"] = .string(String(format: "%.0f×%.0f", out.width, out.height)) }
