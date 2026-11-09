@@ -125,11 +125,7 @@ struct PhotoSessionSetupView: View {
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
 
-            Text("Choose how you'd like to create your photography preference.")
-                .font(GoPhotoDesign.body)
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            privacyNote
         }
         .frame(maxWidth: .infinity)
     }
@@ -144,22 +140,16 @@ struct PhotoSessionSetupView: View {
                 .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
-
-            privacyNote
-                .padding(.top, 8)
         }
     }
 
     private var privacyNote: some View {
         Label("Your photos stay on this iPhone. Vacato analyses them here and never uploads them.",
               systemImage: "lock.fill")
-            .font(GoPhotoDesign.secondaryBody)
-            .foregroundStyle(GoPhotoDesign.tagText)
+            .font(.footnote)
+            .foregroundStyle(GoPhotoDesign.secondaryText)
+            .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(GoPhotoDesign.tagBackground,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func selectedPhotos(thumbnailWidth: CGFloat) -> some View {
@@ -186,8 +176,6 @@ struct PhotoSessionSetupView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-
-            privacyNote
         }
         .frame(maxWidth: .infinity)
     }
