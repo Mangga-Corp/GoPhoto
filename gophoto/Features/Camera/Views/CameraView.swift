@@ -164,6 +164,7 @@ struct CameraView: View {
 
             cameraPreview
                 .reportOnboardingFrame(.preview, into: $onboardingFrames)
+                .layoutPriority(1)   // after the frame report: VStack only sees the outermost priority
 
             VStack(spacing: 10) {
                 if isDeveloper {
