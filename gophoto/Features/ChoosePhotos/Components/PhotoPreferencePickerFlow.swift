@@ -9,6 +9,8 @@ final class PhotoPreferencePickerFlow {
     private let onSaveAsync: (([PhotoItem], String, @escaping (String?) -> Void) -> Void)?
     private let onSaveSuccess: (() -> Void)?
     private var isSavingPreference = false
+    /// Editor mode: called after the picker closes with at least one photo added (no naming step).
+    var onPhotosAddedToExisting: (() -> Void)?
 
     init(
         presenter: UIViewController,
@@ -65,6 +67,8 @@ final class PhotoPreferencePickerFlow {
                 }
                 if self.viewModel.asksNameAfterPicking {
                     self.continueAfterSelection()
+                } else if let onPhotosAddedToExisting = self.onPhotosAddedToExisting {
+                    onPhotosAddedToExisting()
                 } else {
                     self.onPickerFinished?()
                 }

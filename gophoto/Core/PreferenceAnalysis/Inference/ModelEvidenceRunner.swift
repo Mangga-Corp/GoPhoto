@@ -48,9 +48,15 @@ actor DepthEvidenceModel {
     func estimate(_ image: CGImage) async throws -> DepthGrid {
         do {
             return try await run(image)
-        } catch SceneModelError.unexpectedOutput(let reason) where !isCPUOnly {
+        } catch where !isCPUOnly {
+            // Degenerate output, or the GPU refused the work (app in the background): retry on the CPU.
+            let reason = error.localizedDescription
+            var degenerate = false
+            if case SceneModelError.unexpectedOutput = error { degenerate = true }
             isCPUOnly = true
             model = nil
+            // A refused GPU is temporary: only a degenerate map keeps the model on the CPU.
+            defer { if !degenerate { isCPUOnly = false; model = nil } }
             do {
                 return try await run(image)
             } catch {

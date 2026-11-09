@@ -64,8 +64,8 @@ private struct AnalysisSessionContent: View {
         .navigationDestination(for: PhotoDetailRoute.self) { route in
             PhotoResultDetailView(session: session, photoID: route.photoID)
         }
-        .navigationDestination(for: ProfileRoute.self) { _ in
-            ProfileDetailView(session: session)
+        .navigationDestination(for: ProfileRoute.self) { route in
+            ProfileDetailView(session: session, filter: route.filter)
         }
     }
 }

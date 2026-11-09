@@ -5,18 +5,28 @@ import SwiftUI
 struct GuideDebugPanel: View {
     @Bindable var viewModel: CameraViewModel
     var onShowDetails: () -> Void
+    /// Opens the per-shot-size analysis (full / three-quarter / half / ...).
+    var onShowShots: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Picker("Guide mode", selection: $viewModel.guideMode) {
-                ForEach(GuideMode.visible) { mode in
-                    Text(mode.title).tag(mode)
+            // The guide picker moved to the camera screen (ExperimentBar, appMode 2).
+            HStack(spacing: 10) {
+                Text(viewModel.experiment.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.yellow)
+                if let url = viewModel.guideLog?.fileURL {
+                    ShareLink(item: url) {
+                        Label("Share log", systemImage: "square.and.arrow.up")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .tint(.yellow)
                 }
             }
-            .pickerStyle(.menu)
-            .tint(.yellow)
-            .font(.caption.weight(.semibold))
-            if !viewModel.guideMode.steps.isEmpty {
+            if viewModel.isPhased {
+                ForEach(viewModel.phasedDebugLines, id: \.self) { Text($0) }
+            }
+            if !viewModel.isPhased, !viewModel.guideMode.steps.isEmpty {
                 Toggle("Keep finished steps", isOn: $viewModel.latchSteps)
                     .font(.caption2.weight(.semibold))
                     .tint(.yellow)
@@ -25,6 +35,8 @@ struct GuideDebugPanel: View {
             Text(presetLine).fontWeight(.semibold)
             Text(angleLine)
             if let timing = viewModel.lastShotTiming { Text("Last shot: " + timing) }
+            Text(blurLine)
+            if let note = viewModel.lastBlurNote { Text("Last blur: " + note).lineLimit(3) }
             if let cut = cutLine { Text(cut) }
             Text(targetLine).fontWeight(.semibold).foregroundStyle(.yellow)
             Text(phoneLine)
@@ -53,9 +65,12 @@ struct GuideDebugPanel: View {
                 Text(stepsLine)
             }
             Text("Instruction: \(String(describing: viewModel.instruction))")
-            Button("Analysis details", action: onShowDetails)
-                .font(.caption2.weight(.semibold))
-                .padding(.top, 2)
+            HStack(spacing: 16) {
+                Button("Analysis details", action: onShowDetails)
+                Button("Per shot size", action: onShowShots)
+            }
+            .font(.caption2.weight(.semibold))
+            .padding(.top, 2)
         }
         .font(.caption2.monospacedDigit())
         .foregroundStyle(.white)
@@ -108,6 +123,16 @@ struct GuideDebugPanel: View {
                 if let n = analysis.eyeSidePhotoCount { why.append("\(n) photos") }
                 if let framing = analysis.shotSize ?? analysis.framing { why.append(framing) }
                 line += " (\(why.joined(separator: ", ")))"
+                if let anchor = analysis.anchorReference {
+                    var vote = "\(anchor) \(analysis.anchorAbove ?? 0)↑/\(analysis.anchorBelow ?? 0)↓"
+                    if let styles = analysis.anchorStyleCount, styles > 1 {
+                        vote += " · style \(analysis.anchorTargetPhotoCount ?? 0) of \(styles)"
+                    }
+                    if let eye = analysis.eyeElevation, let weighted = analysis.eyeElevationWeighted {
+                        vote += String(format: " · eyes med %+.1f° w %+.1f°", eye, weighted)
+                    }
+                    line += " [\(vote)]"
+                }
             }
             return line + " · tilt \(Self.tilt(pitchDown)) \(tolerance)"
         case .noGuidance:
@@ -162,10 +187,23 @@ struct GuideDebugPanel: View {
             + " · ISO \(rule.iso.lowerBound)–\(rule.iso.upperBound) (all info only)"
     }
 
+    /// Background blur the preset's references have (v18) and what Blur On will do with it.
+    private var blurLine: String {
+        let state = viewModel.bokehEnabled ? (viewModel.bokehUsesDepth ? "on · Apple depth" : "on · custom") : "off"
+        guard let ratio = viewModel.analysis?.backgroundBlur else {
+            return "Blur \(state) · references: not measured → 1/3 strength"
+        }
+        let n = viewModel.analysis?.backgroundBlurCount ?? 0
+        let look = ratio >= BokehProcessor.sharpReferenceRatio ? "sharp background → no copy"
+            : ratio >= 0.6 ? "light blur" : ratio >= 0.35 ? "medium blur" : "strong blur"
+        return String(format: "Blur %@ · references %.2f (%d photos) · %@", state, ratio, n, look)
+    }
+
     private var distanceLine: String {
         let e = viewModel.evaluation
         var line = "Distance from \(e.distanceSource)"
         if let r = e.sizeRatio { line += String(format: " · size ×%.2f", r) }
+        if let cut = e.cutGuard { line += " · \(cut)" }
         if let h = e.headAngle {
             line += String(format: " · head %.1f°", h)
             if let t = viewModel.analysis?.headAngle { line += String(format: " / %.1f°", t) }
@@ -180,7 +218,12 @@ struct GuideDebugPanel: View {
         let target = e.eyeElevationTarget.map(words) ?? "none"
         let capped = e.heightCapped ? " (capped to reach)" : ""
         let distance = e.distanceMeters.map { String(format: " · ~%.1f m", $0) } ?? ""
-        return "Camera vs eyes \(now) · target \(target)\(capped)\(distance)"
+        var faces = ""
+        if let f = e.heightFaces {
+            faces = String(format: " · faces %+.2f", f)
+            if let t = e.heightFacesTarget { faces += String(format: " / %+.2f (used)", t) }
+        }
+        return "Camera vs eyes \(now) · target \(target)\(capped)\(distance)\(faces)"
     }
 
     private var stepsLine: String {

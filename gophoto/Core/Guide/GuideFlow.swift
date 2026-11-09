@@ -149,6 +149,11 @@ nonisolated struct GuideLive: Sendable {
     /// Phone pitch of the frames `person` / `face` come from (a still-phone snapshot).
     /// Used for the camera height so eye position and pitch belong to the same moment.
     var measurePitch: Double? = nil
+    /// Reliable body joints inside the frame from the latest live pose (nil = no recent pose).
+    var visibleJoints: Set<BodyJoint>? = nil
+    /// Automatic zoom is changing (or about to change) the person's size: the distance step waits
+    /// for it instead of asking the photographer to walk (both would enlarge the person).
+    var zoomWillHandleSize = false
 }
 
 /// What the guide measured and decided in one frame (also shown in the debug panel).
@@ -182,6 +187,12 @@ nonisolated struct GuideEvaluation: Equatable, Sendable {
     var distanceMeters: Double?
     /// The preset's camera height was above what a hand can reach, so the target was lowered.
     var heightCapped = false
+    /// Camera height vs the eyes in face heights, now and the target (version 17; + = camera
+    /// above the eyes). Distance cannot change it, so it replaces the angle when the preset has it.
+    var heightFaces: Double?
+    var heightFacesTarget: Double?
+    /// Why the body cut overrode the size check (e.g. "feet in frame: 3/4 cuts above them").
+    var cutGuard: String?
 }
 
 /// What the step flow remembers between frames.
@@ -217,6 +228,10 @@ nonisolated enum GuideFlow {
     // Tolerances: enter / exit. A step that is OK uses the looser exit value so it does not flicker.
     static let sizeEnter = 0.15, sizeExit = 0.22
     static let heightEnter = 3.0, heightExit = 5.0
+    /// Camera height in face heights (version 17): ±0.4 face ≈ ±8 cm to become OK. The face error
+    /// is scaled to degrees (`heightFacesScale`) so the same enter / exit / break limits apply.
+    static let heightFacesEnter = 0.4
+    static var heightFacesScale: Double { heightEnter / heightFacesEnter }
     static let tiltEnter = 2.0, tiltExit = 4.0     // tight first, so the height step reads true
     static let positionEnter = 0.06, positionExit = 0.09
     static let straightEnter = 2.0, straightExit = 3.0
@@ -267,10 +282,17 @@ nonisolated enum GuideFlow {
             }
             let limit = progress.okSince[step] != nil ? exit : enter
             if abs(error) <= limit {
-                checks[step] = .ok
+                // A step counts as done only after it stayed inside the tolerance `latchDwell`
+                // seconds: a single good reading no longer moves the guide on (and back).
                 let since = progress.okSince[step] ?? now
                 progress.okSince[step] = since
-                if latch, now - since >= latchDwell { progress.latched.insert(step) }
+                if now - since >= latchDwell {
+                    checks[step] = .ok
+                    if latch { progress.latched.insert(step) }
+                } else {
+                    checks[step] = .pending
+                    wanted[step] = .keepSteady
+                }
             } else {
                 checks[step] = .pending
                 wanted[step] = error > 0 ? positive : negative
@@ -339,6 +361,28 @@ nonisolated enum GuideFlow {
                   positive: .moveFarther, negative: .moveCloser)
         }
 
+        // 1b. Body cut (version 17): the shot size says which joints the frame must leave out.
+        //     Real joints from the live pose, so it holds for any body proportions (children,
+        //     short stature) and size alone can no longer pass a full body as three-quarter.
+        if mode.steps.contains(.distance), let joints = live.visibleJoints,
+           let shot = analysis?.shotSize.flatMap(PresetAnalysis.ShotSize.init(rawValue:)),
+           let cut = cutGuard(shot: shot, joints: joints, bottomCut: liveBottom) {
+            result.cutGuard = cut.reason
+            result.distanceSource = "body cut"
+            checks[.distance] = .pending
+            wanted[.distance] = cut.instruction
+            progress.okSince[.distance] = nil
+            progress.latched.remove(.distance)
+        }
+
+        // 1c. Turns: while automatic zoom is fixing the size, the photographer waits. They are
+        //     asked to walk only when the zoom cannot help (at its limit, or held back).
+        if checks[.distance] == .pending, live.zoomWillHandleSize,
+           wanted[.distance] == .moveCloser || wanted[.distance] == .moveFarther {
+            wanted[.distance] = .waitForZoom
+            result.distanceSource += " · zoom first"
+        }
+
         // Rough distance (metres) from the head, else from an uncut body.
         if let head = result.headAngle, head > 0 {
             result.distanceMeters = faceHeightMeters / (2 * tan(head * .pi / 360))
@@ -372,12 +416,28 @@ nonisolated enum GuideFlow {
                 let focal = 0.5 / tan(vfov * .pi / 360)                 // frame-height units
                 let eyeY = Double(face.minY) + Double(face.height) * eyeFraction
                 let eyeAboveAxis = atan((0.5 - eyeY) / focal) * 180 / .pi
-                let elevation = (live.measurePitch ?? live.pitch) - eyeAboveAxis   // + = camera above the eyes
+                let pitchNow = live.measurePitch ?? live.pitch
+                let elevation = pitchNow - eyeAboveAxis   // + = camera above the eyes
                 result.eyeElevation = elevation
+                // Version 17: camera height in face heights. The horizon (camera height) sits
+                // `focal·tan(pitch)` above the frame centre; the eyes' distance below it, over the
+                // face height, does not change when the photographer walks closer or farther.
+                var error = elevation - targetElevation
+                if var targetFaces = analysis?.eyeOffsetFaces, face.height > 0.01 {
+                    if mode.capsHeight {
+                        let reach = maxLiftAboveEyes / faceHeightMeters
+                        if targetFaces > reach { targetFaces = reach; result.heightCapped = true }
+                    }
+                    let horizonY = 0.5 - focal * tan(pitchNow * .pi / 180)
+                    let faces = (eyeY - horizonY) / Double(face.height)
+                    result.heightFaces = faces
+                    result.heightFacesTarget = targetFaces
+                    error = (faces - targetFaces) * heightFacesScale
+                }
                 // When tilt is already done (mode C), say "keep the angle" so the photographer
                 // moves the phone up/down instead of tilting it again.
                 let tiltFirst = mode.tiltBeforeHeight
-                judge(.height, error: elevation - targetElevation, enter: heightEnter, exit: heightExit,
+                judge(.height, error: error, enter: heightEnter, exit: heightExit,
                       positive: tiltFirst ? .lowerPhoneKeepAngle : .lowerPhone,
                       negative: tiltFirst ? .raisePhoneKeepAngle : .raisePhone)
             } else {
@@ -498,5 +558,30 @@ nonisolated enum GuideFlow {
         result.instruction = mode.steps.first { checks[$0] == .pending }.flatMap { wanted[$0] } ?? .holdStill
         result.latched = progress.latched
         return (result, progress)
+    }
+
+    /// Where the frame must cut the body for `shot`, from the joints it shows (version 17).
+    /// Full body: the feet in. Three-quarter: hips in, feet out. Half body: knees out.
+    /// One-quarter: hips out. Nil = the cut fits (or the pose cannot tell).
+    static func cutGuard(shot: PresetAnalysis.ShotSize, joints: Set<BodyJoint>,
+                         bottomCut: Bool) -> (instruction: GuideInstruction, reason: String)? {
+        func any(_ list: [BodyJoint]) -> Bool { !joints.isDisjoint(with: list) }
+        let ankles = any([.leftAnkle, .rightAnkle]), knees = any([.leftKnee, .rightKnee])
+        let hips = any([.leftHip, .rightHip, .root])
+        switch shot {
+        case .full:
+            // The person-box rule already handles a cut body; nothing extra here.
+            return nil
+        case .threeQuarter:
+            if ankles { return (instruction: .moveCloser, reason: "feet in frame: three-quarter cuts above them") }
+            if !hips, bottomCut, any([.leftShoulder, .rightShoulder, .neck]) {
+                return (instruction: .moveFarther, reason: "hips out of frame: three-quarter keeps them")
+            }
+        case .half:
+            if ankles || knees { return (instruction: .moveCloser, reason: "knees in frame: half body cuts above them") }
+        case .quarter:
+            if hips || knees || ankles { return (instruction: .moveCloser, reason: "hips in frame: one-quarter cuts above them") }
+        }
+        return nil
     }
 }
