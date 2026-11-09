@@ -44,6 +44,8 @@ struct InstructionPill: View {
         case .raisePhoneKeepAngle: "Raise your arms"
         case .lowerPhoneKeepAngle: "Lower your arms"
         case .straighten:  "Straighten the phone"
+        case .waitForZoom: "Hold on, zooming"
+        case .keepSteady:  "Hold it there"
         case .holdStill:   "Capture it"
         }
     }
@@ -65,6 +67,8 @@ struct InstructionPill: View {
         case .raisePhoneKeepAngle: "arrow.up.to.line"
         case .lowerPhoneKeepAngle: "arrow.down.to.line"
         case .straighten:  "level"
+        case .waitForZoom: "plus.magnifyingglass"
+        case .keepSteady:  "hand.raised"
         case .holdStill:   "checkmark"
         }
     }

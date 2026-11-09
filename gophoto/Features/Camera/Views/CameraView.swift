@@ -7,6 +7,8 @@
 
 import SwiftUI
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct CameraView: View {
     /// Which camera to build. Change this number:
@@ -46,7 +48,12 @@ struct CameraView: View {
     /// Developer: the picked style. Testing: none.
     private var activePoseGuide: PoseGuideStyle { isDeveloper ? poseGuideStyle : .off }
     @State private var isShowingAnalysis = false
+    @State private var isShowingShotAnalysis = false
     @State private var isShowingAcknowledgements = false
+    @State private var isShowingExperimentInfo = false
+    @State private var isPickingReplayFile = false
+    @State private var isPickingReplayPhoto = false
+    @State private var replayPhotoItem: PhotosPickerItem?
     @State private var stepBanner: String?
     @Namespace private var galleryZoom
     /// Onboarding kamera: hanya sekali, saat pertama kali install. Teksnya: Onboarding/CameraOnboardingCopy.swift
@@ -95,6 +102,8 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await viewModel.recheckPermission() }
+            } else {
+                viewModel.replayAppInactive()
             }
         }
         .onDisappear { Task { await viewModel.stopCamera() } }
@@ -115,6 +124,30 @@ struct CameraView: View {
         .sheet(isPresented: $isShowingAnalysis) {
             AnalysisResultsScreen(presetID: viewModel.presetID, presetName: viewModel.presetName ?? "Preset")
         }
+        // Replay (appMode 2 testing): a video from Files or Photos, copied into the app.
+        .fileImporter(isPresented: $isPickingReplayFile,
+                      allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie]) { result in
+            guard case .success(let url) = result, let copied = try? ReplayLibrary.importFile(url) else { return }
+            Task { await viewModel.loadReplayVideo(copied) }
+        }
+        .photosPicker(isPresented: $isPickingReplayPhoto, selection: $replayPhotoItem, matching: .videos)
+        .onChange(of: replayPhotoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let movie = try? await item.loadTransferable(type: ReplayMovie.self) {
+                    await viewModel.loadReplayVideo(movie.url)
+                }
+                replayPhotoItem = nil
+            }
+        }
+        .sheet(isPresented: $isShowingExperimentInfo) {
+            ExperimentInfoSheet(selection: viewModel.experiment, depthSupport: viewModel.effectiveDepthSupport,
+                                photoMegapixels: viewModel.largestPhotoMegapixels)
+        }
+        .sheet(isPresented: $isShowingShotAnalysis) {
+            ShotAnalysisScreen(analysis: viewModel.presetAnalysis, photos: viewModel.presetPhotos,
+                               presetName: viewModel.presetName ?? "Preset", initial: viewModel.activeShot)
+        }
         .fullScreenCover(isPresented: $isShowingGallery) {
             // Its own view with no inputs: camera updates never rebuild the gallery
             GalleryScreen()
@@ -131,9 +164,18 @@ struct CameraView: View {
 
             cameraPreview
                 .reportOnboardingFrame(.preview, into: $onboardingFrames)
+                .layoutPriority(1)   // after the frame report: VStack only sees the outermost priority
 
             VStack(spacing: 10) {
+                if isDeveloper {
+                    ExperimentBar(selection: $viewModel.experiment, depthSupport: viewModel.effectiveDepthSupport) {
+                        isShowingExperimentInfo = true
+                    }
+                }
                 shotSizePicker
+                if viewModel.isReplay {
+                    replayControls
+                } else {
                 shutterButton
                     .reportOnboardingFrame(.shutter, into: $onboardingFrames)
                     .frame(maxWidth: .infinity)
@@ -142,6 +184,10 @@ struct CameraView: View {
                             .matchedTransitionSource(id: "gallery", in: galleryZoom)
                             .padding(.leading, 24)
                     }
+                    .overlay(alignment: .trailing) {
+                        if isDeveloper { blurToggle.padding(.trailing, 16) }
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
         }
@@ -151,9 +197,13 @@ struct CameraView: View {
             guard !isShowingGallery else { return }
             await viewModel.observeTilt()
         }
-        .task { await viewModel.observePerson() }
-        .task { await viewModel.observeEnvironment() }
-        .task { await viewModel.observeZoom() }
+        // Restarted whenever the frame source changes (camera ↔ replay video).
+        .task(id: viewModel.sourceID) { await viewModel.observePerson() }
+        .task(id: viewModel.sourceID) { await viewModel.observeEnvironment() }
+        .task(id: viewModel.sourceID) { await viewModel.observeZoom() }
+        .task(id: viewModel.sourceID) { await viewModel.observeDepth() }
+        .task(id: viewModel.sourceID) { await viewModel.observeReplayPreview() }
+        .task(id: viewModel.sourceID) { await viewModel.observeReplayEnd() }
         // A step just finished: tap + short banner so the change of task is obvious
         // (e.g. tilt is done, now move the phone up/down and keep the angle).
         .onChange(of: viewModel.evaluation.activeStep) { old, new in
@@ -187,16 +237,30 @@ struct CameraView: View {
 
     /// The live preview with every guide layer on top. Each layer is its own property so the
     /// compiler can type-check them one by one instead of one huge overlay chain.
+    @ViewBuilder private var previewBase: some View {
+        if viewModel.isReplay {
+            // The video, letterboxed; guide visuals sit on the video's own rectangle.
+            ReplayPreview(image: viewModel.replayImage, aspect: viewModel.replayInfo?.aspect ?? 0.5625) { guideVisuals }
+        } else {
+            CameraPreviewView(session: viewModel.session)
+                .overlay { guideVisuals }
+        }
+    }
+
     private var cameraPreview: some View {
-        CameraPreviewView(session: viewModel.session)
-            .overlay { guideVisuals }
-            .overlay { gridOverlay }
+        previewBase
+            .overlay { if !viewModel.isReplay { gridOverlay } }
+            .overlay(alignment: .bottom) {
+                if viewModel.isReplay {
+                    ReplayBadges(simulation: viewModel.replayIsSimulation, maskNote: viewModel.replayMaskNote)
+                }
+            }
             .overlay { HorizonLevelView(state: viewModel.horizon) }
             .overlay {
                 GuidanceMotionOverlay(
-                    instruction: viewModel.instruction,
-                    pitchError: viewModel.pitchError,
-                    isEnabled: !isShowingGallery && !isShowingAnalysis && !showsCameraOnboarding
+                    instruction: viewModel.isPhased ? viewModel.phasedMotion : viewModel.instruction,
+                    pitchError: viewModel.isPhased ? viewModel.phasedPitchError : viewModel.pitchError,
+                    isEnabled: !isShowingGallery && !isShowingAnalysis && !isShowingShotAnalysis && !showsCameraOnboarding
                 )
             }
             .overlay(alignment: .bottom) { bottomStepCard }
@@ -227,7 +291,15 @@ struct CameraView: View {
 
     /// Step modes (B, C): rings only for left/right and the final "ready" state.
     @ViewBuilder private var guideVisuals: some View {
-        if viewModel.guideMode.crops {
+        if viewModel.isPhased {
+            // Phased: person choice (dim + tap), and the Auto crop's final frame = the saved crop.
+            PhasedPreviewLayer(dimMask: viewModel.selectionDimMask,
+                               isChoosing: viewModel.phasedInstruction == .tapPerson,
+                               cropWindow: nil,   // the crop is not shown: the green pill says ready
+                               isReady: viewModel.phased.ready) { point in
+                viewModel.tapPreview(at: point)
+            }
+        } else if viewModel.guideMode.crops {
             if showsDebug {
                 // Debug: the crop window itself (outside dimmed, green when ready).
                 CropPreviewOverlay(window: viewModel.evaluation.cropWindow,
@@ -243,11 +315,24 @@ struct CameraView: View {
 
     /// Ratio mask + thirds grid, under the guide visuals.
     private var gridOverlay: some View {
-        CameraGridOverlay(aspect: viewModel.captureAspect, showsGrid: isDeveloper ? showsGrid : true)
+        // Phased shows the whole 4:3 output (no ratio crop: No crop must not crop by ratio).
+        CameraGridOverlay(aspect: viewModel.isPhased ? .fourThree : viewModel.captureAspect,
+                          showsGrid: isDeveloper ? showsGrid : true)
     }
 
     @ViewBuilder private var bottomStepCard: some View {
-        if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
+        if viewModel.isPhased {
+            // Phased: the same distance bar while the distance phase runs (green zone = enter band).
+            if viewModel.phased.phase == .distance, let lo = viewModel.phased.sizeEnterLow,
+               let hi = viewModel.phased.sizeEnterHigh {
+                let centre = (lo + hi) / 2
+                DistanceBar(sizeRatio: viewModel.phased.sizeRatio.map { $0 / centre },
+                            tolerance: (hi - lo) / 2 / centre,
+                            isOK: viewModel.phased.sizeRatio.map { $0 >= lo && $0 <= hi } ?? false)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 12)
+            }
+        } else if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
             HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
                 .padding(.bottom, 12)
         } else if activeStep == .distance {
@@ -271,7 +356,17 @@ struct CameraView: View {
     }
 
     @ViewBuilder private var sideBar: some View {
-        if activeStep == .height, !viewModel.evaluation.heightUsesRings {
+        if viewModel.isReplay {
+            EmptyView()     // height / tilt bars need sensors a video does not have
+        } else if viewModel.isPhased {
+            // Phased: the same tilt bar while the tilt phase runs (green zone = tolerance).
+            if viewModel.phased.phase == .tilt {
+                GuideVerticalBar(value: viewModel.phased.tiltNeed.map { max(-1, min(1, -$0 * Self.phasedTiltZone)) },
+                                 zone: Self.phasedTiltZone, symbol: "scope", caption: "Tilt",
+                                 isOK: viewModel.phased.tiltNeed.map { abs($0) <= 1 } ?? false)
+                    .padding(.trailing, 12)
+            }
+        } else if activeStep == .height, !viewModel.evaluation.heightUsesRings {
             // Phone icon above the zone = camera too high.
             GuideVerticalBar(value: viewModel.barHeightError.map { $0 / Self.barRange },
                              zone: GuideFlow.heightEnter / Self.barRange,
@@ -288,9 +383,28 @@ struct CameraView: View {
         }
     }
 
-    private var instructionPill: some View {
-        InstructionPill(instruction: viewModel.instruction)
+    @ViewBuilder private var instructionPill: some View {
+        if viewModel.isPhased {
+            VStack(spacing: 6) {
+                PhasedInstructionPill(instruction: viewModel.phasedInstruction)
+                    .animation(.snappy, value: viewModel.phasedInstruction)
+                if let flash = viewModel.phasedFlash {
+                    // A phase just finished.
+                    Label(flash, systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Color.green.opacity(0.9), in: Capsule())
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
             .padding(.top, 12)
+            .animation(.snappy, value: viewModel.phasedFlash)
+            .sensoryFeedback(.success, trigger: viewModel.phasedFlash) { _, new in new != nil }
+        } else {
+            InstructionPill(instruction: viewModel.instruction)
+                .padding(.top, 12)
+        }
     }
 
     @ViewBuilder private var fovStatus: some View {
@@ -319,7 +433,9 @@ struct CameraView: View {
 
     @ViewBuilder private var debugPanel: some View {
         if showsDebug {
-            GuideDebugPanel(viewModel: viewModel) { isShowingAnalysis = true }
+            GuideDebugPanel(viewModel: viewModel,
+                            onShowDetails: { isShowingAnalysis = true },
+                            onShowShots: { isShowingShotAnalysis = true })
                 .padding(8)
         }
     }
@@ -334,6 +450,8 @@ struct CameraView: View {
 
     /// Degrees at the ends of the height and tilt bars.
     private static let barRange = 15.0
+    /// Phased tilt bar: the green zone's half height (the tolerance edge is ±1 in `tiltNeed`).
+    private static let phasedTiltZone = 0.25
 
     private var activeStep: GuideStep? {
         viewModel.guideMode.steps.isEmpty ? nil : viewModel.evaluation.activeStep
@@ -381,6 +499,15 @@ struct CameraView: View {
                 }
                 .accessibilityLabel(showsGrid ? "Hide grid" : "Show grid")
                 Button {
+                    Task { viewModel.isReplay ? await viewModel.exitReplay() : await viewModel.enterReplay() }
+                } label: {
+                    Image(systemName: viewModel.isReplay ? "film.fill" : "film")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(viewModel.isReplay ? .yellow : .white)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(viewModel.isReplay ? "Source: replay video. Back to live camera" : "Source: live camera. Switch to replay video")
+                Button {
                     viewModel.captureAspect = viewModel.captureAspect.next
                 } label: {
                     Text(viewModel.captureAspect.title)
@@ -407,6 +534,36 @@ struct CameraView: View {
         .frame(minHeight: 44)
     }
 
+    /// Developer mode only (temporary): background blur Off / On for the next photos.
+    private var blurToggle: some View {
+        VStack(spacing: 4) {
+            Text(viewModel.bokehEnabled ? (viewModel.bokehUsesDepth ? "Blur · Apple" : "Blur · custom") : "Blur")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            HStack(spacing: 0) {
+                blurOption("Off", on: false)
+                blurOption("On", on: true)
+            }
+            .background(Color.black.opacity(0.35), in: Capsule())
+        }
+    }
+
+    private func blurOption(_ title: String, on: Bool) -> some View {
+        let selected = viewModel.bokehEnabled == on
+        return Button {
+            viewModel.bokehEnabled = on
+        } label: {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(selected ? .black : .white)
+                .padding(.horizontal, 10)
+                .frame(minWidth: 44, minHeight: 44)
+                .background(selected ? Color.yellow : Color.clear, in: Capsule())
+        }
+        .accessibilityLabel("Background blur \(title)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
     @ViewBuilder private var closeButton: some View {
         if let onClose {
             Button {
@@ -431,11 +588,33 @@ struct CameraView: View {
     /// preference's shot sizes while they stand. Hidden without a preset.
     @ViewBuilder private var shotSizePicker: some View {
         let options = viewModel.shotOptions
+        if let note = viewModel.phasedShotNote {
+            Text(note).font(.caption2).foregroundStyle(.white.opacity(0.7))
+        }
         if !options.isEmpty {
             ShotSizePicker(options: options, selection: viewModel.activeShot,
                            posture: viewModel.posture) { viewModel.selectShot($0) }
                 .sensoryFeedback(.selection, trigger: viewModel.activeShot)
         }
+    }
+
+    /// Replay: video, play / pause / restart, "Save test frame", scenario, export, back to live.
+    private var replayControls: some View {
+        ReplayControls(info: viewModel.replayInfo, time: viewModel.replayTime,
+                       playing: viewModel.replayPlaying, ended: viewModel.replayEnded,
+                       scenario: viewModel.replayScenario, exports: viewModel.replayExports,
+                       message: viewModel.replayMessage,
+                       batchStatus: viewModel.replayBatchStatus,
+                       onPickFiles: { isPickingReplayFile = true },
+                       onPickPhotos: { isPickingReplayPhoto = true },
+                       onPlayPause: { viewModel.replayPlayPause() },
+                       onRestart: { viewModel.restartReplay(reason: "restart") },
+                       onSaveFrame: { viewModel.saveTestFrame() },
+                       onEndRun: { viewModel.finishReplayRun() },
+                       onScenario: { viewModel.replayScenario = $0 },
+                       onLive: { Task { await viewModel.exitReplay() } },
+                       onRunAll: { viewModel.startReplayBatch(scenarios: $0) },
+                       onStopBatch: { viewModel.cancelReplayBatch("stopped by you") })
     }
 
     private var shutterButton: some View {

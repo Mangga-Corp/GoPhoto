@@ -79,6 +79,10 @@ nonisolated struct CameraAngleMethodDetail: Sendable, Equatable {
     var error: String?
     /// The camera-vs-eyes angle used the EXIF focal length instead of GeoCalib's estimate.
     var focalFromExif: Bool? = nil
+    /// GeoCalib's raw calibration and the photo's EXIF 35 mm focal length (version 16): the
+    /// knee / chest anchor angles (`AnchorSide`) are measured from them.
+    var calibration: GeoCalibResult? = nil
+    var focalLength35mm: Double? = nil
 
     var totalMs: Double? {
         guard let p = predictMs, let o = optimizeMs else { return nil }
@@ -215,6 +219,8 @@ nonisolated enum GeoCalibAngleInterpreter {
             pitchDown: -r.pitch, pitchUncertainty: r.pitchUncertainty,
             roll: r.roll, rollUncertainty: r.rollUncertainty, focalPx: r.focalPx, vfov: r.vfov,
             preprocessMs: run.preprocessMs, predictMs: run.predictMs, optimizeMs: run.optimizeMs)
+        detail.calibration = r
+        detail.focalLength35mm = focalLength35mm
 
         let name = "\(method.title) (\(method == .geoCalibHeavy ? "fp32" : "fp16"))"
         let pitchUsable = r.pitchUncertainty.isFinite && r.pitchUncertainty <= usablePitchUncertainty

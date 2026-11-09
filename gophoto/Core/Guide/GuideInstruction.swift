@@ -16,6 +16,8 @@ nonisolated enum GuideInstruction: Equatable, Sendable, CaseIterable {
     case setPhoneHeight               // hold the phone at a body landmark, then tap Done (mode E)
     case raisePhoneKeepAngle, lowerPhoneKeepAngle   // camera height after the tilt is done (mode C)
     case straighten                   // framing OK, phone crooked
+    case waitForZoom                  // the camera is zooming to fix the size: don't walk yet
+    case keepSteady                   // inside the tolerance: hold it a moment so it counts
     case holdStill                    // everything OK → take the photo
 
     // Phone tilt allowed for "Hold still": +- 2degree to become OK, +-3degree before it breaks
