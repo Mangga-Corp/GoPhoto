@@ -130,9 +130,9 @@ struct EnvironmentProfileSection: View {
                 Text(t.label).font(.subheadline.weight(.medium))
                 Text(t.pattern.label)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(t.pattern == .recurring ? Color.green : Color.gray)
+                    .foregroundStyle(t.pattern == .recurring ? GoPhotoDesign.success : GoPhotoDesign.secondaryText)
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background((t.pattern == .recurring ? Color.green : Color.gray).opacity(0.14), in: Capsule())
+                    .background((t.pattern == .recurring ? GoPhotoDesign.success : GoPhotoDesign.secondaryText).opacity(0.14), in: Capsule())
                 Spacer(minLength: 8)
                 Text("\(t.presentCount) of \(t.eligiblePhotoCount)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }

@@ -21,7 +21,17 @@ struct ShotSizePicker: View {
     private static var stride: CGFloat { itemWidth + spacing }
 
     /// The option centred by the scroll, committed when the scroll comes to rest.
-    @State private var centeredIndex = 0
+    /// Nil until the first scroll report (then `selection` is used).
+    @State private var centeredIndex: Int?
+    /// Slides the white highlight from card to card instead of jumping.
+    @Namespace private var highlight
+
+    /// The card shown as selected: follows the swipe live; the shot size itself is still only
+    /// committed when the scroll rests (so the guide isn't rebuilt on every card it passes).
+    private var highlightedShot: PresetAnalysis.ShotSize? {
+        if let centeredIndex, options.indices.contains(centeredIndex) { return options[centeredIndex] }
+        return selection
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -36,6 +46,7 @@ struct ShotSizePicker: View {
                                     .id(shot)
                             }
                         }
+                        .animation(.smooth(duration: 0.25), value: highlightedShot)
                         .scrollTargetLayout()
                     }
                     .contentMargins(.horizontal, margin, for: .scrollContent)
@@ -46,7 +57,7 @@ struct ShotSizePicker: View {
                         centeredIndex = index
                     }
                     .onScrollPhaseChange { _, phase in
-                        guard phase == .idle, options.indices.contains(centeredIndex) else { return }
+                        guard phase == .idle, let centeredIndex, options.indices.contains(centeredIndex) else { return }
                         let shot = options[centeredIndex]
                         if shot != selection { onSelect(shot) }
                     }
@@ -63,7 +74,7 @@ struct ShotSizePicker: View {
     }
 
     private func item(_ shot: PresetAnalysis.ShotSize) -> some View {
-        let isSelected = shot == selection
+        let isSelected = shot == highlightedShot
         return Button {
             onSelect(shot)
         } label: {
@@ -74,7 +85,7 @@ struct ShotSizePicker: View {
                 .padding(.horizontal, 12)
                 .frame(height: 32)
                 .background {
-                    if isSelected { Capsule().fill(Color.white) }
+                    if isSelected { Capsule().fill(Color.white).matchedGeometryEffect(id: "shotHighlight", in: highlight) }
                 }
                 .frame(width: Self.itemWidth)
                 .contentShape(Rectangle())
@@ -95,9 +106,11 @@ struct ShotSizePicker: View {
     }
 
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard let selection, options.contains(selection) else { return }
+        guard let selection, let index = options.firstIndex(of: selection) else { return }
         if animated {
-            withAnimation(.snappy) { proxy.scrollTo(selection, anchor: .center) }
+            // Already centred by the user's own swipe: no second scroll fighting the snap.
+            if index == centeredIndex { return }
+            withAnimation(.smooth(duration: 0.35)) { proxy.scrollTo(selection, anchor: .center) }
         } else {
             proxy.scrollTo(selection, anchor: .center)
         }

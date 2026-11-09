@@ -87,9 +87,9 @@ private struct NeutralBadge: View {
     var body: some View {
         Label(label, systemImage: symbol)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(Color.blue)
+            .foregroundStyle(GoPhotoDesign.primary)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Color.blue.opacity(0.12), in: Capsule())
+            .background(GoPhotoDesign.primary.opacity(0.12), in: Capsule())
             .accessibilityElement(children: .combine)
     }
 }
@@ -241,8 +241,8 @@ private struct SegmentationCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(r.family.displayName).font(.subheadline.weight(isSelected ? .bold : .medium))
-                        if carried { SmallTag(text: "Carried or worn", color: .gray) }
-                        if aside != nil { SmallTag(text: "Set aside", color: .orange) }
+                        if carried { SmallTag(text: "Carried or worn", color: GoPhotoDesign.secondaryText) }
+                        if aside != nil { SmallTag(text: "Set aside", color: GoPhotoDesign.warning) }
                         Spacer(minLength: 8)
                         Text(pct(r.areaFraction, 1)).font(.subheadline.monospacedDigit())
                     }
@@ -250,7 +250,7 @@ private struct SegmentationCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                     if let aside {
                         Text("Not used for rankings, scene or preferences. " + aside)
-                            .font(.caption).foregroundStyle(.orange).multilineTextAlignment(.leading)
+                            .font(.caption).foregroundStyle(GoPhotoDesign.warning).multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -426,10 +426,10 @@ private struct SceneContextCard: View {
 
     private func chips(_ s: SceneContextResult) -> some View {
         FlowLayout(spacing: 8) {
-            SmallTag(text: "Setting: \(s.setting.displayName)", color: s.setting == .undetermined ? .gray : .blue)
-            SmallTag(text: s.character.displayName, color: s.character == .undetermined ? .gray : .teal)
+            SmallTag(text: "Setting: \(s.setting.displayName)", color: s.setting == .undetermined ? GoPhotoDesign.secondaryText : GoPhotoDesign.primary)
+            SmallTag(text: s.character.displayName, color: s.character == .undetermined ? GoPhotoDesign.secondaryText : GoPhotoDesign.primary)
             ForEach(s.secondary) { c in
-                SmallTag(text: "Also: \(c.category.displayName)", color: .purple)
+                SmallTag(text: "Also: \(c.category.displayName)", color: GoPhotoDesign.primary)
             }
         }
     }
@@ -543,7 +543,7 @@ private struct CompositionCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(d.statement).font(.subheadline)
-                        if d.isBorderline { SmallTag(text: "Borderline", color: .orange) }
+                        if d.isBorderline { SmallTag(text: "Borderline", color: GoPhotoDesign.warning) }
                     }
                     ForEach(d.basis, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
                 }

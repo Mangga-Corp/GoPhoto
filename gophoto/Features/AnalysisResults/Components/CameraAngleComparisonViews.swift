@@ -61,14 +61,14 @@ struct CameraAngleComparisonCard: View {
                 if method == selected {
                     Text("in use").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(GoPhotoDesign.purple.opacity(0.15), in: Capsule())
+                        .background(GoPhotoDesign.primary.opacity(0.15), in: Capsule())
                 }
                 Spacer()
                 Text(result?.category.label ?? "—").font(.footnote.weight(.semibold))
                     .foregroundStyle(result?.assessment.isDetermined == true ? Color.primary : Color.secondary)
             }
             if let error = d?.error {
-                Text(error).font(.caption).foregroundStyle(.orange)
+                Text(error).font(.caption).foregroundStyle(GoPhotoDesign.warning)
             } else if !lines.isEmpty {
                 Text(lines.joined(separator: " · ")).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }

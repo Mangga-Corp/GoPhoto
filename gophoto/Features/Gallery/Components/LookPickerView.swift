@@ -57,11 +57,11 @@ struct LookPickerView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? GoPhotoDesign.purple : .clear, lineWidth: 2)
+                        .stroke(isSelected ? GoPhotoDesign.primary : .clear, lineWidth: 2)
                 }
                 Text(title)
                     .font(.caption2)
-                    .foregroundStyle(isSelected ? GoPhotoDesign.purple : .secondary)
+                    .foregroundStyle(isSelected ? GoPhotoDesign.primary : .secondary)
             }
         }
         .buttonStyle(.plain)

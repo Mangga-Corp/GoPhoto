@@ -784,6 +784,7 @@ final class CameraViewModel {
 
         // Guide rectangles and aspect overlays are live composition aids, not crop instructions.
         let capturedData = photo.data
+        let presetAtShot = presetID
         // Gallery thumbnail, made from the file while Photos is still saving it
         let thumbnail = Self.makeThumbnail(of: capturedData)
         Task { [weak self] in
@@ -792,7 +793,7 @@ final class CameraViewModel {
             do {
                 if let assetID = try await self.photoLibraryService.save(imageData: capturedData) {
                     await Self.storeThumbnail(thumbnail, for: assetID)   // before the grid shows it
-                    self.galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                    self.galleryStore.addCaptured(assetID: assetID, presetID: presetAtShot)
                 }
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -819,7 +820,7 @@ final class CameraViewModel {
         do {
             if let assetID = try await photoLibraryService.save(imageData: data) {
                 await Self.storeThumbnail(thumbnail, for: assetID)
-                galleryStore.addCaptured(assetID: assetID, presetID: nil)
+                galleryStore.addCaptured(assetID: assetID, presetID: presetID)
             }
             if self.review?.id == review.id { self.review = nil }
         } catch {

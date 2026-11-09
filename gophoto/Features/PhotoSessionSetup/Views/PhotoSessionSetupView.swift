@@ -7,6 +7,8 @@ struct PhotoSessionSetupView: View {
     @State private var isPresentingNamePrompt = false
     @State private var isShowingCustomPreference = false
     @State private var updateError: String?
+    @State private var isConfirmingLeave = false
+    @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
     let onCreatePreference: ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void
@@ -56,18 +58,38 @@ struct PhotoSessionSetupView: View {
             }
             .padding(.horizontal, GoPhotoDesign.sessionMargin)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(GoPhotoDesign.sessionBackground)
+            .background(GoPhotoDesign.background)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             actions
         }
         .toolbar(showsBackButton ? .visible : .hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(showsBackButton && hasUnsavedPhotos)
+        .toolbar {
+            if showsBackButton && hasUnsavedPhotos {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isConfirmingLeave = true
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel("Back")
+                }
+            }
+        }
+        .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
+            Button("Leave", role: .destructive) { dismiss() }
+            Button("Stay", role: .cancel) { }
+        } message: {
+            Text("You have unfinished changes. If you leave now, your selected photos won't be saved.")
+        }
         .navigationDestination(isPresented: $isShowingCustomPreference) {
-            CustomPreferenceBuilderPlaceholderView()
+            DefaultPreferenceSelectionView()
         }
         .onAppear(perform: reloadSavedPreference)
         .preferredColorScheme(.light)
-        .tint(GoPhotoDesign.sessionAccent)
+        .tint(GoPhotoDesign.primary)
         .fullScreenCover(isPresented: $isPresentingPicker) {
             PhotoSessionPhotoPicker(
                 initialPhotos: selection.photos,
@@ -99,12 +121,12 @@ struct PhotoSessionSetupView: View {
     private var header: some View {
         VStack(spacing: 10) {
             Text("Photo Session Setup")
-                .font(.system(size: 30, weight: .bold))
+                .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
 
             Text("Choose how you'd like to create your photography preference.")
-                .font(.system(size: 16, weight: .regular))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -115,30 +137,46 @@ struct PhotoSessionSetupView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Text("No photos yet")
-                .font(.system(size: 23, weight: .semibold))
+                .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
             Text("Add your favorite photos to get started.")
-                .font(.system(size: 17, weight: .regular))
+                .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
+
+            privacyNote
+                .padding(.top, 8)
         }
+    }
+
+    private var privacyNote: some View {
+        Label("Your photos stay on this iPhone. Vacato analyses them here and never uploads them.",
+              systemImage: "lock.fill")
+            .font(GoPhotoDesign.secondaryBody)
+            .foregroundStyle(GoPhotoDesign.tagText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(GoPhotoDesign.tagBackground,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func selectedPhotos(thumbnailWidth: CGFloat) -> some View {
         VStack(spacing: 24) {
             Text("\(selection.photos.count) photos selected")
-                .font(.system(size: 17, weight: .medium))
+                .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
             if selection.hasSavedPreference {
                 Text("Preference saved")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
+                    .font(GoPhotoDesign.cardTitle)
+                    .foregroundStyle(GoPhotoDesign.primary)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    addPhotoTile(width: thumbnailWidth)
                     ForEach(selection.photos, id: \.id) { photo in
                         selectedPhoto(photo, width: thumbnailWidth)
                     }
@@ -146,6 +184,8 @@ struct PhotoSessionSetupView: View {
                 .padding(.horizontal, 2)
             }
             .frame(height: thumbnailWidth * 4 / 3)
+
+            privacyNote
         }
         .frame(maxWidth: .infinity)
     }
@@ -175,6 +215,35 @@ struct PhotoSessionSetupView: View {
             .accessibilityLabel("Selected photo")
     }
 
+    private func addPhotoTile(width: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button(action: openPicker) {
+            shape
+                .fill(GoPhotoDesign.primarySubtle)
+                .overlay {
+                    shape.strokeBorder(GoPhotoDesign.primaryBorder, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                }
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(GoPhotoDesign.primary)
+                }
+                .frame(width: width, height: width * 4 / 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(isAddingDisabled)
+        .opacity(isAddingDisabled ? 0.4 : 1)
+        .accessibilityLabel("Add Photos")
+    }
+
+    private var isAddingDisabled: Bool {
+        selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
+    }
+
+    private var hasUnsavedPhotos: Bool {
+        !selection.photos.isEmpty && !selection.hasSavedPreference
+    }
+
     private var actions: some View {
         VStack(spacing: 11) {
             if selection.hasSavedPreference {
@@ -183,48 +252,26 @@ struct PhotoSessionSetupView: View {
                     isEnabled: selection.canStartAnalyzing && !selection.isStartingAnalysis,
                     action: startAnalyzing
                 )
-
-                Button("Add New Photos", action: openPicker)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 40)
-                    .disabled(selection.isSavingPhotos || selection.isStartingAnalysis
-                        || !selection.isPersistedPreferenceLoaded)
             } else if selection.photos.isEmpty {
-                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus", action: openPicker)
+                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
 
                 Button("Create a Custom Preference") {
                     isShowingCustomPreference = true
                 }
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(GoPhotoDesign.sessionAccent)
-                .buttonStyle(.plain)
-                .frame(minHeight: 40)
+                .buttonStyle(.goPhotoText)
             } else {
                 SessionPrimaryButton(
                     title: "Continue",
                     isEnabled: selection.canContinue,
                     action: { isPresentingNamePrompt = true }
                 )
-
-                Button("Add More Photos", action: openPicker)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(GoPhotoDesign.sessionAccent)
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 40)
             }
-
-            Label("Private on your iPhone.", systemImage: "lock.fill")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-                .padding(.top, 4)
         }
         .padding(.horizontal, GoPhotoDesign.sessionMargin)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
-        .background(GoPhotoDesign.sessionBackground.ignoresSafeArea(edges: .bottom))
+        .background(GoPhotoDesign.background.ignoresSafeArea(edges: .bottom))
         .alert("Couldn't update saved photos", isPresented: Binding(
             get: { updateError != nil },
             set: { if !$0 { updateError = nil } }
@@ -356,25 +403,5 @@ final class PhotoSessionSetupSelection {
             }
             photos.append(photo)
         }
-    }
-}
-
-private struct CustomPreferenceBuilderPlaceholderView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Custom Preference Builder")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(GoPhotoDesign.primaryText)
-
-            Text("This builder is a placeholder for a future phase.")
-                .font(.body)
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .padding(GoPhotoDesign.sessionMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GoPhotoDesign.sessionBackground)
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

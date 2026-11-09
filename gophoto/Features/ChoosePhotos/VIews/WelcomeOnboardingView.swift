@@ -15,7 +15,7 @@ struct WelcomeOnboardingView: View {
                     Spacer(minLength: 18)
 
                     Text("Start with your best photos")
-                        .font(GoPhotoDesign.headline)
+                        .font(GoPhotoDesign.pageTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -29,18 +29,8 @@ struct WelcomeOnboardingView: View {
 
                     Spacer(minLength: 28)
 
-                    Button(action: onContinue) {
-                        Text("CHOOSE PHOTOS")
-                            .font(GoPhotoDesign.primaryButton)
-                            .tracking(1.2)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: GoPhotoDesign.buttonHeight)
-                            .background(GoPhotoDesign.purple)
-                            .clipShape(RoundedRectangle(cornerRadius: GoPhotoDesign.buttonCornerRadius, style: .continuous))
-                            .shadow(color: .black.opacity(0.14), radius: 14, x: 0, y: 7)
-                    }
-                    .buttonStyle(.plain)
+                    Button("Choose Photos", action: onContinue)
+                        .buttonStyle(.goPhotoPrimary)
                     .accessibilityHint("Continue to choose reference photos")
                     .padding(.bottom, 14)
                 }

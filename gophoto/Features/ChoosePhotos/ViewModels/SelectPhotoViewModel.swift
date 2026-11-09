@@ -16,7 +16,7 @@ final class SelectPhotoViewModel {
     private let service: ChoosePhotosService
     private let remaining: Int
     private let limit: Int
-    private let assets: PHFetchResult<PHAsset>
+    private var assets: PHFetchResult<PHAsset>
 
     init(service: ChoosePhotosService, remaining: Int, limit: Int) {
         self.service = service
@@ -26,6 +26,12 @@ final class SelectPhotoViewModel {
     }
 
     var count: Int { assets.count }
+
+    var isLimitedAccess: Bool { service.access == .limited }
+    
+    func reload() {
+        assets = service.fetchAssets()
+    }
 
     func identifier(at index: Int) -> String { assets.object(at: index).localIdentifier }
 
@@ -42,6 +48,8 @@ final class SelectPhotoViewModel {
         }
         return true
     }
+
+    func hasRoom(currentCount: Int) -> Bool { currentCount < remaining }
 
     func done(selectedIndexes: [Int]) {
         let picked = selectedIndexes.sorted().map { assets.object(at: $0) }
