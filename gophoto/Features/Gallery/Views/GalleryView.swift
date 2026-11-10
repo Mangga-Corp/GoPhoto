@@ -64,6 +64,13 @@ struct GalleryView: View {
     @State private var currentTab: GalleryTab = .library
     @State private var isSearchActive = false
     @State private var searchText = ""
+    @FocusState private var isSearchFieldFocused: Bool
+
+    // Search History State (UserDefaults)
+    @State private var recentSearches: [String] = {
+        let saved = UserDefaults.standard.stringArray(forKey: "gallery_recent_searches") ?? []
+        return saved.filter { $0 != "Portraits" && $0 != "Recent Photos" }
+    }()
 
     // Collections Tab Options (Layout & Collapse)
     @State private var collectionLayout: CollectionLayout = .cards
@@ -92,28 +99,33 @@ struct GalleryView: View {
             Color(GoPhotoDesign.background)
                 .ignoresSafeArea()
 
-            // Konten Utama (Grid Foto edge-to-edge / Collections / Empty State)
-            mainContent
+            if isSearchActive {
+                searchOverlayView
+                    .transition(.opacity)
+            } else {
+                // Konten Utama (Grid Foto edge-to-edge / Collections / Empty State)
+                mainContent
 
-            // Gradient halus di bagian atas agar teks judul selalu kontras & terbaca
-            topGradientOverlay
-                .allowsHitTesting(false)
+                // Gradient halus di bagian atas agar teks judul selalu kontras & terbaca
+                topGradientOverlay
+                    .allowsHitTesting(false)
 
-            // Header paling atas (ZStack) berisi tulisan Gallery & tombol aksi
-            topHeaderBar
+                // Header paling atas (ZStack) berisi tulisan Gallery & tombol aksi
+                topHeaderBar
 
-            // Floating Bar di bagian bawah (Library & Collections capsule + Search circle)
-            VStack {
-                Spacer()
-                if isSelecting {
-                    selectionFloatingBar
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
-                    bottomFloatingBar
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Floating Bar di bagian bawah (Library & Collections capsule + Search circle)
+                VStack {
+                    Spacer()
+                    if isSelecting {
+                        selectionFloatingBar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        bottomFloatingBar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
+                .ignoresSafeArea(.keyboard)
             }
-            .ignoresSafeArea(.keyboard)
         }
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
@@ -330,43 +342,323 @@ struct GalleryView: View {
                 }
             }
             .padding(.horizontal, 16)
-
-            // Search Bar saat search aktif
-            if isSearchActive {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(Color(GoPhotoDesign.secondaryText))
-                    TextField("Search photos...", text: $searchText)
-                        .foregroundStyle(Color(GoPhotoDesign.primaryText))
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(Color(GoPhotoDesign.secondaryText))
-                        }
-                    }
-                    Button("Cancel") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isSearchActive = false
-                            searchText = ""
-                        }
-                    }
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(GoPhotoDesign.primary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(GoPhotoDesign.secondaryBackground), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
-                )
-                .padding(.horizontal, 16)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
         }
         .padding(.top, headerTopPadding)
+    }
+
+    // MARK: - Search View Overlay (Sesuai Screenshot Referensi Apple Photos)
+
+    private var searchOverlayView: some View {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Judul "Search" di paling atas
+                    Text("Search")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                        .padding(.horizontal, 16)
+                        .padding(.top, headerTopPadding)
+
+                    if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        // Section "Recents"
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Text("Recents")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(Color(GoPhotoDesign.primaryText))
+
+                                Spacer()
+
+                                if !recentSearches.isEmpty {
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            withAnimation {
+                                                recentSearches.removeAll()
+                                                UserDefaults.standard.removeObject(forKey: "gallery_recent_searches")
+                                            }
+                                        } label: {
+                                            Text("Clear")
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundStyle(GoPhotoDesign.primary)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(.ultraThinMaterial, in: Capsule())
+                                                .overlay(
+                                                    Capsule().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                                                )
+                                        }
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                                            .frame(width: 28, height: 28)
+                                            .background(.ultraThinMaterial, in: Circle())
+                                            .overlay(
+                                                Circle().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                                            )
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+
+                            // Kartu-kartu Recents (horizontal scroll)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    if let firstPhoto = photos.first {
+                                        searchRecentCard(
+                                            title: "Recently Added",
+                                            assetID: firstPhoto.assetID
+                                        ) {
+                                            isSearchFieldFocused = false
+                                            isSearchActive = false
+                                        }
+                                    }
+
+                                    if photos.count > 1 {
+                                        searchRecentCard(
+                                            title: "Recently Viewed",
+                                            assetID: photos[min(1, photos.count - 1)].assetID
+                                        ) {
+                                            isSearchFieldFocused = false
+                                            isSearchActive = false
+                                        }
+                                    }
+
+                                    ForEach(PreferencesViewModel.shared.preferences.prefix(3)) { pref in
+                                        let prefPhoto = photos.first(where: { $0.presetID == pref.id })
+                                        searchRecentCard(
+                                            title: pref.name,
+                                            assetID: prefPhoto?.assetID ?? pref.photos.first?.sourceAssetIdentifier
+                                        ) {
+                                            activeFilter = .preset(pref.id, pref.name)
+                                            isSearchFieldFocused = false
+                                            isSearchActive = false
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                        }
+
+                        // Recent search chips (History pencarian sebelumnya)
+                        // HANYA muncul saat klik untuk mengetik (isSearchFieldFocused == true)
+                        if isSearchFieldFocused && !recentSearches.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(recentSearches, id: \.self) { query in
+                                    Button {
+                                        searchText = query
+                                        isSearchFieldFocused = false
+                                    } label: {
+                                        Text(query)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(.ultraThinMaterial, in: Capsule())
+                                            .overlay(
+                                                Capsule().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                                            )
+                                            .shadow(color: .black.opacity(0.04), radius: 4, y: 1)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                    } else {
+                        // Hasil pencarian saat user mengetik
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Results for “\(searchText)”")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                                .padding(.horizontal, 16)
+
+                            if searchResults.isEmpty {
+                                VStack(spacing: 10) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(Color(GoPhotoDesign.disabledText))
+                                    Text("No matching photos found")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 40)
+                            } else {
+                                LazyVGrid(columns: columns, spacing: 2) {
+                                    ForEach(searchResults) { photo in
+                                        cell(for: photo)
+                                    }
+                                }
+                                .padding(.horizontal, 0)
+                            }
+                        }
+                    }
+
+                    // Spacer agar konten paling bawah tidak tertutup floating search bar
+                    Color.clear.frame(height: 120)
+                }
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .onTapGesture {
+                isSearchFieldFocused = false
+            }
+
+            // Floating Search Bar di bagian bawah (ikut naik saat keyboard muncul)
+            searchBottomFloatingBar
+        }
+    }
+
+    private var searchBottomFloatingBar: some View {
+        HStack(spacing: 10) {
+            // Tombol kembali ke galeri di kiri
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    isSearchFieldFocused = false
+                    isSearchActive = false
+                    searchText = ""
+                }
+            } label: {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 19))
+                    .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                    )
+                    .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+
+            // Bar input search di tengah
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+
+                TextField("Search your library...", text: $searchText)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                    .focused($isSearchFieldFocused)
+                    .submitLabel(.search)
+                    .onSubmit {
+                        saveSearchQuery(searchText)
+                    }
+
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 52)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(
+                Capsule().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+            )
+            .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+
+            // Tombol X (tutup search) di kanan
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    isSearchFieldFocused = false
+                    isSearchActive = false
+                    searchText = ""
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(
+                        Circle().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                    )
+                    .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private func searchRecentCard(title: String, assetID: String?, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(GoPhotoDesign.secondaryBackground))
+                    .frame(width: 140, height: 140)
+
+                if let assetID {
+                    DialogThumbnailPreview(
+                        assetID: assetID,
+                        loadThumbnail: viewModel.thumbnail
+                    )
+                    .frame(width: 140, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 34))
+                        .foregroundStyle(Color(GoPhotoDesign.disabledText))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.65)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .padding(10)
+            }
+            .frame(width: 140, height: 140)
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func saveSearchQuery(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        recentSearches.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        recentSearches.insert(trimmed, at: 0)
+        if recentSearches.count > 6 {
+            recentSearches = Array(recentSearches.prefix(6))
+        }
+        UserDefaults.standard.set(recentSearches, forKey: "gallery_recent_searches")
+    }
+
+    private var searchResults: [GalleryPhoto] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return [] }
+        return photos.filter { photo in
+            if let presetID = photo.presetID,
+               let pref = PreferencesViewModel.shared.preferences.first(where: { $0.id == presetID }) {
+                if pref.name.lowercased().contains(query) { return true }
+            }
+            let dateStr = photo.createdAt.formatted(date: .abbreviated, time: .omitted).lowercased()
+            if dateStr.contains(query) { return true }
+            return false
+        }
     }
 
     private var statusSubtitle: String {
