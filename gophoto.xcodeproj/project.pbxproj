@@ -274,7 +274,7 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "gophoto" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = favicon;
 				CODE_SIGN_ENTITLEMENTS = gophoto.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -325,7 +325,7 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "gophoto" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = favicon;
 				CODE_SIGN_ENTITLEMENTS = gophoto.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
