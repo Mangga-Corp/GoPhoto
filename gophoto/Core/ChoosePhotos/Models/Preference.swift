@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Preference {
+struct Preference: Identifiable {
     let id: UUID
     var name: String
     var photos: [PhotoItem]
