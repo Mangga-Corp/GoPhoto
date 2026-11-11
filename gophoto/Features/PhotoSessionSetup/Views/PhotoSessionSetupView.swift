@@ -4,7 +4,8 @@ import SwiftUI
 struct PhotoSessionSetupView: View {
     @State private var selection = PhotoSessionSetupSelection()
     @State private var isPresentingPicker = false
-    @State private var isShowingCustomPreference = false
+    /// The custom preference flow while it is open (a new one each time it opens).
+    @State private var customPreferenceFlow: CustomPreferenceFlowModel?
     @State private var updateError: String?
     @State private var isConfirmingLeave = false
     @State private var isSelecting = false
@@ -18,6 +19,8 @@ struct PhotoSessionSetupView: View {
     private let preferences: PreferencesViewModel
     let onCreatePreference: ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void
     let onStartAnalyzing: (UUID) -> Void
+    /// A custom preference (placement + angle) was saved; the opener shows the preference list.
+    let onCustomPreferenceCreated: (UUID) -> Void
     private let showsBackButton: Bool
 
     init(
@@ -25,6 +28,7 @@ struct PhotoSessionSetupView: View {
         preferences: PreferencesViewModel = .shared,
         onCreatePreference: @escaping ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void,
         onStartAnalyzing: @escaping (UUID) -> Void,
+        onCustomPreferenceCreated: @escaping (UUID) -> Void,
         showsBackButton: Bool = false
     ) {
         let persistedPreference = savedPreference.flatMap { preferences.preference(id: $0.id) }
@@ -35,6 +39,7 @@ struct PhotoSessionSetupView: View {
         self.preferences = preferences
         self.onCreatePreference = onCreatePreference
         self.onStartAnalyzing = onStartAnalyzing
+        self.onCustomPreferenceCreated = onCustomPreferenceCreated
         self.showsBackButton = showsBackButton
     }
 
@@ -84,8 +89,10 @@ struct PhotoSessionSetupView: View {
         } message: {
             Text("You have unfinished changes. If you leave now, your selected photos won't be saved.")
         }
-        .navigationDestination(isPresented: $isShowingCustomPreference) {
-            DefaultPreferenceSelectionView()
+        .navigationDestination(isPresented: isShowingCustomPreference) {
+            if let customPreferenceFlow {
+                SubjectPlacementSelectionView(model: customPreferenceFlow)
+            }
         }
         .onAppear {
             reloadSavedPreference()
@@ -360,6 +367,10 @@ struct PhotoSessionSetupView: View {
             } else {
                 SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
                     .padding(.horizontal, GoPhotoDesign.sessionMargin)
+                    .padding(.bottom, 8)
+
+                Button("Create a Custom Preference", action: openCustomPreference)
+                    .buttonStyle(.goPhotoText)
                     .padding(.bottom, 12)
             }
         }
@@ -448,6 +459,16 @@ struct PhotoSessionSetupView: View {
             .shadow(color: Color.black.opacity(0.18), radius: 24, x: 0, y: 8)
             .padding(.horizontal, 28)
         }
+    }
+
+    private var isShowingCustomPreference: Binding<Bool> {
+        Binding(get: { customPreferenceFlow != nil },
+                set: { if !$0 { customPreferenceFlow = nil } })
+    }
+
+    private func openCustomPreference() {
+        customPreferenceFlow = CustomPreferenceFlowModel(preferences: preferences,
+                                                         onCreated: onCustomPreferenceCreated)
     }
 
     private func saveAndAnalyze(name: String) {

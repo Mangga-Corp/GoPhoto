@@ -4,7 +4,8 @@
 //
 //  "What would you like to shoot today?": pick the preference for the next session. A card tap
 //  only changes the draft selection; Continue hands the preference ID on without starting a
-//  session or saving anything. Long-press a card to rename, edit its photos or delete it.
+//  session or saving anything. Long-press a card to rename, edit its photos or delete it
+//  (custom preferences have no photos, so they offer no Edit Photos).
 //
 
 import SwiftUI
@@ -148,7 +149,11 @@ struct PreferenceSelectionView: View {
             .accessibilityHint(card.isAvailable ? "Selects this preference" : card.summary)
             .accessibilityIdentifier("preferenceCard.\(card.name)")
             .accessibilityAction(named: "Rename") { startRename(card) }
-            .accessibilityAction(named: "Edit Photos") { editPhotos(card) }
+            .accessibilityActions {
+                if card.canEditPhotos {
+                    Button("Edit Photos") { editPhotos(card) }
+                }
+            }
             .accessibilityAction(named: "Delete") { confirmDelete(card) }
             // Visible way into the same actions (long-press still works). Outside the card's
             // combined element so its tap opens the menu instead of selecting the card.
@@ -172,7 +177,9 @@ struct PreferenceSelectionView: View {
             .disabled(styleSummary(for: card.id) == nil)
             .accessibilityAction(named: "About This Style") { showAbout(card) }
         Button("Rename", systemImage: "pencil") { startRename(card) }
-        Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
+        if card.canEditPhotos {
+            Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
+        }
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(card) }
     }
@@ -195,7 +202,7 @@ struct PreferenceSelectionView: View {
     }
 
     private func editPhotos(_ card: PreferenceCardModel) {
-        guard let presenter = anchor.presenter else { return }
+        guard card.canEditPhotos, let presenter = anchor.presenter else { return }
         let editor = PreferenceEditorPresenter(preferences: selection.preferences)
         editorPresenter = editor   // kept alive while the editor is open
         editor.presentEditor(for: card.id, from: presenter) { _ in editorPresenter = nil }

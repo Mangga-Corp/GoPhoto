@@ -13,7 +13,11 @@ struct PreferenceSelectionCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            PreferenceThumbnail(image: card.thumbnail, cacheKey: card.thumbnailKey)
+            if let style = card.customStyle {
+                CustomPreferenceThumbnail(style: style)
+            } else {
+                PreferenceThumbnail(image: card.thumbnail, cacheKey: card.thumbnailKey)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {

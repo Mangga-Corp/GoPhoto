@@ -81,7 +81,8 @@ struct AppRootView: View {
                         onStartAnalyzing: { id in
                             guard savedOnboardingPreference?.id == id else { return }
                             firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
-                        }
+                        },
+                        onCustomPreferenceCreated: finishOnboarding(withCustomPreference:)
                     )
                 }
                 .preferredColorScheme(.light)
@@ -161,6 +162,14 @@ struct AppRootView: View {
         firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSelection.rawValue
         pendingOnboardingPreferenceIDString = ""
         return nil
+    }
+
+    /// A custom preference needs no analysis: onboarding ends on Preference Selection with it
+    /// selected (the same handoff as a preference made from photos).
+    private func finishOnboarding(withCustomPreference id: UUID) {
+        onboardingPreferenceIDString = id.uuidString
+        pendingOnboardingPreferenceIDString = ""
+        _ = continueToPreferenceSelection()
     }
 
     /// No readable person in the onboarding photos: that preference is discarded (it is the one
