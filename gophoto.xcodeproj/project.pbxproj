@@ -287,7 +287,7 @@
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vacato;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Vacato uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vacato uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Vacato saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Vacato shows the photos you’ve taken in its gallery";
@@ -339,7 +339,7 @@
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vacato;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Vacato uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vacato uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Vacato saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Vacato shows the photos you’ve taken in its gallery";
