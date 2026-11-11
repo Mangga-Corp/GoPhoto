@@ -11,6 +11,7 @@
 
 import SwiftUI
 import SwiftData
+import Photos
 
 // MARK: - ⚙️ PENGATURAN FOTO PLACEHOLDER SAAT GALERI KOSONG
 enum EmptyGalleryConfig {
@@ -51,8 +52,15 @@ struct GalleryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var photoZoom
 
+    // Observe saved preferences so newly created preferences appear reactively
+    @State private var preferencesViewModel = PreferencesViewModel.shared
+
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
+    @State private var favoriteIDs: Set<String> = {
+        let saved = UserDefaults.standard.stringArray(forKey: "gallery_favorite_asset_ids") ?? []
+        return Set(saved)
+    }()
     @State private var isDeleting = false
     @State private var isShowingDeleteConfirmation = false
 
@@ -95,9 +103,8 @@ struct GalleryView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Background warna aplikasi GoPhoto
-            Color(GoPhotoDesign.background)
-                .ignoresSafeArea()
+            // Background pattern (#9A69C9 20% circles + #EBDFF6 halftone dots)
+            AppPatternBackground()
 
             if isSearchActive {
                 searchOverlayView
@@ -113,18 +120,15 @@ struct GalleryView: View {
                 // Header paling atas (ZStack) berisi tulisan Gallery & tombol aksi
                 topHeaderBar
 
-                // Floating Bar di bagian bawah (Library & Collections capsule + Search circle)
-                VStack {
-                    Spacer()
-                    if isSelecting {
+                // Floating Bar HANYA saat Mode Seleksi aktif (untuk aksi Share, Favorite, Delete)
+                if isSelecting {
+                    VStack {
+                        Spacer()
                         selectionFloatingBar
                             .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        bottomFloatingBar
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
+                    .ignoresSafeArea(.keyboard)
                 }
-                .ignoresSafeArea(.keyboard)
             }
         }
         .preferredColorScheme(.light)
@@ -142,7 +146,10 @@ struct GalleryView: View {
                     .transition(.opacity)
             }
         }
-        .task { await viewModel.onAppear() }
+        .task {
+            await viewModel.onAppear()
+            syncFavoritesFromPhotoLibrary()
+        }
         .task(id: photos.map(\.assetID)) {
             await viewModel.prepareThumbnails(for: photos.map(\.assetID))
         }
@@ -200,12 +207,10 @@ struct GalleryView: View {
             .padding(.top, 100)
 
         case .allowed:
-            if currentTab == .collections {
-                collectionsContent
-            } else if filteredPhotos.isEmpty {
+            if filteredPhotos.isEmpty {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: headerSpacerHeight)
-                    emptyGalleryState
+                    emptyStateView
                 }
             } else {
                 ScrollView {
@@ -221,8 +226,8 @@ struct GalleryView: View {
                         }
                         .padding(.horizontal, 0)
 
-                        // Spacer kompensasi tinggi bottom floating bar
-                        Color.clear.frame(height: 90)
+                        // Spacer bawah ringan
+                        Color.clear.frame(height: 30)
                     }
                 }
                 .scrollIndicators(.hidden)
@@ -230,6 +235,24 @@ struct GalleryView: View {
                     if side > 30 { cellSide = side }
                 }
             }
+        }
+    }
+
+    // MARK: - Empty State View
+
+    @ViewBuilder
+    private var emptyStateView: some View {
+        switch activeFilter {
+        case .all:
+            emptyGalleryCardsView(
+                title: nil,
+                message: EmptyGalleryConfig.emptyText
+            )
+        case .preset(_, let name):
+            emptyGalleryCardsView(
+                title: "No Photos for “\(name)”",
+                message: "Photos captured with this preference will appear here."
+            )
         }
     }
 
@@ -291,13 +314,13 @@ struct GalleryView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(currentTab == .collections ? "Collections" : "Gallery")
+                        Text("Gallery")
                             .font(.system(size: 34, weight: .bold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
 
-                        // Subtitle: Syncing Paused > persis seperti tata letak Apple Photos
+                        // Subtitle: nama filter aktif & jumlah foto yang dihasilkan
                         HStack(spacing: 5) {
-                            Image(systemName: "icloud.slash")
+                            Image(systemName: subtitleIcon)
                                 .font(.system(size: 12, weight: .semibold))
                             Text(statusSubtitle)
                                 .font(.system(size: 13, weight: .semibold))
@@ -310,35 +333,33 @@ struct GalleryView: View {
 
                 Spacer()
 
-                // Tombol Aksi di sebelah kanan
+                // Tombol Aksi di sebelah kanan (Filter & Select)
                 HStack(spacing: 10) {
                     // Tombol Filter (Menu)
                     filterMenuButton
 
-                    // Tombol Select / Done HANYA jika berada di tab Gallery (Library)
-                    if currentTab == .library {
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                isSelecting.toggle()
-                                if !isSelecting {
-                                    selectedIDs.removeAll()
-                                }
+                    // Tombol Select / Done
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            isSelecting.toggle()
+                            if !isSelecting {
+                                selectedIDs.removeAll()
                             }
-                        } label: {
-                            Text(isSelecting ? "Done" : "Select")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(GoPhotoDesign.primaryText))
-                                .padding(.horizontal, 16)
-                                .frame(height: 38)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .overlay(
-                                    Capsule().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
-                                )
-                                .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
                         }
-                        .buttonStyle(.plain)
-                        .transition(.scale.combined(with: .opacity))
+                    } label: {
+                        Text(isSelecting ? "Done" : "Select")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                            .padding(.horizontal, 16)
+                            .frame(height: 38)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(
+                                Capsule().stroke(Color(GoPhotoDesign.border), lineWidth: 0.8)
+                            )
+                            .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
                     }
+                    .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 16)
@@ -661,114 +682,70 @@ struct GalleryView: View {
         }
     }
 
-    private var statusSubtitle: String {
+    private var subtitleIcon: String {
         switch activeFilter {
         case .all:
-            return "Syncing Paused"
-        case .preset(_, let name):
-            return name
+            return "photo.stack"
+        case .preset:
+            return "slider.horizontal.3"
         }
     }
 
-    // MARK: - Filter Menu Button (3 garis horizontal)
+    private var statusSubtitle: String {
+        switch activeFilter {
+        case .all:
+            return "All Photos (\(photos.count))"
+        case .preset(_, let name):
+            return "\(name) (\(filteredPhotos.count))"
+        }
+    }
+
+    // MARK: - Filter Menu Button (Filter Photos & Sort Order)
 
     private var filterMenuButton: some View {
         Menu {
-            if currentTab == .collections {
-                // Tampilan Menu khusus Collections persis seperti screenshot
-                ControlGroup {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            collectionLayout = .cards
-                        }
-                    } label: {
-                        Label("Cards", systemImage: "rectangle.portrait.fill")
+            Section("Filter Photos") {
+                Button {
+                    activeFilter = .all
+                } label: {
+                    if activeFilter == .all {
+                        Label("All Photos", systemImage: "checkmark")
+                    } else {
+                        Text("All Photos")
                     }
+                }
 
+                ForEach(preferencesViewModel.preferences) { pref in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            collectionLayout = .gridSmall
-                        }
+                        activeFilter = .preset(pref.id, pref.name)
                     } label: {
-                        Label("Compact Grid", systemImage: "square.grid.3x3.fill")
+                        if case .preset(let id, _) = activeFilter, id == pref.id {
+                            Label(pref.name, systemImage: "checkmark")
+                        } else {
+                            Text(pref.name)
+                        }
                     }
+                }
+            }
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            collectionLayout = .gridLarge
-                        }
-                    } label: {
-                        Label("Large Grid", systemImage: "square.grid.2x2.fill")
+            Section("Sort Order") {
+                Button {
+                    sortAscending = false
+                } label: {
+                    if !sortAscending {
+                        Label("Newest First", systemImage: "checkmark")
+                    } else {
+                        Text("Newest First")
                     }
                 }
 
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isCollectionsCollapsed = false
-                    }
+                    sortAscending = true
                 } label: {
-                    Text("Show All")
-                }
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isCollectionsCollapsed = true
-                    }
-                } label: {
-                    Text("Collapse All")
-                }
-
-                Divider()
-
-                Button {
-                    // Reorder
-                } label: {
-                    Text("Reorder")
-                }
-            } else {
-                Section("Filter Photos") {
-                    Button {
-                        activeFilter = .all
-                    } label: {
-                        if activeFilter == .all {
-                            Label("All Photos", systemImage: "checkmark")
-                        } else {
-                            Text("All Photos")
-                        }
-                    }
-
-                    ForEach(PreferencesViewModel.shared.preferences) { pref in
-                        Button {
-                            activeFilter = .preset(pref.id, pref.name)
-                        } label: {
-                            if case .preset(let id, _) = activeFilter, id == pref.id {
-                                Label(pref.name, systemImage: "checkmark")
-                            } else {
-                                Text(pref.name)
-                            }
-                        }
-                    }
-                }
-
-                Section("Sort Order") {
-                    Button {
-                        sortAscending = false
-                    } label: {
-                        if !sortAscending {
-                            Label("Newest First", systemImage: "checkmark")
-                        } else {
-                            Text("Newest First")
-                        }
-                    }
-
-                    Button {
-                        sortAscending = true
-                    } label: {
-                        if sortAscending {
-                            Label("Oldest First", systemImage: "checkmark")
-                        } else {
-                            Text("Oldest First")
-                        }
+                    if sortAscending {
+                        Label("Oldest First", systemImage: "checkmark")
+                    } else {
+                        Text("Oldest First")
                     }
                 }
             }
@@ -877,29 +854,42 @@ struct GalleryView: View {
 
     private var selectionFloatingBar: some View {
         HStack(spacing: 36) {
+            // Tombol Share (Native Apple Share Sheet)
+            if selectedIDs.isEmpty {
+                Button {
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color(GoPhotoDesign.disabledText))
+                }
+                .disabled(true)
+                .buttonStyle(.plain)
+            } else {
+                ShareLink(
+                    items: selectedIDs.map { SharedPhoto(assetID: $0) },
+                    preview: { _ in SharePreview("Photo", image: Image(systemName: "photo")) }
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Tombol Favorite (Love Warna Ungu GoPhoto)
             Button {
-                // Share action
+                toggleFavoriteSelected()
             } label: {
-                Image(systemName: "square.and.arrow.up")
+                Image(systemName: isAllSelectedFavorite ? "heart.fill" : "heart")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(selectedIDs.isEmpty ? Color(GoPhotoDesign.disabledText) : Color(GoPhotoDesign.primaryText))
+                    .foregroundStyle(
+                        selectedIDs.isEmpty
+                            ? Color(GoPhotoDesign.disabledText)
+                            : (isAllSelectedFavorite ? GoPhotoDesign.primary : Color(GoPhotoDesign.primaryText))
+                    )
             }
             .disabled(selectedIDs.isEmpty)
             .buttonStyle(.plain)
-
-            Button {
-                // Favorite action
-            } label: {
-                Image(systemName: "heart")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(selectedIDs.isEmpty ? Color(GoPhotoDesign.disabledText) : Color(GoPhotoDesign.primaryText))
-            }
-            .disabled(selectedIDs.isEmpty)
-            .buttonStyle(.plain)
-
-            Text(selectedIDs.isEmpty ? "Select Items" : "\(selectedIDs.count) Selected")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color(GoPhotoDesign.primaryText))
 
             Button {
                 if !selectedIDs.isEmpty {
@@ -1062,6 +1052,7 @@ struct GalleryView: View {
     @ViewBuilder
     private func cell(for photo: GalleryPhoto) -> some View {
         let isSelected = selectedIDs.contains(photo.assetID)
+        let isFavorited = favoriteIDs.contains(photo.assetID)
         let thumbnail = GalleryThumbnailView(
             assetID: photo.assetID,
             createdAt: photo.createdAt,
@@ -1082,7 +1073,18 @@ struct GalleryView: View {
                             }
                         }
 
-                    // Checkmark indicator dengan warna brand GoPhoto
+                    // Love warna ungu jika foto difavoritkan
+                    if isFavorited {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(GoPhotoDesign.primary)
+                            .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .padding(5)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+
+                    // Checkmark indicator dengan warna brand GoPhoto di kanan bawah
                     ZStack {
                         if isSelected {
                             Image(systemName: "checkmark.circle.fill")
@@ -1103,7 +1105,19 @@ struct GalleryView: View {
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         } else {
             NavigationLink(value: photo) {
-                thumbnail
+                ZStack(alignment: .bottomTrailing) {
+                    thumbnail
+
+                    // Love warna ungu di kanan bawah saat browsing normal
+                    if isFavorited {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(GoPhotoDesign.primary)
+                            .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+                            .padding(5)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
             }
             .buttonStyle(.plain)
             .matchedTransitionSource(id: photo.assetID, in: photoZoom)
@@ -1112,7 +1126,7 @@ struct GalleryView: View {
 
     // MARK: - Empty State (3 Foto Bertumpuk/Miring)
 
-    private var emptyGalleryState: some View {
+    private func emptyGalleryCardsView(title: String?, message: String) -> some View {
         VStack(spacing: 36) {
             ZStack {
                 PlaceholderCard(imageName: EmptyGalleryConfig.topCardImage)
@@ -1128,11 +1142,19 @@ struct GalleryView: View {
             }
             .frame(height: 250)
 
-            Text(EmptyGalleryConfig.emptyText)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(Color(GoPhotoDesign.secondaryText))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            VStack(spacing: 6) {
+                if let title {
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(GoPhotoDesign.primaryText))
+                }
+
+                Text(message)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color(GoPhotoDesign.secondaryText))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1236,6 +1258,54 @@ struct GalleryView: View {
         }
     }
 
+    private var isAllSelectedFavorite: Bool {
+        guard !selectedIDs.isEmpty else { return false }
+        return selectedIDs.allSatisfy { favoriteIDs.contains($0) }
+    }
+
+    private func toggleFavoriteSelected() {
+        guard !selectedIDs.isEmpty else { return }
+        let shouldFavorite = !isAllSelectedFavorite
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            if shouldFavorite {
+                favoriteIDs.formUnion(selectedIDs)
+            } else {
+                favoriteIDs.subtract(selectedIDs)
+            }
+        }
+        UserDefaults.standard.set(Array(favoriteIDs), forKey: "gallery_favorite_asset_ids")
+
+        // Sync status favorite ke iOS Photos library
+        let targetIDs = Array(selectedIDs)
+        Task {
+            try? await PHPhotoLibrary.shared().performChanges {
+                let assets = PHAsset.fetchAssets(withLocalIdentifiers: targetIDs, options: nil)
+                for i in 0..<assets.count {
+                    let asset = assets.object(at: i)
+                    let request = PHAssetChangeRequest(for: asset)
+                    request.isFavorite = shouldFavorite
+                }
+            }
+        }
+    }
+
+    private func syncFavoritesFromPhotoLibrary() {
+        let allAssetIDs = photos.map(\.assetID)
+        guard !allAssetIDs.isEmpty else { return }
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: allAssetIDs, options: nil)
+        var systemFavorites = Set<String>()
+        for i in 0..<assets.count {
+            let asset = assets.object(at: i)
+            if asset.isFavorite {
+                systemFavorites.insert(asset.localIdentifier)
+            }
+        }
+        if !systemFavorites.isEmpty {
+            favoriteIDs.formUnion(systemFavorites)
+            UserDefaults.standard.set(Array(favoriteIDs), forKey: "gallery_favorite_asset_ids")
+        }
+    }
+
     private func deleteSelected() async {
         isDeleting = true
         defer { isDeleting = false }
@@ -1243,9 +1313,11 @@ struct GalleryView: View {
         guard await viewModel.delete(assetIDs: Array(selectedIDs)) else { return }
 
         withAnimation {
+            favoriteIDs.subtract(selectedIDs)
             selectedIDs.removeAll()
             isSelecting = false
         }
+        UserDefaults.standard.set(Array(favoriteIDs), forKey: "gallery_favorite_asset_ids")
     }
 
     private func deleteErrorBinding(when active: Bool) -> Binding<Bool> {
@@ -1284,7 +1356,7 @@ private struct PlaceholderCard: View {
 }
 
 // MARK: - Helper: Dialog Thumbnail Preview
-private struct DialogThumbnailPreview: View {
+struct DialogThumbnailPreview: View {
     let assetID: String
     let loadThumbnail: (String, CGSize) async -> UIImage?
     @State private var image: UIImage?

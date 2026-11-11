@@ -52,21 +52,13 @@ struct SessionPrimaryButton: View {
 }
 
 extension View {
-    /// Pins `button` above the bottom safe area on a light bar; the content scrolls behind it.
+    /// Pins `button` floating above the bottom safe area (no background bar).
     func sessionBottomBar<Button: View>(@ViewBuilder _ button: () -> Button) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             button()
                 .padding(.horizontal, GoPhotoDesign.sessionMargin)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background {
-                    GoPhotoDesign.background
-                        .overlay(alignment: .top) {
-                            Rectangle().fill(GoPhotoDesign.divider).frame(height: 1)
-                        }
-                        .ignoresSafeArea(edges: .bottom)
-                }
         }
     }
 }

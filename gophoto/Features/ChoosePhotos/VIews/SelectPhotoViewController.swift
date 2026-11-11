@@ -14,8 +14,9 @@ final class SelectPhotoViewController: UIViewController {
     var onDone: (([PhotoItem]) -> Void)?
 
     private let viewModel: SelectPhotoViewModel
+    var requiresReanalyzeConfirmation = false
     private let closeButton = CircleButton(symbol: "xmark", accessibilityLabel: "Close")
-    private let doneButton = PillButton(title: "Done", prominent: true)
+    private let doneButton = CircleButton(symbol: "checkmark", accessibilityLabel: "Done", prominent: true)
     private lazy var selectPan: UIPanGestureRecognizer = {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleSelectPan(_:)))
         pan.delegate = self
@@ -88,6 +89,8 @@ final class SelectPhotoViewController: UIViewController {
             title.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
             doneButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
             doneButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            doneButton.widthAnchor.constraint(equalToConstant: 48),
+            doneButton.heightAnchor.constraint(equalToConstant: 48),
             collectionView.topAnchor.constraint(equalTo: gridTopAnchor, constant: 16),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -108,6 +111,21 @@ final class SelectPhotoViewController: UIViewController {
     private func doneTapped() {
         let selected = (collectionView.indexPathsForSelectedItems ?? []).map(\.item)
         guard selected.isEmpty else {
+            if requiresReanalyzeConfirmation {
+                let alert = UIAlertController(
+                    title: "Re-analyze the AI preferences",
+                    message: "By adding those picture it will redefined the ai model, are you sure ?",
+                    preferredStyle: .alert
+                )
+                let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
+                let yesAction = UIAlertAction(title: "Yes", style: .default) { [weak self] _ in
+                    self?.viewModel.done(selectedIndexes: selected)
+                }
+                alert.addAction(cancelAction)
+                alert.addAction(yesAction)
+                present(alert, animated: true)
+                return
+            }
             viewModel.done(selectedIndexes: selected)
             return
         }
@@ -123,7 +141,7 @@ final class SelectPhotoViewController: UIViewController {
     }
 
     private func setLoading(_ on: Bool) {
-        doneButton.setLoading(on)
+        doneButton.isEnabled = !on
         view.isUserInteractionEnabled = !on
     }
 

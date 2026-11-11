@@ -59,7 +59,7 @@ struct PreferenceSelectionView: View {
             .padding(.horizontal, GoPhotoDesign.sessionMargin)
         }
         .scrollIndicators(.hidden)
-        .background(GoPhotoDesign.background.ignoresSafeArea())
+        .appPatternBackground()
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: selection.continueTarget != nil) {
                 // Re-validated at the tap: never hands on a deleted or unusable preference.

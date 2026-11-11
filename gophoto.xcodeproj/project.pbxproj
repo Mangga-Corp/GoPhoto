@@ -277,9 +277,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = favicon;
 				CODE_SIGN_ENTITLEMENTS = gophoto.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = VTRSS39M6X;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = VTRSS39M6X;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -287,7 +289,7 @@
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vacato;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Vacato uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vacato uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Vacato saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Vacato shows the photos you’ve taken in its gallery";
@@ -308,6 +310,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = co.mango.gophoto;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = MangoPickForAll;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -328,9 +331,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = favicon;
 				CODE_SIGN_ENTITLEMENTS = gophoto.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = VTRSS39M6X;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = VTRSS39M6X;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -338,7 +343,7 @@
 				INFOPLIST_FILE = gophoto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vacato;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
-				INFOPLIST_KEY_NSCameraUsageDescription = "GoPhoto uses the camera so someone can take your photo for you.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Vacato uses the camera so someone can take your photo for you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vacato uses your approximate location to work out where the sun is and to look up the weather, so it can suggest where to stand and how to light your photo. The location is never saved.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Vacato saves the photos you take to your iPhone photos library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Vacato shows the photos you’ve taken in its gallery";
@@ -359,6 +364,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = co.mango.gophoto;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = MangoPickForAll;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

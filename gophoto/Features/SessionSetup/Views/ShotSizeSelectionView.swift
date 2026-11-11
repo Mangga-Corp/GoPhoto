@@ -60,7 +60,7 @@ struct ShotSizeSelectionView: View {
             .animation(.easeInOut(duration: 0.2), value: model.notice)
         }
         .scrollIndicators(.hidden)
-        .background(GoPhotoDesign.background.ignoresSafeArea())
+        .appPatternBackground()
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .sessionBottomBar {
             SessionPrimaryButton(title: "Start Shooting", systemImage: "arrow.right",

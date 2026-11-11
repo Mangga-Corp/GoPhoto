@@ -36,12 +36,10 @@ struct WelcomeOnboardingView: View {
                 }
                 .padding(.horizontal, GoPhotoDesign.horizontalMargin)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(GoPhotoDesign.background)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .background(GoPhotoDesign.background)
         }
-        .background(GoPhotoDesign.background)
+        .appPatternBackground()
         .ignoresSafeArea(edges: .top)
     }
 }

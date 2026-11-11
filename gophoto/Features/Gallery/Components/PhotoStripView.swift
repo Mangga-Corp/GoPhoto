@@ -17,30 +17,39 @@ struct PhotoStripView: View {
     @Binding var currentID: String
     let loadThumbnail: (String, CGSize) async -> UIImage?
 
-    private let itemSize: CGFloat = 44   // HIG minimum tap target
+    private let itemSize: CGFloat = 40
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 2) {
+                LazyHStack(spacing: 4) {
                     ForEach(photos) { photo in
                         let isCurrent = photo.assetID == currentID
 
                         Button {
-                            withAnimation { currentID = photo.assetID }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                currentID = photo.assetID
+                            }
                         } label: {
-                            GalleryThumbnailView(assetID: photo.assetID,
-                                                 createdAt: photo.createdAt,
-                                                 loadThumbnail: loadThumbnail)
-                                .frame(width: itemSize, height: itemSize)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay {
-                                    if isCurrent {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(.primary, lineWidth: 2)
+                            VStack(spacing: 4) {
+                                // Indikator titik ungu di atas thumbnail yang aktif
+                                Circle()
+                                    .fill(isCurrent ? Color(hex: 0x9A69C9) : Color.clear)
+                                    .frame(width: 5, height: 5)
+
+                                GalleryThumbnailView(assetID: photo.assetID,
+                                                     createdAt: photo.createdAt,
+                                                     loadThumbnail: loadThumbnail)
+                                    .frame(width: itemSize, height: itemSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .overlay {
+                                        if isCurrent {
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .stroke(Color(hex: 0x9A69C9), lineWidth: 2)
+                                        }
                                     }
-                                }
-                                .opacity(isCurrent ? 1 : 0.6)
+                                    .opacity(isCurrent ? 1 : 0.6)
+                            }
                         }
                         .buttonStyle(.plain)
                         .id(photo.assetID)
@@ -48,7 +57,6 @@ struct PhotoStripView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .frame(height: itemSize)
             }
             .scrollIndicators(.hidden)
             // Centre the current photo when the strip appears…
@@ -58,6 +66,6 @@ struct PhotoStripView: View {
                 withAnimation { proxy.scrollTo(newID, anchor: .center) }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 }

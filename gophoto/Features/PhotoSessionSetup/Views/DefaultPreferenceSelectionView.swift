@@ -23,7 +23,7 @@ struct DefaultPreferenceSelectionView: View {
         .padding(.top, 24)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GoPhotoDesign.background)
+        .appPatternBackground()
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: centredCard == .starter) { }
         }

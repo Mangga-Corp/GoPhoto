@@ -51,6 +51,7 @@ final class PhotoPreferencePickerFlow {
 
     private func presentPicker() {
         let picker = SelectPhotoViewController(viewModel: viewModel.makePickerViewModel())
+        picker.requiresReanalyzeConfirmation = (viewModel.mode == .editor || !viewModel.items.isEmpty)
         picker.modalPresentationStyle = .fullScreen
         picker.onCancel = { [weak self, weak picker] in
             picker?.dismiss(animated: true) {

@@ -4,10 +4,15 @@ import SwiftUI
 struct PhotoSessionSetupView: View {
     @State private var selection = PhotoSessionSetupSelection()
     @State private var isPresentingPicker = false
-    @State private var isPresentingNamePrompt = false
     @State private var isShowingCustomPreference = false
     @State private var updateError: String?
     @State private var isConfirmingLeave = false
+    @State private var isSelecting = false
+    @State private var selectedPhotoIDs: Set<UUID> = []
+    @State private var isConfirmingDeletePhotos = false
+    @State private var isShowingNameModal = false
+    @State private var collectionName = ""
+    @State private var hasAutoOpenedPicker = false
     @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
@@ -40,44 +45,39 @@ struct PhotoSessionSetupView: View {
                 max(80, (geometry.size.width - GoPhotoDesign.sessionMargin * 2 - 24) / 3)
             )
 
-            VStack(spacing: 0) {
-                header
-                    .padding(.top, 24)
+            ZStack {
+                VStack(spacing: 0) {
+                    if selection.photos.isEmpty {
+                        headerEmpty
+                            .padding(.top, 24)
+                        Spacer(minLength: 24)
+                        emptyState
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Spacer(minLength: 24)
+                    } else {
+                        // Header as in Image 2
+                        headerWithPhotos
+                            .padding(.top, 16)
+                            .padding(.bottom, 14)
 
-                Spacer(minLength: 24)
-
-                if selection.photos.isEmpty {
-                    emptyState
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    selectedPhotos(thumbnailWidth: thumbnailWidth)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-
-                Spacer(minLength: 24)
-            }
-            .padding(.horizontal, GoPhotoDesign.sessionMargin)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(GoPhotoDesign.background)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            actions
-        }
-        .toolbar(showsBackButton ? .visible : .hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(showsBackButton && hasUnsavedPhotos)
-        .toolbar {
-            if showsBackButton && hasUnsavedPhotos {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isConfirmingLeave = true
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
+                        selectedPhotos(thumbnailWidth: thumbnailWidth)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .accessibilityLabel("Back")
+                }
+                .padding(.horizontal, GoPhotoDesign.sessionMargin)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Name modal overlay as in Image 2 (iPhone 17 - 1)
+                if isShowingNameModal {
+                    nameCollectionModal
                 }
             }
         }
+        .appPatternBackground()
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomActions
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
             Button("Leave", role: .destructive) { dismiss() }
             Button("Stay", role: .cancel) { }
@@ -87,7 +87,14 @@ struct PhotoSessionSetupView: View {
         .navigationDestination(isPresented: $isShowingCustomPreference) {
             DefaultPreferenceSelectionView()
         }
-        .onAppear(perform: reloadSavedPreference)
+        .onAppear {
+            reloadSavedPreference()
+            // If user enters with no photos, automatically present the picker
+            if selection.photos.isEmpty && !hasAutoOpenedPicker {
+                hasAutoOpenedPicker = true
+                isPresentingPicker = true
+            }
+        }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.primary)
         .fullScreenCover(isPresented: $isPresentingPicker) {
@@ -99,27 +106,85 @@ struct PhotoSessionSetupView: View {
             )
             .ignoresSafeArea()
         }
-        .fullScreenCover(isPresented: $isPresentingNamePrompt) {
-            PhotoSessionPhotoPicker(
-                photosToName: selection.photos,
-                onCreatePreference: { photos, name, completion in
-                    onCreatePreference(photos, name) { result in
-                        switch result {
-                        case .success(let id):
-                            selection.markPreferenceCreated(id: id, photos: photos)
-                            completion(nil)
-                        case .failure(let error):
-                            completion(error.message)
-                        }
-                    }
-                },
-                onFinish: { isPresentingNamePrompt = false }
-            )
-            .ignoresSafeArea()
+        .alert("Something went wrong", isPresented: Binding(
+            get: { updateError != nil },
+            set: { if !$0 { updateError = nil } }
+        )) {
+            Button("OK", role: .cancel) { updateError = nil }
+        } message: {
+            Text(updateError ?? "")
+        }
+        .alert("Re-analyze the AI preferences", isPresented: $isConfirmingDeletePhotos) {
+            Button("Cancel", role: .destructive) { }
+            Button("Yes") {
+                withAnimation {
+                    selection.removePhotos(withIDs: selectedPhotoIDs)
+                    selectedPhotoIDs.removeAll()
+                    isSelecting = false
+                }
+            }
+        } message: {
+            Text("By Delete those picture it will redefined the ai model, are you sure ?")
         }
     }
 
-    private var header: some View {
+    // MARK: - Header (Image 2 style)
+
+    private var headerWithPhotos: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                // Back button
+                Button {
+                    if hasUnsavedPhotos {
+                        isConfirmingLeave = true
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(GoPhotoDesign.primaryText)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+
+                // Title and Subtitle
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("AI Preferences")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(GoPhotoDesign.primaryText)
+                    Text("\(selection.photos.count)/20")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(GoPhotoDesign.secondaryText)
+                }
+                .padding(.leading, 8)
+
+                Spacer()
+
+                // Select / Cancel button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isSelecting.toggle()
+                        selectedPhotoIDs.removeAll()
+                    }
+                } label: {
+                    Text(isSelecting ? "Cancel" : "Select")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(GoPhotoDesign.primaryText)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background(Color.white, in: Capsule())
+                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+            }
+
+            privacyNote
+        }
+    }
+
+    private var headerEmpty: some View {
         VStack(spacing: 10) {
             Text("Photo Session Setup")
                 .font(GoPhotoDesign.pageTitle)
@@ -129,6 +194,27 @@ struct PhotoSessionSetupView: View {
             privacyNote
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var privacyNote: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(GoPhotoDesign.primary)
+
+            Text("Your photos stay on this iPhone. They're analyzed on your device and never uploaded.")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(GoPhotoDesign.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GoPhotoDesign.tagBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(GoPhotoDesign.primaryBorder.opacity(0.3), lineWidth: 1)
+        )
     }
 
     private var emptyState: some View {
@@ -144,66 +230,23 @@ struct PhotoSessionSetupView: View {
         }
     }
 
-    private var privacyNote: some View {
-        Label("Your photos stay on this iPhone. Vacato analyses them here and never uploads them.",
-              systemImage: "lock.fill")
-            .font(.footnote)
-            .foregroundStyle(GoPhotoDesign.secondaryText)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-    }
+    // MARK: - Selected Photos Grid (3 Columns, 1st item = "+ Add photos" tile)
 
     private func selectedPhotos(thumbnailWidth: CGFloat) -> some View {
-        VStack(spacing: 24) {
-            Text("\(selection.photos.count) photos selected")
-                .font(GoPhotoDesign.cardTitle)
-                .foregroundStyle(GoPhotoDesign.primaryText)
-
-            if selection.hasSavedPreference {
-                Text("Preference saved")
-                    .font(GoPhotoDesign.cardTitle)
-                    .foregroundStyle(GoPhotoDesign.primary)
-            }
-
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.fixed(thumbnailWidth), spacing: 12), count: 3),
-                    spacing: 12
-                ) {
-                    addPhotoTile(width: thumbnailWidth)
-                    ForEach(selection.photos, id: \.id) { photo in
-                        selectedPhoto(photo, width: thumbnailWidth)
-                    }
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(thumbnailWidth), spacing: 10), count: 3),
+                spacing: 10
+            ) {
+                addPhotoTile(width: thumbnailWidth)
+                ForEach(selection.photos, id: \.id) { photo in
+                    photoCell(photo, width: thumbnailWidth)
                 }
-                .frame(maxWidth: .infinity)
             }
+            .padding(.top, 4)
+            .padding(.bottom, 100) // Padding for floating bottom button
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func selectedPhoto(_ photo: PhotoItem, width: CGFloat) -> some View {
-        Image(uiImage: photo.image)
-            .resizable()
-            .scaledToFill()
-            .frame(width: width, height: width * 4 / 3)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(alignment: .topTrailing) {
-                if !selection.hasSavedPreference {
-                    Button {
-                        selection.remove(photoID: photo.id)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 26, height: 26)
-                            .background(.black.opacity(0.55), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(7)
-                    .accessibilityLabel("Remove photo")
-                }
-            }
-            .accessibilityLabel("Selected photo")
     }
 
     private func addPhotoTile(width: CGFloat) -> some View {
@@ -215,76 +258,207 @@ struct PhotoSessionSetupView: View {
                     shape.strokeBorder(GoPhotoDesign.primaryBorder, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 }
                 .overlay {
-                    Image(systemName: "plus")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(GoPhotoDesign.primary)
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundStyle(GoPhotoDesign.primary)
+                        Text("Add photos")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(GoPhotoDesign.primary)
+                    }
                 }
                 .frame(width: width, height: width * 4 / 3)
         }
         .buttonStyle(.plain)
-        .disabled(isAddingDisabled)
-        .opacity(isAddingDisabled ? 0.4 : 1)
+        .disabled(isAddingDisabled || isSelecting)
+        .opacity(isSelecting ? 0.3 : 1.0)
         .accessibilityLabel("Add Photos")
     }
 
-    private var isAddingDisabled: Bool {
-        selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
-    }
-
-    private var hasUnsavedPhotos: Bool {
-        !selection.photos.isEmpty && !selection.hasSavedPreference
-    }
-
-    private var minimumPhotosHint: String? {
-        let missing = ChoosePhotosViewModel.minPhotos - selection.photos.count
-        guard missing > 0 else { return nil }
-        let photos = missing == 1 ? "photo" : "photos"
-        return "Add \(missing) more \(photos) to continue. Need at least \(ChoosePhotosViewModel.minPhotos)."
-    }
-
-    private var actions: some View {
-        VStack(spacing: 11) {
-            if selection.hasSavedPreference {
-                SessionPrimaryButton(
-                    title: "Start Analyzing",
-                    isEnabled: selection.canStartAnalyzing && !selection.isStartingAnalysis,
-                    action: startAnalyzing
-                )
-            } else if selection.photos.isEmpty {
-                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
-
-                Button("Create a Custom Preference") {
-                    isShowingCustomPreference = true
+    private func photoCell(_ photo: PhotoItem, width: CGFloat) -> some View {
+        let isChecked = selectedPhotoIDs.contains(photo.id)
+        return Button {
+            if isSelecting {
+                if isChecked {
+                    selectedPhotoIDs.remove(photo.id)
+                } else {
+                    selectedPhotoIDs.insert(photo.id)
                 }
-                .buttonStyle(.goPhotoText)
+            }
+        } label: {
+            Image(uiImage: photo.image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: width, height: width * 4 / 3)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    if isSelecting {
+                        ZStack {
+                            Circle()
+                                .fill(isChecked ? GoPhotoDesign.primary : Color.black.opacity(0.3))
+                                .frame(width: 24, height: 24)
+                            if isChecked {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Circle()
+                                    .strokeBorder(.white, lineWidth: 1.5)
+                                    .frame(width: 24, height: 24)
+                            }
+                        }
+                        .padding(6)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Bottom Actions (Floating purple pill button)
+
+    private var bottomActions: some View {
+        VStack(spacing: 0) {
+            if isSelecting {
+                // Delete selected button when in select mode
+                Button {
+                    isConfirmingDeletePhotos = true
+                } label: {
+                    HStack {
+                        Image(systemName: "trash")
+                        Text("Delete \(selectedPhotoIDs.count) Photos")
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(selectedPhotoIDs.isEmpty ? Color.gray : GoPhotoDesign.error, in: Capsule())
+                }
+                .disabled(selectedPhotoIDs.isEmpty)
+                .padding(.horizontal, GoPhotoDesign.sessionMargin)
+                .padding(.bottom, 12)
+            } else if !selection.photos.isEmpty {
+                // "Analyze X photos" Floating purple button as in Image 2
+                Button {
+                    isShowingNameModal = true
+                } label: {
+                    Text("Analyze \(selection.photos.count) photos")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            selection.photos.count >= ChoosePhotosViewModel.minPhotos
+                                ? GoPhotoDesign.primary
+                                : GoPhotoDesign.primary.opacity(0.5),
+                            in: Capsule()
+                        )
+                        .shadow(color: GoPhotoDesign.primary.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
+                .disabled(selection.photos.count < ChoosePhotosViewModel.minPhotos)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
             } else {
-                if let hint = minimumPhotosHint {
-                    Text(hint)
-                        .font(.footnote)
-                        .foregroundStyle(GoPhotoDesign.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                SessionPrimaryButton(
-                    title: "Continue",
-                    isEnabled: selection.canContinue,
-                    action: { isPresentingNamePrompt = true }
-                )
-                .accessibilityHint(minimumPhotosHint ?? "")
+                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
+                    .padding(.horizontal, GoPhotoDesign.sessionMargin)
+                    .padding(.bottom, 12)
             }
         }
-        .padding(.horizontal, GoPhotoDesign.sessionMargin)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .frame(maxWidth: .infinity)
-        .background(GoPhotoDesign.background.ignoresSafeArea(edges: .bottom))
-        .alert("Couldn't update saved photos", isPresented: Binding(
-            get: { updateError != nil },
-            set: { if !$0 { updateError = nil } }
-        )) {
-            Button("OK", role: .cancel) { updateError = nil }
-        } message: {
-            Text(updateError ?? "")
+    }
+
+    // MARK: - Custom Naming Modal as in Image 2 (iPhone 17 - 1)
+
+    private var nameCollectionModal: some View {
+        ZStack {
+            // Blurred backdrop
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    isShowingNameModal = false
+                }
+
+            // Card
+            VStack(alignment: .leading, spacing: 14) {
+                Text("What this collection going to be\n?")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(GoPhotoDesign.primaryText)
+                    .lineLimit(2)
+
+                Text("“purpose is to know if you are going to take picture based on vacation (beach/OOTD/big statue/city/night life)”")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(GoPhotoDesign.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Input box
+                HStack {
+                    TextField("....", text: $collectionName)
+                        .font(.system(size: 15))
+                        .autocorrectionDisabled()
+
+                    if !collectionName.isEmpty {
+                        Button {
+                            collectionName = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(GoPhotoDesign.secondaryText)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Action buttons: Cancel and Save
+                HStack(spacing: 12) {
+                    Button {
+                        isShowingNameModal = false
+                    } label: {
+                        Text("Cancel")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(GoPhotoDesign.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                    }
+
+                    Button {
+                        let trimmed = collectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        isShowingNameModal = false
+                        saveAndAnalyze(name: trimmed)
+                    } label: {
+                        Text("Save")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(
+                                collectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? GoPhotoDesign.primary.opacity(0.4)
+                                    : GoPhotoDesign.primary,
+                                in: Capsule()
+                            )
+                    }
+                    .disabled(collectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(.top, 6)
+            }
+            .padding(22)
+            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: Color.black.opacity(0.18), radius: 24, x: 0, y: 8)
+            .padding(.horizontal, 28)
+        }
+    }
+
+    private func saveAndAnalyze(name: String) {
+        onCreatePreference(selection.photos, name) { result in
+            switch result {
+            case .success(let id):
+                selection.markPreferenceCreated(id: id, photos: selection.photos)
+                onStartAnalyzing(id)
+            case .failure(let error):
+                updateError = error.message
+            }
         }
     }
 
@@ -293,24 +467,12 @@ struct PhotoSessionSetupView: View {
         isPresentingPicker = true
     }
 
-    private func startAnalyzing() {
-        guard let id = selection.preferenceID,
-              selection.canStartAnalyzing,
-              !selection.isStartingAnalysis,
-              preferences.preference(id: id) != nil else {
-            updateError = "The saved preference is unavailable. Return to Preference Selection and try again."
-            return
-        }
-        selection.isStartingAnalysis = true
-        preferences.prepareForReanalysis(id: id) { result in
-            switch result {
-            case .success:
-                onStartAnalyzing(id)
-            case .failure(let error):
-                selection.isStartingAnalysis = false
-                updateError = error.message
-            }
-        }
+    private var isAddingDisabled: Bool {
+        selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
+    }
+
+    private var hasUnsavedPhotos: Bool {
+        !selection.photos.isEmpty && !selection.hasSavedPreference
     }
 
     private func reloadSavedPreference() {
@@ -384,6 +546,11 @@ final class PhotoSessionSetupSelection {
     func remove(photoID: UUID) {
         guard !hasSavedPreference else { return }
         photos.removeAll { $0.id == photoID }
+    }
+
+    func removePhotos(withIDs ids: Set<UUID>) {
+        guard !hasSavedPreference else { return }
+        photos.removeAll { ids.contains($0.id) }
     }
 
     func markPreferenceCreated(id: UUID, photos: [PhotoItem]) {
