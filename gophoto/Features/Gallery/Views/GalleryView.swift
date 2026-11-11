@@ -43,6 +43,8 @@ struct GalleryView: View {
     /// Owned by the presenter (GalleryScreen); @Observable, so a plain reference is enough.
     let viewModel: GalleryViewModel
     
+    var onDismiss: (() -> Void)? = nil
+    
     @Query(sort: \GalleryPhoto.createdAt, order: .reverse)
     private var photos: [GalleryPhoto]
 
