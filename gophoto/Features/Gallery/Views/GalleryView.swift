@@ -14,7 +14,7 @@ import SwiftData
 struct GalleryView: View {
     /// Owned by the presenter (GalleryScreen); @Observable, so a plain reference is enough.
     let viewModel: GalleryViewModel
-    
+    //dontolgay
     @Query(sort: \GalleryPhoto.createdAt, order: .reverse)
     private var photos: [GalleryPhoto]
     
