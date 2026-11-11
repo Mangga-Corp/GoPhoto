@@ -2,7 +2,9 @@
 //  GalleryScreen.swift
 //  gophoto
 //
-//  The gallery as presented from the camera: navigation + back button.
+//  Created by Reynard Setiawan on 12/10/26.
+//
+//  The gallery as presented from the camera.
 //  A separate view with no inputs, so SwiftUI never rebuilds it (or its view model) when the
 //  camera screen underneath updates.
 //
@@ -16,17 +18,7 @@ struct GalleryScreen: View {
 
     var body: some View {
         NavigationStack {
-            GalleryView(viewModel: viewModel)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.backward")
-                        }
-                        .accessibilityLabel("Back")
-                    }
-                }
+            GalleryView(viewModel: viewModel, onDismiss: { dismiss() })
         }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.primary)

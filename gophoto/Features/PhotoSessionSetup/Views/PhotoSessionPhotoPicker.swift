@@ -12,6 +12,7 @@ struct PhotoSessionPhotoPicker: UIViewControllerRepresentable {
     private let onSave: ([PhotoItem], String) -> String?
     private let onCreatePreference: (([PhotoItem], String, @escaping (String?) -> Void) -> Void)?
     private let onFinish: () -> Void
+    private var canRemove = false
 
     init(onSave: @escaping ([PhotoItem], String) -> String?, onFinish: @escaping () -> Void) {
         mode = .createPreference
@@ -22,10 +23,12 @@ struct PhotoSessionPhotoPicker: UIViewControllerRepresentable {
 
     init(
         initialPhotos: [PhotoItem],
+        canRemove: Bool = false,
         onSelection: @escaping ([PhotoItem]) -> Void,
         onFinish: @escaping () -> Void
     ) {
         mode = .selectPhotos(initialPhotos: initialPhotos, onSelection: onSelection)
+        self.canRemove = canRemove
         onSave = { _, _ in nil }
         onCreatePreference = nil
         self.onFinish = onFinish
@@ -45,6 +48,7 @@ struct PhotoSessionPhotoPicker: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> PhotoPreferencePickerEntryViewController {
         PhotoPreferencePickerEntryViewController(
             mode: mode,
+            canRemove: canRemove,
             onSave: onSave,
             onCreatePreference: onCreatePreference,
             onFinish: onFinish
@@ -59,6 +63,7 @@ struct PhotoSessionPhotoPicker: UIViewControllerRepresentable {
 
 final class PhotoPreferencePickerEntryViewController: UIViewController {
     private let mode: PhotoSessionPickerEntryMode
+    private let canRemove: Bool
     private let onSave: ([PhotoItem], String) -> String?
     private let onCreatePreference: (([PhotoItem], String, @escaping (String?) -> Void) -> Void)?
     private let onFinish: () -> Void
@@ -66,11 +71,13 @@ final class PhotoPreferencePickerEntryViewController: UIViewController {
 
     init(
         mode: PhotoSessionPickerEntryMode,
+        canRemove: Bool = false,
         onSave: @escaping ([PhotoItem], String) -> String?,
         onCreatePreference: (([PhotoItem], String, @escaping (String?) -> Void) -> Void)?,
         onFinish: @escaping () -> Void
     ) {
         self.mode = mode
+        self.canRemove = canRemove
         self.onSave = onSave
         self.onCreatePreference = onCreatePreference
         self.onFinish = onFinish
@@ -99,6 +106,7 @@ final class PhotoPreferencePickerEntryViewController: UIViewController {
         case .selectPhotos(let initialPhotos, let onSelection):
             viewModel = makeViewModel(items: initialPhotos, mode: .editor, preferences: preferences)
             viewModel.onPhotosChange = onSelection
+            viewModel.canRemoveInPicker = canRemove
         case .namePreference(let photos):
             viewModel = makeViewModel(items: photos, mode: .create, preferences: preferences)
         }
