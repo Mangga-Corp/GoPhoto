@@ -18,6 +18,7 @@ struct CameraAngleSelectionView: View {
             title: "Choose a Camera Angle",
             message: "From where should the photo be taken? The camera will guide your phone's height and tilt.",
             selection: $model.angle,
+            isOptionAvailable: { angle in model.isAngleAvailable(angle) },
             primaryTitle: "Create Preference",
             footnote: model.pendingName.map { "Saved to your preferences as “\($0)”" },
             isLoading: model.isSaving,

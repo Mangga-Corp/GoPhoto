@@ -196,6 +196,12 @@ final class PreferencesViewModel {
             completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
             return
         }
+        guard !preferences.contains(where: { $0.customStyle == style }) else {
+            completion(.failure(PreferenceNameError(
+                message: "This combination has already been created. You can only have one of each combination."
+            )))
+            return
+        }
         let name = CustomPreferenceNaming.uniqueName(style.suggestedName, existing: preferences.map(\.name))
         let preference = Preference(name: name, customStyle: style)
         isSavingNewPreference = true

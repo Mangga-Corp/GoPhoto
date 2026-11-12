@@ -18,6 +18,7 @@ struct CustomStyleOptionPage<Option: CustomStyleOption, Artwork: View>: View {
     let title: String
     let message: String
     @Binding var selection: Option?
+    var isOptionAvailable: ((Option) -> Bool)? = nil
     let primaryTitle: String
     /// Shown above the primary button (e.g. the name the preference will be saved with).
     var footnote: String?
@@ -45,10 +46,13 @@ struct CustomStyleOptionPage<Option: CustomStyleOption, Artwork: View>: View {
                 header
                 LazyVStack(spacing: 14) {
                     ForEach(Option.allCases) { option in
-                        CustomStyleOptionCard(option: option, isSelected: option == selection) {
+                        let isAvailable = isOptionAvailable?(option) ?? true
+                        CustomStyleOptionCard(option: option, isSelected: option == selection, isAvailable: isAvailable) {
                             artwork(option)
                         }
-                        .onTapGesture { select(option) }
+                        .onTapGesture {
+                            if isAvailable { select(option) }
+                        }
                     }
                 }
             }
@@ -137,6 +141,7 @@ struct CustomStyleOptionPage<Option: CustomStyleOption, Artwork: View>: View {
 private struct CustomStyleOptionCard<Option: CustomStyleOption, Artwork: View>: View {
     let option: Option
     let isSelected: Bool
+    var isAvailable: Bool = true
     @ViewBuilder let artwork: () -> Artwork
 
     private static var photoSize: CGSize { CGSize(width: 108, height: 144) }   // 3:4, like a portrait photo
@@ -154,7 +159,16 @@ private struct CustomStyleOptionCard<Option: CustomStyleOption, Artwork: View>: 
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    SelectionIndicator(isSelected: isSelected)
+                    if !isAvailable {
+                        Text("Already Added")
+                            .font(GoPhotoDesign.smallLabel)
+                            .foregroundStyle(GoPhotoDesign.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(GoPhotoDesign.tagBackground, in: Capsule())
+                    } else {
+                        SelectionIndicator(isSelected: isSelected)
+                    }
                 }
                 Text(option.summary)
                     .font(GoPhotoDesign.secondaryBody)
@@ -164,7 +178,8 @@ private struct CustomStyleOptionCard<Option: CustomStyleOption, Artwork: View>: 
         }
         .padding(14)
         .goPhotoCard(isSelected: isSelected)
+        .opacity(isAvailable ? 1.0 : 0.45)
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(isAvailable ? (isSelected ? [.isButton, .isSelected] : .isButton) : [])
     }
 }

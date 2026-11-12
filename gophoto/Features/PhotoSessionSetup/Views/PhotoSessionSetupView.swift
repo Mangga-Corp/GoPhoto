@@ -54,7 +54,7 @@ struct PhotoSessionSetupView: View {
                 VStack(spacing: 0) {
                     if selection.photos.isEmpty {
                         headerEmpty
-                            .padding(.top, 24)
+                            .padding(.top, 8)
                         Spacer(minLength: 24)
                         emptyState
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,7 +62,7 @@ struct PhotoSessionSetupView: View {
                     } else {
                         // Header as in Image 2
                         headerWithPhotos
-                            .padding(.top, 16)
+                            .padding(.top, 8)
                             .padding(.bottom, 14)
 
                         selectedPhotos(thumbnailWidth: thumbnailWidth)
@@ -82,7 +82,19 @@ struct PhotoSessionSetupView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomActions
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            // Back button in the navigation bar, like the Custom Preference steps
+            // (Choose a Subject Placement). Asks first if there are unsaved photos.
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: goBack) {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Back")
+            }
+        }
         .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
             Button("Leave", role: .destructive) { dismiss() }
             Button("Stay", role: .cancel) { }
@@ -96,11 +108,6 @@ struct PhotoSessionSetupView: View {
         }
         .onAppear {
             reloadSavedPreference()
-            // If user enters with no photos, automatically present the picker
-            if selection.photos.isEmpty && !hasAutoOpenedPicker {
-                hasAutoOpenedPicker = true
-                isPresentingPicker = true
-            }
         }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.primary)
@@ -140,22 +147,6 @@ struct PhotoSessionSetupView: View {
     private var headerWithPhotos: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center) {
-                // Back button
-                Button {
-                    if hasUnsavedPhotos {
-                        isConfirmingLeave = true
-                    } else {
-                        dismiss()
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(GoPhotoDesign.primaryText)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-
                 // Title and Subtitle
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AI Preferences")
@@ -165,7 +156,6 @@ struct PhotoSessionSetupView: View {
                         .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                 }
-                .padding(.leading, 8)
 
                 Spacer()
 
@@ -192,13 +182,15 @@ struct PhotoSessionSetupView: View {
     }
 
     private var headerEmpty: some View {
-        VStack(spacing: 10) {
-            Text("Photo Session Setup")
-                .font(GoPhotoDesign.pageTitle)
-                .foregroundStyle(GoPhotoDesign.primaryText)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 12) {
+            VStack(spacing: 8) {
+                Text("Photo Session Setup")
+                    .font(GoPhotoDesign.pageTitle)
+                    .foregroundStyle(GoPhotoDesign.primaryText)
+                    .multilineTextAlignment(.center)
 
-            privacyNote
+                privacyNote
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -490,6 +482,14 @@ struct PhotoSessionSetupView: View {
 
     private var isAddingDisabled: Bool {
         selection.isSavingPhotos || selection.isStartingAnalysis || (selection.hasSavedPreference && !selection.isPersistedPreferenceLoaded)
+    }
+
+    private func goBack() {
+        if hasUnsavedPhotos {
+            isConfirmingLeave = true
+        } else {
+            dismiss()
+        }
     }
 
     private var hasUnsavedPhotos: Bool {

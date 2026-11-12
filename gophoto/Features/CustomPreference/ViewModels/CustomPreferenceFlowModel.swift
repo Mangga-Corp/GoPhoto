@@ -27,6 +27,26 @@ final class CustomPreferenceFlowModel {
 
     static let stepCount = 2
 
+    /// All custom preference combinations currently saved in the preferences list.
+    var existingStyles: Set<CustomPreferenceStyle> {
+        Set(preferences.preferences.compactMap(\.customStyle))
+    }
+
+    /// Whether a camera angle is available for the currently selected placement.
+    func isAngleAvailable(_ angle: CameraAngleStyle) -> Bool {
+        guard let placement else { return true }
+        let style = CustomPreferenceStyle(placement: placement, angle: angle)
+        return !existingStyles.contains(style)
+    }
+
+    /// Whether a placement has at least one camera angle combination that isn't already created.
+    func isPlacementAvailable(_ placement: SubjectPlacement) -> Bool {
+        CameraAngleStyle.allCases.contains { angle in
+            let style = CustomPreferenceStyle(placement: placement, angle: angle)
+            return !existingStyles.contains(style)
+        }
+    }
+
     /// Both choices made.
     var style: CustomPreferenceStyle? {
         guard let placement, let angle else { return nil }
@@ -41,6 +61,10 @@ final class CustomPreferenceFlowModel {
     /// Saves the preference, then hands its ID to the opener. Errors stay on this screen.
     func create() {
         guard let style, !isSaving else { return }
+        guard !existingStyles.contains(style) else {
+            errorMessage = "This combination has already been created. Delete the existing preference first to create it again."
+            return
+        }
         isSaving = true
         preferences.addCustomPersisted(style: style) { [weak self] result in
             guard let self else { return }
