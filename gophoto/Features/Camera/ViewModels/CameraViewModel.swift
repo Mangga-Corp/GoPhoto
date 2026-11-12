@@ -130,7 +130,7 @@ final class CameraViewModel {
 
     // MARK: Experiment (appMode 2): which guide runs, and the framing of the Phased family
 
-    /// Guide + framing under test. appMode 1 fixes Phased · Auto crop (no depth, Blur Off; not saved, no log).
+    /// Guide + framing under test. appMode 1 fixes Phased · No crop (no depth, Blur Off; not saved, no log).
     var experiment = ExperimentSelection(guide: .mainModified, framing: .autoCrop) {
         didSet {
             guard experiment != oldValue else { return }
@@ -532,9 +532,11 @@ final class CameraViewModel {
             savesSetup = false
             guideMode = fixedSetup.mode
             captureAspect = fixedSetup.aspect
-            // appMode 1 = Phased · Auto crop (Reynard, 9 Nov: the most useful in testing). No depth, Blur Off
-            // (the toggle is developer-only), no selector, no guide log. Main modified stays in appMode 2.
-            experiment = ExperimentSelection(guide: .phased, framing: .autoCrop)
+            // appMode 1 = Phased · No crop: the photo in the gallery is exactly what the camera framed
+            // (size, height, tilt and left/right are all guided before the shutter, nothing is cropped
+            // after). No depth, Blur Off (the toggle is developer-only), no selector, no guide log.
+            // Main modified and Auto crop stay in appMode 2.
+            experiment = ExperimentSelection(guide: .phased, framing: .noCrop)
         } else {              // appMode 2: the guide experiment (Main / Main modified run B + crop)
             experimentEnabled = true
             experiment = ExperimentSelection(guide: .saved(), framing: .saved())
@@ -1654,6 +1656,7 @@ extension CameraViewModel {
         f["vantageSource"] = .string(out.vantageSource)
         f.set("tiltError", out.tiltError)
         f.set("tiltSource", out.tiltSource)
+        f.set("horizontalError", out.horizontalError)
         f.set("pitch", pitch)
         f.set("roll", roll)
         f["ready"] = .bool(out.ready)

@@ -83,8 +83,9 @@ nonisolated struct PhasedParameters: Sendable, Equatable {
     // Framing.
     /// Auto crop: straighten the horizon in the crop up to this roll, degrees (if the crop still fits).
     var maxCropRoll = 3.0
-    /// No crop: horizontal offset accepted without comment (logged), frame units.
-    var noCropCentreTolerance = 0.10
+    /// No crop: the subject's horizontal centre vs the reference, frame units. The photo is not
+    /// cropped afterwards, so left/right is guided in camera (start beyond exit, finish inside enter).
+    var horizontalEnter = 0.05, horizontalExit = 0.08
 
     /// Zoom: No crop takes 2× when the person at 1× is smaller than this share of the reference span.
     var twoXBelow = 0.6
@@ -126,12 +127,12 @@ nonisolated struct PhasedParameters: Sendable, Equatable {
 
     /// For the log: every parameter that changes behaviour.
     var logSummary: String {
-        String(format: "window %.1f quick %.1f reopenWin %.1f start %.1f complete %.1f reopen %.1f stale %.1f loss %.1f · vantage ±%.1f/±%.1f/±%.1f faces · pitch ±%.0f/±%.0f · top ±%.2f/±%.2f · 2× below %.2f · floor %.0f/%.0f MP · head eye %.2f face %.2f after %.1f s %@ · limit after %.1f s (< %.0f%% progress)",
+        String(format: "window %.1f quick %.1f reopenWin %.1f start %.1f complete %.1f reopen %.1f stale %.1f loss %.1f · vantage ±%.1f/±%.1f/±%.1f faces · pitch ±%.0f/±%.0f · top ±%.2f/±%.2f · 2× below %.2f · floor %.0f/%.0f MP · head eye %.2f face %.2f after %.1f s %@ · limit after %.1f s (< %.0f%% progress) · left/right ±%.2f/±%.2f",
                window, quickWindow, reopenWindow, startDwell, completeDwell, reopenDwell, staleAfter, lossGrace,
                vantageFacesEnter, vantageFacesExit, vantageFacesReopen, pitchEnter, pitchExit, topEnter, topExit,
                twoXBelow, cropFloorMegapixels, depthCropFloorMegapixels,
                PhasedMeasure.headEyeFraction, PhasedMeasure.headFaceRatio, headAfterFaceLoss, headFromPose ? "on" : "off",
-               stuckAfter, stuckProgress * 100)
+               stuckAfter, stuckProgress * 100, horizontalEnter, horizontalExit)
     }
 }
 

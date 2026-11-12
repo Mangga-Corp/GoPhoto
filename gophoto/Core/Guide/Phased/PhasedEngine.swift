@@ -322,6 +322,7 @@ nonisolated struct PhasedEngine: Sendable {
                 break
             }
             var floorLimited = false
+            var framed = true
             if policy == .autoCrop {
                 if let crop = finalCrop(now: now, target: target) {
                     floorLimited = crop.floorLimited
@@ -336,10 +337,15 @@ nonisolated struct PhasedEngine: Sendable {
                     reason = "no valid crop now"
                 }
             } else {
-                reason = "framed in camera"
+                // No crop: what the camera frames is the saved photo, so left/right is guided here.
+                let h = horizontalWant(now: now, target: target)
+                out.horizontalError = h.error
+                want = h.want
+                reason = h.reason
+                framed = h.ok
             }
             out.ready = vantageUnavailable == nil && distanceUnavailable == nil && (t.ok || tiltAccepted)
-                && (policy == .noCrop || (out.cropWindow != nil && !floorLimited)) && fresh
+                && (policy == .noCrop ? framed : (out.cropWindow != nil && !floorLimited)) && fresh
             if out.ready { want = .takePhoto }
         }
 
@@ -713,6 +719,23 @@ nonisolated struct PhasedEngine: Sendable {
                                 reason: String(format: "pitch %+.1f° from the reference", error), need: error / limit)
         }
         return TiltDecision(want: nil, ok: true, error: nil, source: "fit", reason: "fits", need: 0)
+    }
+
+    /// No crop: the subject's horizontal centre against the reference, from the short window (stops
+    /// as soon as it is right). Same hysteresis as the other moves: start beyond EXIT, finish inside ENTER.
+    private func horizontalWant(now: TimeInterval, target: PhasedTarget)
+        -> (want: PhasedInstruction?, ok: Bool, error: Double?, reason: String) {
+        guard let refMid = target.midX else { return (nil, true, nil, "no reference left/right") }
+        guard let mid = midX.median(now: now, window: params.quickWindow, minCount: 2) else {
+            return (nil, false, nil, "subject not measurable")
+        }
+        let error = mid - refMid          // + = person right of the reference
+        let moving = instruction == .moveLeft || instruction == .moveRight
+        let limit = moving ? params.horizontalEnter : params.horizontalExit
+        let reason = String(format: "left/right %+.2f", error)
+        guard abs(error) > limit else { return (nil, true, error, reason) }
+        // Directions are for the photographer: moving the phone right slides the person left.
+        return (error > 0 ? .moveRight : .moveLeft, false, error, reason + " from the reference")
     }
 
     // MARK: - Test fixture (video replay only)
