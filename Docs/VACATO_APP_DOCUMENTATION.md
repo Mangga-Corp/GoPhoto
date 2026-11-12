@@ -1277,7 +1277,7 @@ DepthAnything dan GeoCalib **tidak** dipakai di kamera live, hanya di analisis p
 
 | Mode | Cara aktif | Guide yang jalan | Status |
 |---|---|---|---|
-| `appMode = 1` (build saat ini, `CameraView.swift:18`) | Default | **Phased engine + Auto crop** (`Core/Guide/Phased/*`), `HorizonState`, overlay 3D `GuidanceMotion` | ✅ |
+| `appMode = 1` (build saat ini, `CameraView.swift:18`) | Default | **Phased engine + No crop** (`Core/Guide/Phased/*`), `HorizonState`, overlay 3D `GuidanceMotion` | ✅ |
 | `appMode = 2` (developer, harus edit source) | Ubah konstanta lalu build ulang | Dipilih via `ExperimentBar`: Main (`Legacy/TeamGuideFlow` + `TeamAdaptiveFOV`, salinan beku dari commit a68494f), Main modified (`GuideFlow` + `AdaptiveFOV` + `PersonLossZoomReset`), Phased, Phased + Depth | 🟡 dev-only |
 
 Di kedua mode, `guideMode` dipaksa `.heightFirstCrop` ("B · Height first + crop"). Akibatnya 11 dari 12 `GuideMode` (A, A old look, A steps, B, B old, C, C old, D, E, F) dan `GuideInstruction.next()` tidak terjangkau. Kode appMode 2 tidak dibungkus `#if DEBUG`, jadi ikut ter-compile di Release.
@@ -1350,7 +1350,8 @@ Rumus Auto crop: c = clamp(cropMinScale, 0.3, 1); `enterLow = min(1.2c, 0.88)`, 
   Tanpa pitch referensi = OK. Berlaku juga "at the limit" (langkah min 1° atau 0.01). Bila `fitOverflow` >0 selama 0.8 s, kembali ke distance.
 - **framing:** tilt dievaluasi ulang dengan batas exit; bila tidak OK selama 1.5 s, kembali ke tilt.
   - Untuk Auto crop: `finalCrop` (median 0.8 s) menjadi `cropWindow`. Roll diluruskan bila 0.5° ≤ |roll| ≤ `maxCropRoll` 3° dan crop yang diputar masih muat.
-  - `ready` = distance & vantage tersedia, tilt OK/diterima, crop valid & tidak floor-limited, data segar. Saat `ready`, instruksi menjadi **"Take the photo now"**.
+  - Untuk No crop: posisi kiri/kanan subjek (median 0.3 s dari `midX`) dibandingkan dengan `midX` referensi (`horizontalEnter` 0.05 / `horizontalExit` 0.08). Subjek di kanan target → `moveRight`, di kiri → `moveLeft` (arah untuk fotografer).
+  - `ready` = distance & vantage tersedia, tilt OK/diterima, (Auto crop) crop valid & tidak floor-limited atau (No crop) kiri/kanan OK, data segar. Saat `ready`, instruksi menjadi **"Take the photo now"**.
 - **Reopen:** dari fase mana pun di atas distance, bila r keluar dari reopen band (atau kedua ujung terpotong) selama `reopenDwell` 1.5 s, engine `restart(from: .distance)`. Bila depth tersedia dan berubah <6%, reopen dibatalkan ("pose/tilt, not a walk"). Drift vantage > batas reopen selama 1.5 s → kembali ke vantage.
 - **Restart ke acquire:** saat target berubah (shot size, postur, preset) atau saat subjek baru di-tap.
 
@@ -2100,7 +2101,7 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Core/Gallery/GalleryStore.swift` | `GalleryStore`, `GalleryStoreProtocol`, `MockGalleryStore` | Insert/hapus record galeri |
 | `gophoto/Core/Gallery/GallerySync.swift` | `GallerySync` | Hapus record yang aset-nya sudah tidak ada di Photos |
 | `gophoto/Core/Guide/AdaptiveFOV.swift` | `AdaptiveFOV` | Keputusan auto-zoom 1–2× (dev); `baselineZoom` dipakai live |
-| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.autoCrop` di appMode 1 |
+| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.noCrop` di appMode 1 (foto di gallery = framing di kamera) |
 | `gophoto/Core/Guide/Experiment/GuideLog.swift` | `GuideLogger`, `LogFields`, `LogValue` | Log JSONL guide + JSON per capture (dev) |
 | `gophoto/Core/Guide/FramingTarget.swift` | `FramingTarget`, `FramingOffset` | Rect target orang + toleransi; target live = `subjectBox` atau `.center` |
 | `gophoto/Core/Guide/GuidanceMotion.swift` | `GuidanceMotion`, `Direction`, `TiltView` | Memetakan instruksi ke animasi 3D (height/tilt) |

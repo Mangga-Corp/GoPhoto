@@ -73,7 +73,7 @@ nonisolated enum FramingPolicy: String, CaseIterable, Identifiable, Sendable, Co
         case .autoCrop:
             "Shoots at the largest size at 1× and crops only when needed, never below the quality floor (12 MP; 8 MP with depth). The crop is not drawn: the pill turns green when ready. A photo taken before that is cropped with what is valid at that moment. The original is saved too."
         case .noCrop:
-            "No crop after the shot. Zoom is only 1× or 2× (lens / sensor crop), chosen before the distance phase. Small framing differences are accepted."
+            "No crop after the shot: the saved photo is what the camera framed. Zoom is only 1× or 2× (lens / sensor crop), chosen before the distance phase. Left/right is guided in the final framing."
         }
     }
 
