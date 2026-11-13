@@ -2120,7 +2120,7 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Core/Gallery/GalleryStore.swift` | `GalleryStore`, `GalleryStoreProtocol`, `MockGalleryStore` | Insert/hapus record galeri |
 | `gophoto/Core/Gallery/GallerySync.swift` | `GallerySync` | Hapus record yang aset-nya sudah tidak ada di Photos |
 | `gophoto/Core/Guide/AdaptiveFOV.swift` | `AdaptiveFOV` | Keputusan auto-zoom 1–2× (dev); `baselineZoom` dipakai live |
-| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.noCrop` di appMode 1 (foto di gallery = framing di kamera) |
+| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.autoCrop` di appMode 1 (dikembalikan 13 Nov; `cc5a19e` sempat mengubahnya ke `.noCrop` tanpa sengaja) |
 | `gophoto/Core/Guide/Experiment/GuideLog.swift` | `GuideLogger`, `LogFields`, `LogValue` | Log JSONL guide + JSON per capture (dev) |
 | `gophoto/Core/Guide/FramingTarget.swift` | `FramingTarget`, `FramingOffset` | Rect target orang + toleransi; target live = `subjectBox` atau `.center` |
 | `gophoto/Core/Guide/GuidanceMotion.swift` | `GuidanceMotion`, `Direction`, `TiltView` | Memetakan instruksi ke animasi 3D (height/tilt) |
@@ -2437,5 +2437,6 @@ Branch `Adjust-Live-Guidance`. Semua angka dari `PhasedParameters.swift`; catata
 | Horizon | Crop ≤2° (jangkauan 2.5°), "Straighten the phone" >2.3° sampai ≤1.5°, >5° dibiarkan; median roll | 12 Nov |
 | Kiri-kanan (Auto crop) | "Move the phone left/right": crop mentok tepi (>0.05) atau jauh dari tengah (>0.10) | 11–12 Nov |
 | Kiri-kanan (No crop) | Fitur dari `main` tidak ikut saat merge | 13 Nov |
+| Default appMode 1 | Dikembalikan ke **Phased · Auto crop** (zoom 1× tetap). `cc5a19e` sempat mengubahnya ke No crop tanpa sengaja, yang membuat zoom 2× otomatis muncul lagi | 13 Nov |
 | Analisis preset | Vantage range (σ per foto, rentang + keyakinan), tampilan saja | 12 Nov |
 | Developer | Record GT + Share GT (appMode 2); debugphoto: Record + compare | 12 Nov |

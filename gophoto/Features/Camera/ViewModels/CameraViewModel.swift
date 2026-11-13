@@ -130,7 +130,7 @@ final class CameraViewModel {
 
     // MARK: Experiment (appMode 2): which guide runs, and the framing of the Phased family
 
-    /// Guide + framing under test. appMode 1 fixes Phased · No crop (no depth, Blur Off; not saved, no log).
+    /// Guide + framing under test. appMode 1 fixes Phased · Auto crop (no depth, Blur Off; not saved, no log).
     var experiment = ExperimentSelection(guide: .mainModified, framing: .autoCrop) {
         didSet {
             guard experiment != oldValue else { return }
@@ -532,11 +532,11 @@ final class CameraViewModel {
             savesSetup = false
             guideMode = fixedSetup.mode
             captureAspect = fixedSetup.aspect
-            // appMode 1 = Phased · No crop: the photo in the gallery is exactly what the camera framed
-            // (size, height, tilt and left/right are all guided before the shutter, nothing is cropped
-            // after). No depth, Blur Off (the toggle is developer-only), no selector, no guide log.
-            // Main modified and Auto crop stay in appMode 2.
-            experiment = ExperimentSelection(guide: .phased, framing: .noCrop)
+            // appMode 1 = Phased · Auto crop (Reynard, 9 Nov; restored 13 Nov — cc5a19e switched it to No crop by
+            // mistake). All tuning (distance aim, full-body band, left/right, roll by crop) is for Auto crop, and
+            // the zoom stays 1×. No depth, Blur Off (the toggle is developer-only), no selector, no guide log.
+            // Main modified and No crop stay in appMode 2.
+            experiment = ExperimentSelection(guide: .phased, framing: .autoCrop)
         } else {              // appMode 2: the guide experiment (Main / Main modified run B + crop)
             experimentEnabled = true
             experiment = ExperimentSelection(guide: .saved(), framing: .saved())
