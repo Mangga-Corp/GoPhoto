@@ -18,8 +18,7 @@ nonisolated enum PhasedPhase: String, Sendable, Codable, CaseIterable {
     case vantage
     /// 3 — tilt: the final framing must be reachable, then the reference pitch.
     case tilt
-    /// 4 — final framing (Auto crop: the crop; No crop: left/right in camera); "Take the photo now"
-    /// when everything is valid.
+    /// 4 — final framing (crop or no crop); "Take the photo now" when everything is valid.
     case framing
 
     var number: Int {
@@ -35,8 +34,12 @@ nonisolated enum PhasedPhase: String, Sendable, Codable, CaseIterable {
 
 /// One instruction at a time. No steps, no centimetres, no per-phase "OK".
 nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, Codable {
-    case tapPerson, moveCloser, moveBack, raisePhone, lowerPhone, tiltUp, tiltDown, moveLeft, moveRight, pointBack,
-         holdIt, takePhoto
+    case tapPerson, moveCloser, moveBack, raisePhone, lowerPhone, tiltUp, tiltDown, pointBack, holdIt, takePhoto
+    /// Auto crop (11 Nov): the crop cannot put the person where the reference has them → turn the phone.
+    /// Directions are for the photographer: moving the phone left slides the person RIGHT in the picture.
+    case moveLeft, moveRight
+    /// 12 Nov: horizon 2–5° off → straighten the phone (beyond that it is left as a Dutch angle).
+    case levelPhone
 
     var text: String {
         switch self {
@@ -47,11 +50,12 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
         case .lowerPhone: "Lower the phone"
         case .tiltUp:     "Tilt up"
         case .tiltDown:   "Tilt down"
-        case .moveLeft:   "Move left"
-        case .moveRight:  "Move right"
         case .pointBack:  "Point back at the person"
         case .holdIt:     "Hold it there"
         case .takePhoto:  "Take the photo now"
+        case .moveLeft:   "Move the phone left"
+        case .moveRight:  "Move the phone right"
+        case .levelPhone: "Straighten the phone"
         }
     }
 
@@ -64,11 +68,12 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
         case .lowerPhone: "arrow.down.to.line"
         case .tiltUp:     "arrow.up.circle"
         case .tiltDown:   "arrow.down.circle"
-        case .moveLeft:   "arrow.left"
-        case .moveRight:  "arrow.right"
         case .pointBack:  "viewfinder"
         case .holdIt:     "hand.raised"
         case .takePhoto:  "camera"
+        case .moveLeft:   "arrow.left"
+        case .moveRight:  "arrow.right"
+        case .levelPhone: "level"
         }
     }
 
@@ -203,6 +208,7 @@ nonisolated struct PhasedFrame: Sendable {
 
 /// What the engine decided this update.
 nonisolated struct PhasedOutput: Equatable, Sendable {
+    var horizontalError: Double?
     var phase: PhasedPhase = .acquire
     var instruction: PhasedInstruction?
     /// Every phase is valid: "Take the photo now" (never blocks the shutter).
@@ -228,8 +234,6 @@ nonisolated struct PhasedOutput: Equatable, Sendable {
     var vantageSource = "—"
     var tiltError: Double?
     var tiltSource: String = "—"
-    /// No crop: the subject's horizontal centre minus the reference's (+ = person right of it).
-    var horizontalError: Double?
     var limitation: String?
     var reason: String = ""
     /// Inputs this update did not have (e.g. no motion sensor in a video): what could not be evaluated.

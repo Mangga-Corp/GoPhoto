@@ -23,6 +23,22 @@ struct GuideDebugPanel: View {
                     .tint(.yellow)
                 }
             }
+            // GT recording (12 Nov): live analysis twice a second + original photo + ground truth per shot.
+            if viewModel.guideLog != nil {
+                HStack(spacing: 10) {
+                    Toggle("Record GT", isOn: $viewModel.gtRecording)
+                        .font(.caption2.weight(.semibold))
+                        .tint(.red)
+                        .fixedSize()
+                    if viewModel.gtRecording || viewModel.gtExportFiles.count > 1 {
+                        ShareLink(items: viewModel.gtExportFiles) {
+                            Label("Share GT", systemImage: "square.and.arrow.up.on.square")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .tint(.red)
+                    }
+                }
+            }
             if viewModel.isPhased {
                 ForEach(viewModel.phasedDebugLines, id: \.self) { Text($0) }
             }

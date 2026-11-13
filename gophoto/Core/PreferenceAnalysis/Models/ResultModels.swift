@@ -130,6 +130,9 @@ nonisolated struct HorizonEyeCue: Sendable, Equatable {
     let offsetInImageHeights: Double
     /// The same offset in head-heights, when a head size is available.
     let offsetInHeadHeights: Double?
+    /// σ of `offsetInHeadHeights` (head heights): pitch, focal, eye point and head size propagated
+    /// through the same formula (12 Nov, display only). Nil when not computed.
+    var offsetUncertaintyHeads: Double? = nil
 }
 
 nonisolated struct CameraAngleResult: Sendable, Equatable {

@@ -121,6 +121,7 @@ enum PreferenceAnalyzer {
                               eyeAboveShare: side?.aboveShare,
                               eyeSidePhotoCount: side?.photoCount)
         analysis.eyeOffsetFaces = side?.eyeOffsetFaces
+        analysis.vantageRange = side?.vantageRange
         if let pick = side?.anchor {
             analysis.anchorReference = pick.anchor.rawValue
             analysis.anchorAbove = pick.above
@@ -267,6 +268,8 @@ enum PreferenceAnalyzer {
         /// Camera height vs the eyes in face heights ((eye y − horizon y) / face height, + = camera
         /// above), when the face was found (version 17). Unlike the angle, distance does not change it.
         var faces: Double? = nil
+        /// σ of `faces` (face heights), when computed (12 Nov, display only).
+        var facesSigma: Double? = nil
     }
 
     nonisolated struct EyeSideResult: Sendable {
@@ -283,6 +286,8 @@ enum PreferenceAnalyzer {
         var weightedElevation: Double? = nil
         /// Camera height target in face heights (version 17), nil when no photo had a face.
         var eyeOffsetFaces: Double? = nil
+        /// Same photos as `eyeOffsetFaces`, as a range + confidence (display only).
+        var vantageRange: PresetAnalysis.VantageRange? = nil
     }
 
     /// The framing rule: full body is shot from eye level down, half body from eye level up.
@@ -309,6 +314,60 @@ enum PreferenceAnalyzer {
         }
     }
 
+    // Vantage range (12 Nov, step 1: display only). Thresholds are provisional, not used by the guide.
+    /// Photos less certain than this (face heights) do not shape the range.
+    nonisolated static let vantageSigmaMax = 1.5
+    /// Median σ at or below this → high confidence possible.
+    nonisolated static let vantageSigmaGood = 1.0
+    nonisolated static let vantageMinPhotos = 3
+    /// Neighbour gap, in combined σ, that splits the photos into two groups (needs ≥ 4 photos).
+    nonisolated static let vantageGapZ = 2.0
+
+    /// The face-height offsets as a range: agree (spread within σ), varied (spread real, no gap),
+    /// two groups (one clear gap), uncertain. No clamp: a large σ lowers confidence instead.
+    nonisolated static func vantageRange(_ used: [EyeVote]) -> PresetAnalysis.VantageRange? {
+        let all = used.compactMap { v -> (Double, Double)? in
+            guard let f = v.faces, let s = v.facesSigma, s.isFinite, s > 0 else { return nil }
+            return (f, s)
+        }
+        guard !all.isEmpty else { return nil }
+        let items = all.filter { $0.1 <= vantageSigmaMax }.sorted { $0.0 < $1.0 }
+        var r = PresetAnalysis.VantageRange(used: items.count, excluded: all.count - items.count)
+        guard !items.isEmpty else { return r }
+        let vals = items.map(\.0), sig = items.map(\.1)
+        let w = sig.map { 1 / ($0 * $0) }
+        r.center = zip(vals, w).map { $0 * $1 }.reduce(0, +) / w.reduce(0, +)
+        r.medianSigma = median(sig)
+        let mean = vals.reduce(0, +) / Double(vals.count)
+        r.spread = vals.count > 1
+            ? (vals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(vals.count - 1)).squareRoot() : 0
+        var gapIndex: Int? = nil, gapZ = 0.0
+        for i in 0..<(vals.count - 1) {
+            let z = (vals[i + 1] - vals[i]) / (sig[i] * sig[i] + sig[i + 1] * sig[i + 1]).squareRoot()
+            if z > gapZ { gapZ = z; gapIndex = i }
+        }
+        r.gapZ = gapZ
+        if let g = gapIndex, gapZ >= vantageGapZ, vals.count >= 4 {
+            r.kind = "twoGroups"
+            r.groups = [[vals[0], vals[g]], [vals[g + 1], vals[vals.count - 1]]]
+        } else if r.spread <= r.medianSigma {
+            r.kind = "agree"
+            r.low = r.center - r.medianSigma
+            r.high = r.center + r.medianSigma
+        } else if gapZ < 1, vals.count >= 2 {
+            r.kind = "varied"
+            r.low = vals.first
+            r.high = vals.last
+        } else {
+            r.kind = "uncertain"
+            r.low = vals.first
+            r.high = vals.last
+        }
+        r.confidence = items.count >= vantageMinPhotos && r.medianSigma <= vantageSigmaGood && r.kind != "uncertain"
+            ? "high" : "low"
+        return r
+    }
+
     /// One vote per photo with a camera-vs-eyes angle, only photos with the preset's framing.
     nonisolated static func eyeVotes(_ results: [PhotoResult], framing: FramingCategory?) -> [EyeVote] {
         results.compactMap { result in
@@ -320,7 +379,9 @@ enum PreferenceAnalyzer {
             let chance = 0.5 * (1 + erf(e / (sigma * 2.0.squareRoot())))
             let faces = result.cameraAngle.horizonCue?.offsetInHeadHeights
                 .flatMap { $0.isFinite && abs($0) <= maxTargetFaces ? $0 : nil }
-            return EyeVote(elevation: e, sigma: sigma, pitchDown: pitch, aboveChance: chance, faces: faces)
+            let facesSigma = faces == nil ? nil : result.cameraAngle.horizonCue?.offsetUncertaintyHeads
+            return EyeVote(elevation: e, sigma: sigma, pitchDown: pitch, aboveChance: chance, faces: faces,
+                           facesSigma: facesSigma)
         }
     }
 
@@ -346,7 +407,8 @@ enum PreferenceAnalyzer {
                                      photoCount: votes.count, elevation: elevation,
                                      pitchDown: pitches.isEmpty ? 0 : median(pitches),
                                      anchor: pick, weightedElevation: weighted,
-                                     eyeOffsetFaces: facesTarget(votes, side: nil))
+                                     eyeOffsetFaces: facesTarget(votes, side: nil),
+                                     vantageRange: vantageRange(votes))
             }
         }
         let votes = eyeVotes(results, framing: framing)
@@ -368,14 +430,16 @@ enum PreferenceAnalyzer {
             let (elevation, pitch) = targets(agreeing, side: side)
             return EyeSideResult(side: side, source: .taste, aboveShare: share, photoCount: votes.count,
                                  elevation: elevation, pitchDown: pitch,
-                                 eyeOffsetFaces: facesTarget(agreeing, side: side))
+                                 eyeOffsetFaces: facesTarget(agreeing, side: side),
+                                 vantageRange: vantageRange(agreeing))
         }
         if !votes.isEmpty, let share, votes.count >= sideMinPhotos || rule == nil {
             let side = rule ?? (share >= 0.5 ? .above : .below)
             let (elevation, pitch) = targets(votes, side: side)
             return EyeSideResult(side: side, source: .mixed, aboveShare: share, photoCount: votes.count,
                                  elevation: elevation, pitchDown: pitch,
-                                 eyeOffsetFaces: facesTarget(votes, side: side))
+                                 eyeOffsetFaces: facesTarget(votes, side: side),
+                                 vantageRange: vantageRange(votes))
         }
         guard let rule else { return nil }
         return EyeSideResult(side: rule, source: .default, aboveShare: share, photoCount: votes.count,

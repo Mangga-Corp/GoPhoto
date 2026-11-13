@@ -54,7 +54,14 @@ nonisolated struct PhasedEngine: Sendable {
     private var spanBottom = TimedSamples()
     private var midX = TimedSamples()
     private var vantage = TimedSamples()
+    /// 12 Nov: face height (frame units) of each vantage reading — the "faces" unit.
+    private var faceUnits = TimedSamples()
+    /// 12 Nov (log 16:15): the unit is locked when the vantage phase ends. A hand over the face shrank the face
+    /// box 24% during tilt, and the same camera height read −0.08 → −0.82 faces. After the lock the unit only
+    /// follows the body size (distance), not the face box.
+    private(set) var faceUnitLock: (faceHeight: Double, r: Double?)?
     private var pitchSamples = TimedSamples()
+    private var rollSamples = TimedSamples()
     private var depth = TimedSamples()
     private var lastSpanSource = "—"
     /// Where the vantage samples come from: "face" or "head + shoulders".
@@ -73,6 +80,12 @@ nonisolated struct PhasedEngine: Sendable {
     private(set) var vantageAccepted: Double?
     /// Tilt accepted at the user's limit: framing does not reopen it.
     private(set) var tiltAccepted = false
+    /// Sideways framing accepted at the user's limit (11 Nov).
+    private(set) var panAccepted = false
+    /// 12 Nov: roll 2–5° asked to straighten; accepted at the user's limit like tilt (own tracker: the pan
+    /// check resets the shared `stuck` every update).
+    private(set) var rollAccepted = false
+    private var rollStuck: (best: Double, since: TimeInterval)?
     private var stoppedAt: [PhasedInstruction: TimeInterval] = [:]
     private var doneDwell = Dwell()
     private var reopenDistanceDwell = Dwell()
@@ -103,8 +116,11 @@ nonisolated struct PhasedEngine: Sendable {
         self.phase = phase
         if phase == .acquire { chosenZoom = nil; distanceUnavailable = nil }
         if phase.number <= PhasedPhase.distance.number { distanceLock = nil }
-        if phase.number <= PhasedPhase.vantage.number { vantageUnavailable = nil; vantageAccepted = nil }
+        if phase.number <= PhasedPhase.vantage.number { vantageUnavailable = nil; vantageAccepted = nil; faceUnitLock = nil }
         if phase.number <= PhasedPhase.tilt.number { tiltAccepted = false }
+        panAccepted = false
+        rollAccepted = false
+        rollStuck = nil
         stuck = nil
         instruction = nil
         wanted = nil
@@ -113,7 +129,7 @@ nonisolated struct PhasedEngine: Sendable {
         if phase == .acquire {
             size.removeAll(); sizeCutTop.removeAll(); sizeCutBottom.removeAll()
             spanTop.removeAll(); spanBottom.removeAll(); midX.removeAll()
-            vantage.removeAll(); depth.removeAll()
+            vantage.removeAll(); depth.removeAll(); faceUnits.removeAll()
         }
     }
 
@@ -188,16 +204,24 @@ nonisolated struct PhasedEngine: Sendable {
             }
             let r = rMed
             let lowerBound = lastSpanQuality == .lowerBound
+            let band = shotBand(target)
             if !fresh {
                 reason = "no recent size reading"
             } else if let r {
                 // Hysteresis: while a move is asked for, it ends inside the ENTER band; without one, a
                 // reading must leave the wider EXIT band to start a move (no blinking at the edge).
+                // 12 Nov: a move ends `distanceAim` inside the enter band (2 m edge → stop at 2.2 m), when the band
+                // is wide enough for that (Auto crop); otherwise at the enter band as before.
                 let moving = instruction == .moveBack || instruction == .moveCloser
-                let inside = moving ? (r >= band.enterLow && r <= band.enterHigh)
+                let aim = target.shot == .full ? params.distanceAimFull
+                        : (target.shot == .threeQuarter ? params.distanceAimThreeQuarter : params.distanceAim)
+                let roomy = band.enterHigh / band.enterLow >= aim * aim
+                let aimHigh = roomy ? band.enterHigh / aim : band.enterHigh
+                let aimLow = roomy ? band.enterLow * aim : band.enterLow
+                let inside = moving ? (r >= aimLow && r <= aimHigh)
                                     : (r >= band.exitLow && r <= band.exitHigh)
-                let high = moving ? band.enterHigh : band.exitHigh
-                let low = moving ? band.enterLow : band.exitLow
+                let high = moving ? aimHigh : band.exitHigh
+                let low = moving ? aimLow : band.exitLow
                 if lowerBound, r > band.exitHigh {
                     want = .moveBack; reason = "cut and already larger than the band"
                 } else if lowerBound, target.shot == .full {
@@ -208,8 +232,14 @@ nonisolated struct PhasedEngine: Sendable {
                     let bottom = spanBottom.median(now: now, window: params.quickWindow, minCount: 2)
                     let noRoom = cutTop ? (bottom.map { 1 - m.bottom - $0 < params.edgeRoom } ?? false)
                                         : (top.map { $0 - m.top < params.edgeRoom } ?? false)
+                    // 13 Nov: phone already near the reference pitch → the person is too close, not mis-aimed.
+                    // Tilting to see the feet now meant tilting back in the tilt phase and cutting them again.
+                    let pitchNow = pitchSamples.median(now: now, window: params.quickWindow, minCount: 2)
+                    let nearLevel = pitchNow.map { abs($0 - (target.pitch ?? 0)) <= params.cutTiltBeyond } ?? false
                     if noRoom {
                         want = .moveBack; reason = "cut at the \(cutTop ? "top" : "bottom"), no room to tilt"
+                    } else if nearLevel {
+                        want = .moveBack; reason = "cut at the \(cutTop ? "top" : "bottom"), phone near the reference pitch"
                     } else {
                         want = cutTop ? .tiltUp : .tiltDown; reason = "person cut at the \(cutTop ? "top" : "bottom")"
                     }
@@ -222,8 +252,8 @@ nonisolated struct PhasedEngine: Sendable {
                 }
                 // Stop a movement quickly once the short window is inside (no overshoot).
                 if let current = instruction, let q = rQuick {
-                    if current == .moveCloser, q >= band.enterLow { want = nil; reason = "stop: close enough" }
-                    if current == .moveBack, q <= band.enterHigh { want = nil; reason = "stop: far enough" }
+                    if current == .moveCloser, q >= aimLow { want = nil; reason = "stop: close enough" }
+                    if current == .moveBack, q <= aimHigh { want = nil; reason = "stop: far enough" }
                 }
                 done = inside && !lowerBound && !(target.shot == .full && (cutTop || cutBottom))
                 // Room for the final framing: person + headroom + bottom room must fit (else tilt
@@ -322,31 +352,76 @@ nonisolated struct PhasedEngine: Sendable {
                 break
             }
             var floorLimited = false
-            var framed = true
+            var panWant: PhasedInstruction?
             if policy == .autoCrop {
                 if let crop = finalCrop(now: now, target: target) {
                     floorLimited = crop.floorLimited
                     out.cropWindow = crop.rect
+                    // 11 Nov: the crop had to be pushed sideways to stay in the frame → the person would end
+                    // nearer the centre than in the reference. Ask to turn the phone (hysteresis: start beyond
+                    // `panEnter`, stop at `panExit`); accepted at the user's limit like tilt.
+                    let panning = instruction == .moveLeft || instruction == .moveRight
+                    let panLimit = panning ? params.panExit : params.panEnter
+                    // 12 Nov: also when the crop sits far to one side of the sensor (person near a frame edge):
+                    // turn toward the person so the crop is near the middle (crop < 0.5 → person on the left →
+                    // "Move the phone left" slides them right).
+                    let centreOffset = Double(crop.rect.midX) - 0.5
+                    let centreLimit = panning ? params.panCentreExit : params.panCentreEnter
+                    var panError = crop.horizontalShift
+                    if !panAccepted, abs(crop.horizontalShift) > panLimit {
+                        panWant = crop.horizontalShift < 0 ? .moveLeft : .moveRight
+                    } else if !panAccepted, abs(centreOffset) > centreLimit {
+                        panWant = centreOffset < 0 ? .moveLeft : .moveRight
+                        panError = centreOffset
+                    }
+                    if stuckAtLimit(panWant, error: panError, minStep: 0.01, now: now) {
+                        panAccepted = true
+                        events.append(PhasedEvent(kind: "accept", detail: String(format: "pan accepted at the limit (shift %+.2f)", crop.horizontalShift)))
+                        panWant = nil
+                    }
                     let roll = -(frame.roll ?? 0)
-                    if abs(roll) >= 0.5, abs(roll) <= params.maxCropRoll,
+                    if abs(roll) >= 0.5, abs(roll) <= params.rollCropReach,
                        PhasedMeasure.fitsRotated(crop.rect, degrees: roll, aspect: frame.frameAspect) {
                         out.cropRoll = roll
                     }
-                    reason = String(format: "crop %.0f%%%@", crop.rect.height * 100, crop.floorLimited ? " (floor)" : "")
+                    reason = String(format: "crop %.0f%%%@ · side %+.2f · centre %+.2f", crop.rect.height * 100,
+                                    crop.floorLimited ? " (floor)" : "", crop.horizontalShift, centreOffset)
                 } else {
                     reason = "no valid crop now"
                 }
             } else {
-                // No crop: what the camera frames is the saved photo, so left/right is guided here.
-                let h = horizontalWant(now: now, target: target)
-                out.horizontalError = h.error
-                want = h.want
-                reason = h.reason
-                framed = h.ok
+                reason = "framed in camera"
+            }
+            // 12 Nov: horizon. 0–2° the crop straightens it; 2–5° ask (until ≤ `rollStop`); > 5° leave it.
+            var rollWant: PhasedInstruction?
+            // Median roll (not one reading) and a margin above the crop's reach: no ready flicker at the edge.
+            if let roll = rollSamples.median(now: now, window: params.window, minCount: 3), !rollAccepted {
+                let a = abs(roll)
+                let leveling = instruction == .levelPhone
+                if a <= params.rollAskMax, a > (leveling ? params.rollStop : params.maxCropRoll + params.rollAskMargin) {
+                    rollWant = .levelPhone
+                }
+                if rollWant != nil, leveling {
+                    if var s = rollStuck {
+                        if s.best - a >= max(s.best * params.stuckProgress, 0.3) { s.best = a; s.since = now }
+                        rollStuck = s
+                        if now - s.since >= params.stuckAfter {
+                            rollAccepted = true
+                            rollWant = nil
+                            events.append(PhasedEvent(kind: "accept", detail: String(format: "roll accepted at the limit (%.1f°)", roll)))
+                        }
+                    } else {
+                        rollStuck = (a, now)
+                    }
+                } else if rollWant == nil {
+                    rollStuck = nil
+                }
+                if rollWant != nil { reason += String(format: " · roll %+.1f°", roll) }
             }
             out.ready = vantageUnavailable == nil && distanceUnavailable == nil && (t.ok || tiltAccepted)
-                && (policy == .noCrop ? framed : (out.cropWindow != nil && !floorLimited)) && fresh
-            if out.ready { want = .takePhoto }
+                && (policy == .noCrop || (out.cropWindow != nil && !floorLimited)) && fresh && panWant == nil
+                && rollWant == nil
+            if out.ready { want = .takePhoto } else if let panWant { want = panWant } else if let rollWant { want = rollWant }
         }
 
         // Right now, only holding is needed: green "Hold it there" while the phase completes.
@@ -358,13 +433,14 @@ nonisolated struct PhasedEngine: Sendable {
         if policy == .autoCrop, phase != .acquire, let crop = finalCrop(now: now, target: target) {
             out.captureCrop = crop.rect
             let roll = -(frame.roll ?? 0)
-            if abs(roll) >= 0.5, abs(roll) <= params.maxCropRoll,
+            if abs(roll) >= 0.5, abs(roll) <= params.rollCropReach,
                PhasedMeasure.fitsRotated(crop.rect, degrees: roll, aspect: frame.frameAspect) {
                 out.captureRoll = roll
             }
         }
-        out.sizeEnterLow = band.enterLow
-        out.sizeEnterHigh = band.enterHigh
+        let shown = shotBand(target)
+        out.sizeEnterLow = shown.enterLow
+        out.sizeEnterHigh = shown.enterHigh
 
         // Instructions: a new direction must persist `startDwell`; stopping is quick, but a shown
         // instruction stays at least `minShow`, and the same one does not come back within
@@ -420,6 +496,7 @@ nonisolated struct PhasedEngine: Sendable {
 
     private mutating func record(_ frame: PhasedFrame, target: PhasedTarget, now: TimeInterval) {
         if let pitch = frame.pitch { pitchSamples.append(pitch, at: now) }
+        if let roll = frame.roll { rollSamples.append(roll, at: now) }
         guard let subject = frame.subject, let t = frame.detectionTime, t > lastDetection else { return }
         lastDetection = t
         // Frames of a moving zoom (or another zoom than the chosen one) are not comparable.
@@ -440,24 +517,37 @@ nonisolated struct PhasedEngine: Sendable {
             // Face, or when the eyes are not read (back, looking down, side) the head from the pose:
             // 2/5 from the mask top to the shoulder line. The face wins whenever it reads; the head
             // takes over only after the face has been gone for `headAfterFaceLoss`.
-            var faceV: PhasedMeasure.Vantage?
-            if let face = subject.face, Double(face.height) >= params.minFaceHeight {
-                faceV = PhasedMeasure.vantage(face: face, pitch: pitch, verticalFOV: fov)
+            var faceV: (v: PhasedMeasure.Vantage, unit: Double)?
+            if let face = subject.face, Double(face.height) >= params.minFaceHeight,
+               let v = PhasedMeasure.vantage(face: face, pitch: pitch, verticalFOV: fov) {
+                faceV = (v, Double(face.height))
             }
-            var headV: PhasedMeasure.Vantage?
+            var headV: (v: PhasedMeasure.Vantage, unit: Double)?
             if params.headFromPose, PhasedMeasure.eyesUnseen(subject),
-               let head = PhasedMeasure.head(subject), head.faceHeight >= params.minFaceHeight {
-                headV = PhasedMeasure.vantage(eyeY: head.eyeY, faceHeight: head.faceHeight, pitch: pitch, verticalFOV: fov)
+               let head = PhasedMeasure.head(subject), head.faceHeight >= params.minFaceHeight,
+               let v = PhasedMeasure.vantage(eyeY: head.eyeY, faceHeight: head.faceHeight, pitch: pitch, verticalFOV: fov) {
+                headV = (v, head.faceHeight)
             }
             // No face from the start counts from the first reading (also waits 1.5 s).
             if faceV != nil || lastFaceAt == -.infinity { lastFaceAt = t }
-            var reading: (v: PhasedMeasure.Vantage, source: String)?
-            if let faceV { reading = (faceV, "face") }
-            else if let headV, t - lastFaceAt >= params.headAfterFaceLoss { reading = (headV, "head + shoulders") }
+            var reading: (v: PhasedMeasure.Vantage, unit: Double, source: String)?
+            if let faceV { reading = (faceV.v, faceV.unit, "face") }
+            else if let headV, t - lastFaceAt >= params.headAfterFaceLoss { reading = (headV.v, headV.unit, "head + shoulders") }
             if let reading {
                 // The two sources differ by a bias: never mix them in one median.
                 if reading.source != vantageSource { vantage.removeAll(); vantageSource = reading.source }
-                vantage.append((goal.faces ? reading.v.faces : reading.v.degrees) - goal.value, at: t)
+                faceUnits.append(reading.unit, at: t)
+                var faces = reading.v.faces
+                // 12 Nov: after the vantage phase, the locked unit (scaled with the body size when the distance
+                // changes) instead of this frame's face box. Same eye-to-horizon distance, steadier unit.
+                if let lock = faceUnitLock {
+                    var unit = lock.faceHeight
+                    if let r0 = lock.r, r0 > 0, let r = size.median(now: t, window: params.quickWindow, minCount: 2) {
+                        unit *= r / r0
+                    }
+                    if unit > 0 { faces = reading.v.faces * reading.unit / unit }
+                }
+                vantage.append((goal.faces ? faces : reading.v.degrees) - goal.value, at: t)
             }
         }
         if let d = frame.depth, d.validFraction >= 0.3, now - d.time < 0.2 { depth.append(d.value, at: t) }
@@ -489,6 +579,13 @@ nonisolated struct PhasedEngine: Sendable {
 
     private mutating func advance(to next: PhasedPhase, _ detail: String, events: inout [PhasedEvent]) {
         events.append(PhasedEvent(kind: "phase", detail: "\(phase.rawValue) → \(next.rawValue): \(detail)"))
+        if phase == .vantage, next == .tilt,
+           let h = faceUnits.median(now: lastDetection, window: params.window, minCount: 3) {
+            let r = size.median(now: lastDetection, window: params.window, minCount: 3)
+            faceUnitLock = (h, r)
+            events.append(PhasedEvent(kind: "lock", detail: String(format: "face unit locked h %.3f r %.2f", h, r ?? -1),
+                                      values: ["faceHeight": h, "r": r ?? -1]))
+        }
         phase = next
         instruction = nil
         stuck = nil
@@ -552,6 +649,21 @@ nonisolated struct PhasedEngine: Sendable {
         return now - s.since >= params.stuckAfter
     }
 
+    /// 13 Nov: the size band for this shot. Full body (Auto crop) closes the near side lower: more room for
+    /// feet and head. Other shots: the policy band as before.
+    private func shotBand(_ target: PhasedTarget?) -> SizeBand {
+        guard policy == .autoCrop, target?.shot == .full else { return band }
+        var b = band
+        b.enterHigh = min(b.enterHigh, params.fullEnterHigh)
+        b.exitHigh = min(b.exitHigh, params.fullExitHigh)
+        b.reopenHigh = min(b.reopenHigh, params.fullReopenHigh)
+        // Keep the band ordered when a small crop floor already raised the low side.
+        b.enterLow = min(b.enterLow, b.enterHigh * 0.8)
+        b.exitLow = min(b.exitLow, b.enterLow * 0.94)
+        b.reopenLow = min(b.reopenLow, b.exitLow * 0.94)
+        return b
+    }
+
     // MARK: - Reopen rules
 
     /// Why the finished distance cannot give a workable photo any more, or nil. Needs
@@ -562,6 +674,7 @@ nonisolated struct PhasedEngine: Sendable {
         let cutTop = (sizeCutTop.median(now: now, window: params.reopenWindow, minCount: params.minSamples * 2) ?? 0) > 0.5
         let cutBottom = (sizeCutBottom.median(now: now, window: params.reopenWindow, minCount: params.minSamples * 2) ?? 0) > 0.5
         var reason: String?
+        let band = shotBand(target)
         if let r, r > band.reopenHigh, lastSpanQuality != .lowerBound || r > band.reopenHigh * 1.1 {
             reason = String(format: "r %.2f > %.2f", r, band.reopenHigh)
         } else if let r, r < band.reopenLow, lastSpanQuality != .lowerBound {
@@ -711,7 +824,8 @@ nonisolated struct PhasedEngine: Sendable {
             }
             // Never push the person past the frame edge for the reference pitch: the frame wins.
             let room = error > 0 ? roomUp : roomDown
-            if room < params.edgeRoom {
+            let edge = target.shot == .full ? params.edgeRoomFull : params.edgeRoom
+            if room < edge {
                 return TiltDecision(want: nil, ok: true, error: error, source: "pitch",
                                     reason: String(format: "pitch %+.1f° kept (frame edge)", error), need: 0)
             }
@@ -719,23 +833,6 @@ nonisolated struct PhasedEngine: Sendable {
                                 reason: String(format: "pitch %+.1f° from the reference", error), need: error / limit)
         }
         return TiltDecision(want: nil, ok: true, error: nil, source: "fit", reason: "fits", need: 0)
-    }
-
-    /// No crop: the subject's horizontal centre against the reference, from the short window (stops
-    /// as soon as it is right). Same hysteresis as the other moves: start beyond EXIT, finish inside ENTER.
-    private func horizontalWant(now: TimeInterval, target: PhasedTarget)
-        -> (want: PhasedInstruction?, ok: Bool, error: Double?, reason: String) {
-        guard let refMid = target.midX else { return (nil, true, nil, "no reference left/right") }
-        guard let mid = midX.median(now: now, window: params.quickWindow, minCount: 2) else {
-            return (nil, false, nil, "subject not measurable")
-        }
-        let error = mid - refMid          // + = person right of the reference
-        let moving = instruction == .moveLeft || instruction == .moveRight
-        let limit = moving ? params.horizontalEnter : params.horizontalExit
-        let reason = String(format: "left/right %+.2f", error)
-        guard abs(error) > limit else { return (nil, true, error, reason) }
-        // Directions are for the photographer: moving the phone right slides the person left.
-        return (error > 0 ? .moveRight : .moveLeft, false, error, reason + " from the reference")
     }
 
     // MARK: - Test fixture (video replay only)

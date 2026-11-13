@@ -129,6 +129,7 @@ struct ShotAnalysisScreen: View {
                 row("Target (faces)", String(format: "%+.2f face ≈ %+.0f cm %@", faces,
                                              faces * GuideFlow.faceHeightMeters * 100, faces >= 0 ? "above eyes" : "below eyes"))
             }
+            row("Vantage range", Self.vantageText(v.vantageRange))
             if let e = v.eyeElevation { row("Target (angle)", String(format: "%+.1f°", e)) }
             if let w = v.eyeElevationWeighted { row("Weighted 1/σ²", String(format: "%+.1f°", w)) }
         }
@@ -175,6 +176,21 @@ struct ShotAnalysisScreen: View {
     }
 
     // MARK: Helpers
+
+    /// Display only (12 Nov, step 1): range in face heights, kind, confidence, median σ, photos.
+    private static func vantageText(_ r: PresetAnalysis.VantageRange?) -> String {
+        guard let r else { return "— (rescan)" }
+        let span: String
+        if let g = r.groups {
+            span = g.map { String(format: "[%+.1f…%+.1f]", $0[0], $0[1]) }.joined(separator: " | ")
+        } else if let lo = r.low, let hi = r.high {
+            span = String(format: "[%+.1f…%+.1f]", lo, hi)
+        } else {
+            span = "—"
+        }
+        return String(format: "%@ · %@ · %@ · σ̃ %.1f · %d photos (+%d dropped)", span, r.kind, r.confidence,
+                      r.medianSigma, r.used, r.excluded)
+    }
 
     private func row(_ title: String, _ value: String) -> some View {
         LabeledContent(title) {

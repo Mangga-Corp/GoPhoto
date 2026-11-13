@@ -4,6 +4,7 @@
 > Setiap klaim merujuk ke file di `gophoto/…`. Hal yang tidak bisa dipastikan dari kode ditandai **[PERLU KONFIRMASI]**.
 >
 > - **Snapshot kode:** branch `main`, commit `63a19cd` ("camera permissions updated"), 237 commit sejak 2026-10-10.
+> - **Pembaruan 13 Nov 2026 (branch `Adjust-Live-Guidance`, setelah merge `main`):** perubahan guide Phased, analisis preset, dan fitur developer 12–13 Nov dimasukkan ke §6.4, §6.6, §6.7, §6.12, §6.15, §7.4.2, §14, §16. Ringkasannya di [§17 Changelog](#17-changelog-1213-nov-2026). Sumber angka: `Core/Guide/Phased/PhasedParameters.swift` dan `Docs/Experiments/PhaseGuide/Parameters.md`.
 > - **Cakupan:** 255 file Swift (sekitar 41.900 baris), 3 model CoreML, `project.pbxproj`, `Info.plist`, entitlements, `Package.resolved`, dan semua dokumen `.md`/gambar spesifikasi di repo.
 > - **Legenda status:**
 >   - ✅ Selesai
@@ -33,6 +34,7 @@
 14. [Glosarium](#14-glosarium)
 15. [Lampiran: Indeks File](#15-lampiran-indeks-file)
 16. [Lampiran: Daftar [PERLU KONFIRMASI]](#16-lampiran-daftar-perlu-konfirmasi)
+17. [Changelog 12–13 Nov 2026](#17-changelog-1213-nov-2026)
 
 ## 1. Ringkasan Eksekutif
 
@@ -500,7 +502,7 @@ sequenceDiagram
 | Tidak ada orang di foto referensi | `.noUsableFraming` → "We couldn't find a person in these photos." | §6.15 |
 | Analisis gagal / dibatalkan | `.requiredAnalysisFailed` → "We couldn't finish your photo analysis." + "Try again" | §6.15 |
 | Model ML gagal dimuat | Sumber opsional ditandai failed; analisis tetap usable. GeoCalib gagal → target jatuh ke aturan framing | §6.15 |
-| Banyak orang di kamera | "Tap the person to photograph" + dim mask | §7.4 |
+| Banyak orang di kamera | Phased: orang yang paling dekat ke tengah frame dikunci otomatis setelah stabil 0.6 s (sejak 11 Nov, tanpa prompt tap). Tap tetap bisa dipakai untuk memilih orang lain | §7.4 |
 | Subjek hilang | Setelah 1.2 s: "Point back at the person". Tracker menjaga box ≤60 frame | §7.4 |
 | Preset tanpa subject box / eye offset | Fase distance/vantage dilewati, tetapi **tidak pernah** "Take the photo now" | §13 |
 | Preferensi dihapus saat sesi | `PhotoSessionStore.status = .invalidated(.preferenceDeleted)`; root tetap menampilkan kamera **[PERLU KONFIRMASI]** reaksi kamera | `PhotoSessionStore.swift` |
@@ -650,7 +652,7 @@ sequenceDiagram
 - **Edge cases:**
   - Error Vision diam-diam menghasilkan `nil`, sehingga dianggap "tidak ada orang" (`PersonDetector.swift:186-190`).
   - Orang yang terkunci boleh hilang ≤15 deteksi. Tracker bisa membawa box sampai ≤60 frame.
-  - Mode non-strict jatuh ke orang terbesar. Mode strict (Phased) tidak pernah memilih otomatis kecuali hanya ada satu orang yang stabil selama 0.6 s (`PhasedSubjectPicker.autoLockDwell`). Kalau ada banyak orang, muncul "Tap the person to photograph" dengan dim mask.
+  - Mode non-strict jatuh ke orang terbesar. Mode strict (Phased), sejak 11 Nov: orang yang **paling dekat ke tengah frame** dikunci otomatis setelah stabil 0.6 s (`PhasedSubjectPicker.centred`, `autoLockDwell`), juga saat ada banyak orang. Prompt "Tap the person to photograph" + dim mask hanya muncul di state `choosing` (pilih manual). Setelah subjek hilang lama (`lossGrace` + `chooseAfterLoss`) dan ada orang lain, picker kembali mengunci orang di tengah.
 - **File:** `Core/Camera/CameraService.swift`, `Core/Detection/PersonDetector.swift`, `Features/Camera/ViewModels/CameraViewModel.swift`.
 - **Status:** ✅ Selesai.
 
@@ -689,6 +691,8 @@ sequenceDiagram
   - "Move closer" / "Move back"
   - "Raise the phone" / "Lower the phone"
   - "Tilt up" / "Tilt down"
+  - "Move the phone left" / "Move the phone right" (Auto crop, sejak 11–12 Nov; lihat §7.4.2 framing)
+  - "Straighten the phone" (roll 2.3–5°, sejak 12 Nov; ikon `level`)
   - "Point back at the person"
   - "Hold it there"
   - "Take the photo now" (pill hijau)
@@ -717,6 +721,7 @@ sequenceDiagram
 
   View: `Features/Camera/Components/HorizonLevelView.swift` (segmen 28/120/28 pt). Data berasal dari `MotionService` → `MotionHub` (CoreMotion 30 Hz).
 - **Edge case:** Di Simulator atau perangkat tanpa device motion, stream tilt langsung selesai, horizon disembunyikan, dan pitch dianggap 0.
+- **Di guide Phased (sejak 12 Nov):** roll juga ikut aturan framing (§7.4.2): median roll ≤2° diluruskan crop (sampai 2.5°), 2.3–5° memunculkan "Straighten the phone" sampai ≤1.5°, >5° dibiarkan sebagai Dutch angle.
 - **Status:** ✅ Selesai.
 
 ### 6.8 Capture & penyimpanan foto
@@ -789,6 +794,9 @@ Semua fitur berikut di-gate oleh konstanta `CameraView.appMode` (bukan `#if DEBU
 - **Live depth (Phased + Depth):** median depth pada grid 10×10 di area torso. Memakai kamera dual/triple.
 - **Auto-zoom AdaptiveFOV** (lihat §7.4.3) dan **guide lama Main / Main modified**.
 - **Replay harness** (§6.17) dan **Guide log** JSONL.
+- **Record GT** (12 Nov, `Core/Guide/Experiment/GroundTruth.swift`, `Features/Camera/Components/GroundTruthSheet.swift`): toggle di GuideDebugPanel. Saat aktif, analisis live di-log tiap 0.5 s (`track`), setiap jepretan menyimpan foto asli `gt-<waktu>.jpg/heic` ke folder log, lalu form ground truth (tinggi lensa/mata cm, level, postur, arah hadap, shot) muncul. "Share GT" membagikan semua file sesi (`GuideLog.exportFiles`).
+- **Vantage range** di `ShotAnalysisScreen` (12 Nov): baris "Vantage range" di bagian Camera height, lihat §6.15. Hanya tampilan.
+- **debugphoto (repo terpisah, 12 Nov):** salinan appMode 2 untuk eksperimen (tab "QA" + "Lab camera"). Kode inti (`Core`, `Features`, `Resource`) di-referensikan langsung dari repo ini; hanya `Features/Camera`, `Core/Replay`, `Core/Guide/Experiment`, `Core/Guide/Legacy` yang disalin. Di debugphoto, form GT diganti "Record + compare": tiap jepretan dianalisis ulang dengan pipeline QA dan dibandingkan dengan guide live. Perubahan di `Core/Guide/Phased` di repo ini ikut berlaku di debugphoto.
 
 ### 6.13 Analisis lingkungan live (DETR di kamera)
 
@@ -945,6 +953,7 @@ String yang tampil ke user:
   - Jika tidak: ≥2 suara dan rata-rata ≥0.70 / ≤0.30 → sisi "above"/"below" (sumber `taste`).
   - Jika tidak: aturan framing (full body → below, half body → above), sumber `mixed`/`default`.
   - Hasil: `angle = .match(category: "above"/"below", pitchDown)`, `eyeElevation`, `eyeOffsetFaces`.
+  - **Vantage range (12 Nov, hanya tampilan, guide belum memakainya):** `GeoCalibAngleInterpreter` menghitung σ dari `offsetInHeadHeights` (`HorizonEyeCue.offsetUncertaintyHeads`: pitch, fokus, titik mata, dan ukuran kepala 10% dijumlahkan secara kuadrat). `PreferenceAnalyzer.vantageRange` memakai foto yang sama dengan `eyeOffsetFaces`, membuang foto dengan σ >1.5, lalu menghasilkan `PresetAnalysis.vantageRange`: `kind` (`agree` / `varied` / `twoGroups` / `uncertain`), `confidence` (high bila ≥3 foto dan median σ ≤1.0), `low/high` atau `groups`, `center` (bobot 1/σ²), `spread`, `medianSigma`, `gapZ` (dua kelompok bila celah ≥2σ dan ≥4 foto). Versi `PresetAnalysis` tidak dinaikkan; preset lama perlu **Rescan**. Ambang masih tebakan.
 - **Agregasi profil** (`ProfileAggregator`):
   - Bobot kualitas: high 1.0, moderate 0.7, low 0.4.
   - Pola **recurring** bila n ≥2, leader ≥2, dan share ≥0.60. **Strong** bila n ≥4 dan share ≥0.75.
@@ -1317,6 +1326,10 @@ Ketentuan pengambilan sampel:
 | Auto crop, c = 0.5 (kamera 48 MP, lantai 12 MP — kasus normal) | 0.60–0.95 | 0.54–1.00 | 0.49–1.08 |
 | Auto crop, c = 1 (kamera 12 MP) | 0.88–0.95 | 0.84–1.00 | ≈0.79–1.08 |
 
+**Full body, Auto crop (13 Nov, `PhasedEngine.shotBand`):** sisi dekat diturunkan supaya kaki dan kepala selalu punya ruang: `enterHigh` 0.88 (`fullEnterHigh`), `exitHigh` 0.93, `reopenHigh` 1.0. Shot lain memakai band policy di atas.
+
+**Aim jarak (12–13 Nov):** saat "Move back/closer" tampil, gerakan berhenti **di dalam** band, bukan di tepinya: `enterHigh ÷ aim` dan `enterLow × aim`. Aim: half 1.05 (`distanceAim`), 3/4 1.10 (`distanceAimThreeQuarter`), full 1.12 (`distanceAimFull`). Hanya bila band cukup lebar (enterHigh/enterLow ≥ aim², praktis hanya Auto crop). Contoh Auto crop 48 MP: berhenti "Move back" di r ≈ 0.90 (half), 0.86 (3/4), 0.79 (full).
+
 Rumus Auto crop: c = clamp(cropMinScale, 0.3, 1); `enterLow = min(1.2c, 0.88)`, `enterHigh = 0.95`, `exitLow = min(1.08c, 0.84)`, `exitHigh = 1.0`, `reopenLow = min(0.98c, exitLow×0.94)`, `reopenHigh = 1.08`. `cropMinScale = min(1, √(floorMP/sourceMP))`.
 
 **Margin** (top/bottom), `PhasedParameters.margins`:
@@ -1330,9 +1343,9 @@ Rumus Auto crop: c = clamp(cropMinScale, 0.3, 1); `enterLow = min(1.2c, 0.88)`, 
 **Logika tiap fase:**
 
 - **acquire:** "readable" berarti ada ≥0.4 s bacaan dalam jendela 0.8 s. Fase maju ke distance setelah zoom tercapai (±3%) dan stabil. Untuk full shot yang terpotong di kedua ujung, instruksinya `moveBack`.
-- **distance:** dengan hysteresis, gerakan dimulai di luar exit band dan berhenti di dalam enter band.
+- **distance:** dengan hysteresis, gerakan dimulai di luar exit band dan berhenti di titik aim di dalam enter band (lihat "Aim jarak" di atas).
   - Ada quick-stop berbasis median 0.3 s.
-  - Bila span terpotong (lower bound): `moveBack`, atau bantuan `tiltUp`/`tiltDown` bila masih ada ruang ≥ `edgeRoom` 0.03.
+  - Bila span terpotong (lower bound): `moveBack` bila sudah lebih besar dari band atau ujung lainnya mepet tepi. **Full body (13 Nov):** bila pitch HP masih dalam ±10° (`cutTiltBeyond`) dari pitch referensi, instruksinya `moveBack` (orang terlalu dekat, bukan HP salah arah). `tiltUp`/`tiltDown` hanya bila HP jelas salah arah. Sebelumnya tilt di awal lalu tilt balik di fase tilt memotong kaki lagi.
   - `fitOverflow > 0` (orang + ruang crop tidak muat) menghasilkan `moveBack`.
   - Fase selesai setelah stabil `completeDwell` 0.8 s, lalu `distanceLock` disimpan.
   - Tanpa span referensi: `distanceUnavailable`, langsung lompat ke fase berikutnya.
@@ -1341,17 +1354,20 @@ Rumus Auto crop: c = clamp(cropMinScale, 0.3, 1); `enterLow = min(1.2c, 0.88)`, 
   - Ambang (enter/exit/reopen): wajah 0.4 / 0.6 / 1.0; derajat 3° / 5° / 8°.
   - Error > limit → `lowerPhone`; error < −limit → `raisePhone`.
   - **"At the limit":** bila instruksi yang sama tampil ≥ `stuckAfter` 4 s tanpa perbaikan ≥ max(15%, 0.2 wajah / 2°), nilai diterima apa adanya dan fase maju.
+  - **Kunci satuan wajah (12 Nov):** saat vantage selesai (atau diterima di batas), tinggi wajah median 0.8 s dikunci (`faceUnitLock`, event log `lock`). Di fase tilt/framing, jarak mata–horizon dibagi wajah yang dikunci (diskalakan dengan r bila jarak berubah), bukan kotak wajah frame saat itu. Alasan: tangan di wajah mengecilkan kotak wajah 24% dan kamera yang sama terbaca −0.08 → −0.82 wajah (log 12 Nov 16:15). Kunci dilepas saat restart ke vantage atau lebih awal.
 - **tilt:** urutan pemeriksaan:
   1. kelayakan tanpa crop (top < margin → `tiltUp`; bottom > 1 − margin → `tiltDown`);
   2. pergeseran vertikal crop;
   3. headroom (`topEnter` 0.05 / `topExit` 0.08) untuk No crop;
-  4. pitch vs pitch referensi (`pitchEnter` 4° / `pitchExit` 6°) untuk Auto crop. Bila ruang ke sisi itu <0.03, nilai diterima ("kept (frame edge)").
+  4. pitch vs pitch referensi (`pitchEnter` 3° / `pitchExit` 4.5°, sejak 12 Nov; sebelumnya 4°/6°) untuk Auto crop. Bila ruang ke sisi itu < `edgeRoom` 0.03 (full body: `edgeRoomFull` 0.07, sejak 13 Nov), nilai diterima ("kept (frame edge)").
 
   Tanpa pitch referensi = OK. Berlaku juga "at the limit" (langkah min 1° atau 0.01). Bila `fitOverflow` >0 selama 0.8 s, kembali ke distance.
 - **framing:** tilt dievaluasi ulang dengan batas exit; bila tidak OK selama 1.5 s, kembali ke tilt.
-  - Untuk Auto crop: `finalCrop` (median 0.8 s) menjadi `cropWindow`. Roll diluruskan bila 0.5° ≤ |roll| ≤ `maxCropRoll` 3° dan crop yang diputar masih muat.
-  - Untuk No crop: posisi kiri/kanan subjek (median 0.3 s dari `midX`) dibandingkan dengan `midX` referensi (`horizontalEnter` 0.05 / `horizontalExit` 0.08). Subjek di kanan target → `moveRight`, di kiri → `moveLeft` (arah untuk fotografer).
-  - `ready` = distance & vantage tersedia, tilt OK/diterima, (Auto crop) crop valid & tidak floor-limited atau (No crop) kiri/kanan OK, data segar. Saat `ready`, instruksi menjadi **"Take the photo now"**.
+  - Untuk Auto crop: `finalCrop` (median 0.8 s) menjadi `cropWindow`. Roll diluruskan bila 0.5° ≤ |roll| ≤ `rollCropReach` 2.5° dan crop yang diputar masih muat.
+  - **Kiri-kanan Auto crop (11–12 Nov):** "Move the phone left/right" bila crop harus didorong keluar frame >0.05 lebar frame (`panEnter`, berhenti <0.02 `panExit`), atau bila tengah crop >0.10 dari tengah frame (`panCentreEnter`, berhenti <0.04 `panCentreExit`) supaya crop tidak diambil dari pinggir sensor. Arah untuk fotografer: HP ke kiri menggeser orang ke kanan di gambar. Diterima di batas setelah 4 s tanpa kemajuan. Alasan muncul di log sebagai `side %+.2f · centre %+.2f`.
+  - **Horizon (12–13 Nov):** median roll 0.8 s. ≤2° diluruskan crop; >2.3° (`maxCropRoll` + `rollAskMargin`) → `levelPhone` "Straighten the phone" sampai ≤1.5° (`rollStop`); >5° (`rollAskMax`) dibiarkan. Diterima di batas setelah 4 s.
+  - Untuk No crop: ⛔ **tidak ada panduan kiri-kanan** di branch ini. Fitur `horizontalWant` (`horizontalEnter` 0.05 / `horizontalExit` 0.08) dari `main` tidak diambil saat merge 13 Nov (konflik di 3 file Phased diselesaikan dengan versi branch). Lihat §16.
+  - `ready` = distance & vantage tersedia, tilt OK/diterima, (Auto crop) crop valid & tidak floor-limited, tidak ada permintaan geser kiri-kanan, tidak ada permintaan luruskan HP, data segar. Saat `ready`, instruksi menjadi **"Take the photo now"**.
 - **Reopen:** dari fase mana pun di atas distance, bila r keluar dari reopen band (atau kedua ujung terpotong) selama `reopenDwell` 1.5 s, engine `restart(from: .distance)`. Bila depth tersedia dan berubah <6%, reopen dibatalkan ("pose/tilt, not a walk"). Drift vantage > batas reopen selama 1.5 s → kembali ke vantage.
 - **Restart ke acquire:** saat target berubah (shot size, postur, preset) atau saat subjek baru di-tap.
 
@@ -1381,7 +1397,7 @@ Rumus Auto crop: c = clamp(cropMinScale, 0.3, 1); `enterLow = min(1.2c, 0.88)`, 
 
 State: searching → locked → lost → choosing.
 - Bila subjek hilang >1.2 s, tampil "Point back at the person".
-- Bila ada ≥2 orang, tampil "Tap the person to photograph" dan selain kandidat diredupkan.
+- Sejak 11 Nov: dari `searching`, orang yang paling dekat ke tengah frame (`centred`) dikunci setelah stabil 0.6 s, berapa pun jumlah orangnya. "Tap the person to photograph" + dim mask hanya di state `choosing`.
 
 ```mermaid
 stateDiagram-v2
@@ -1468,7 +1484,7 @@ stateDiagram-v2
 | `ChoosePhotosAccess` (`Models/PhotoAccess.swift`) | notDetermined / authorized / limited / denied | Status izin Photos (picker) | — |
 | `PhotoError` (`Models/PhotoError.swift`) | `loadFailed` "Some photos couldn’t be loaded. Please try again." | Error memuat foto | — |
 | `PreferencesStorage.Snapshot` (private, `Core/ChoosePhotos/PreferenceStorage.swift`) | `entries: [Entry]`, `selectedID: UUID?`; `Entry { id, name, photoIDs, analysis, focals, sourceAssetIdentifiers, customStyle }` | Format `index.json` | — |
-| `PresetAnalysis` (`Core/PreferenceAnalysis/Pipeline/PresetAnalysis.swift`, Codable, disimpan di `index.json` sebagai `Preference.analysis`) | `version` (=18, `isCurrent`), `analyzedAt`, `photoCount`, `subjectBox: CGRect?`, `subjectPhotoCount`, `angle: AngleTarget` (`.match(category: "above"/"below", pitchDown)` / `.noGuidance` / `.fixedRule`), `angleCounts`, `angleDeterminedCount`, `angleLeadingShare`, `eyeElevation`, `headAngle`, `clippedTop/Bottom`, `framing`, `heightLevel`, `bodyAngle`, `eyeSide`, `eyeSideSource`, `eyeAboveShare`, `eyeSidePhotoCount`, `framingVariants`, `photoFramings`, `cutLevel(+Count/Of)`, `faceHeight`, `halfBodyNeck/Torso`, `cutBelowHip`, `photoShotSizes`, `shotVariants`, `shotSize`, `lightLevel`, `postureVariants`, `photoPostures`, `anchor*` (6 field), `eyeOffsetFaces`, `backgroundBlur(+Count)`, `evidence` | Target kamera hasil analisis + varian per shot/postur | Bersarang di `Preference`; varian = `PresetAnalysis` bersarang (rekursif) |
+| `PresetAnalysis` (`Core/PreferenceAnalysis/Pipeline/PresetAnalysis.swift`, Codable, disimpan di `index.json` sebagai `Preference.analysis`) | `version` (=18, `isCurrent`), `analyzedAt`, `photoCount`, `subjectBox: CGRect?`, `subjectPhotoCount`, `angle: AngleTarget` (`.match(category: "above"/"below", pitchDown)` / `.noGuidance` / `.fixedRule`), `angleCounts`, `angleDeterminedCount`, `angleLeadingShare`, `eyeElevation`, `headAngle`, `clippedTop/Bottom`, `framing`, `heightLevel`, `bodyAngle`, `eyeSide`, `eyeSideSource`, `eyeAboveShare`, `eyeSidePhotoCount`, `framingVariants`, `photoFramings`, `cutLevel(+Count/Of)`, `faceHeight`, `halfBodyNeck/Torso`, `cutBelowHip`, `photoShotSizes`, `shotVariants`, `shotSize`, `lightLevel`, `postureVariants`, `photoPostures`, `anchor*` (6 field), `eyeOffsetFaces`, `vantageRange: VantageRange?` (12 Nov, opsional, tampilan saja), `backgroundBlur(+Count)`, `evidence` | Target kamera hasil analisis + varian per shot/postur | Bersarang di `Preference`; varian = `PresetAnalysis` bersarang (rekursif) |
 | `PresetAnalysis.ShotSize` (enum, disimpan sebagai String) | `full`, `threeQuarter`, `half`, `quarter` | Ukuran shot ("Full body"/"3/4"/"Half body"/"1/4") | — |
 | `AnalysisEvidenceSummary` (Codable) | `photoCount`, `sources: [String: Counts]` (produced/nothingDetected/failed/skipped), `failureDetails` | Ringkasan sukses/gagal tiap sumber evidence → `usability` | Di dalam `PresetAnalysis.evidence` |
 | `PreferenceProfile` (in-memory) | `cameraAngle`, `subjectFraming`, `horizontalPosition`, `verticalPosition`, `depthStructure` (`CategoryFinding`), `positioning`, `depth`, `coverage`, `limitations`, `environment`, `viewpoint` | Profil agregat; hanya di `AnalysisSession` (layar debug) | Dihasilkan dari `[PhotoResult]` |
@@ -2035,6 +2051,9 @@ Board `UserFlowMangga.jpg` juga memuat sisa template yang tidak relevan ("As an 
 | **Phased guide / PhasedEngine** | Guide utama dengan 5 fase berurutan: acquire → distance → vantage → tilt → framing |
 | **Vantage** | Tinggi kamera relatif garis mata subjek (fase "Raise/Lower the phone") |
 | **Eye offset faces (`eyeOffsetFaces`)** | Tinggi kamera relatif mata dalam satuan tinggi wajah (+ = di atas mata) |
+| **Vantage range** | Target tinggi kamera sebagai rentang + keyakinan (agree / varied / twoGroups / uncertain), dari σ tiap foto referensi. Tampilan saja (12 Nov) |
+| **Face unit lock** | Tinggi wajah yang dikunci saat fase vantage selesai, dipakai sebagai satuan "wajah" di fase tilt/framing supaya tangan di wajah atau wajah berpaling tidak menggeser angka vantage |
+| **r (size ratio)** | Besar orang di layar dibagi besar orang di foto referensi. Makin besar r, makin dekat. Jarak berbanding terbalik dengan r |
 | **Eye elevation** | Sudut (°) kamera dilihat dari mata subjek (+ = kamera di atas mata) |
 | **Pitch / tilt** | Kemiringan HP ke atas/bawah. `pitchDown` + = menunduk |
 | **Roll / horizon level** | Kemiringan HP ke kiri/kanan; garis horizon kuning saat \|roll\| <0.5° |
@@ -2101,7 +2120,7 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Core/Gallery/GalleryStore.swift` | `GalleryStore`, `GalleryStoreProtocol`, `MockGalleryStore` | Insert/hapus record galeri |
 | `gophoto/Core/Gallery/GallerySync.swift` | `GallerySync` | Hapus record yang aset-nya sudah tidak ada di Photos |
 | `gophoto/Core/Guide/AdaptiveFOV.swift` | `AdaptiveFOV` | Keputusan auto-zoom 1–2× (dev); `baselineZoom` dipakai live |
-| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.noCrop` di appMode 1 (foto di gallery = framing di kamera) |
+| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.autoCrop` di appMode 1 (dikembalikan 13 Nov; `cc5a19e` sempat mengubahnya ke `.noCrop` tanpa sengaja) |
 | `gophoto/Core/Guide/Experiment/GuideLog.swift` | `GuideLogger`, `LogFields`, `LogValue` | Log JSONL guide + JSON per capture (dev) |
 | `gophoto/Core/Guide/FramingTarget.swift` | `FramingTarget`, `FramingOffset` | Rect target orang + toleransi; target live = `subjectBox` atau `.center` |
 | `gophoto/Core/Guide/GuidanceMotion.swift` | `GuidanceMotion`, `Direction`, `TiltView` | Memetakan instruksi ke animasi 3D (height/tilt) |
@@ -2342,6 +2361,8 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 
 **Kamera**
 
+- **Panduan kiri-kanan mode No crop** (`horizontalWant`, `horizontalEnter/Exit`, field `framed` di `ready`) dari `main` tidak ikut saat merge 13 Nov ke `Adjust-Live-Guidance`. `PhasedOutput.horizontalError` tetap ada (masih di-log `CameraViewModel`) tapi tidak diisi. Perlu diputuskan: digabung lagi, atau No crop memang tidak dipakai.
+- Satuan cm per wajah: `GuideFlow.faceHeightMeters = 0.20`. Uji 12 Nov (5 foto dengan tinggi lensa yang dicatat) memberi ±15–17 cm per wajah, jadi label "≈ cm" di layar analisis kemungkinan kelebihan ±25%. Belum diubah.
 - Apakah fitur tips cahaya/backlight (X1/S1) **sengaja** dimatikan atau terputus tidak sengaja. Infrastrukturnya lengkap dan tidak ada komentar penjelasan; menurut catatan modul lighting, koneksinya hilang di merge commit `ddfbb25` (PR #21, 2026-10-29).
 - Frame rate dan pixel format video tidak dikonfigurasi (default device untuk preset `.photo`).
 - Revisi request Vision tidak di-set, jadi memakai default OS.
@@ -2399,3 +2420,23 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 - Efek `ENABLE_APP_SANDBOX` / `ENABLE_USER_SELECTED_FILES` pada target iOS.
 - Kebutuhan `PrivacyInfo.xcprivacy` sebelum submit App Store.
 - Lokasi UI test yang memakai accessibility identifier & `DebugFixtures`.
+
+## 17. Changelog 12–13 Nov 2026
+
+Branch `Adjust-Live-Guidance`. Semua angka dari `PhasedParameters.swift`; catatan per parameter di `Docs/Experiments/PhaseGuide/Parameters.md`.
+
+| Area | Perubahan | Tanggal |
+|---|---|---|
+| Pemilih subjek | Orang paling dekat ke tengah dikunci otomatis (tanpa prompt tap) | 11 Nov |
+| Jarak | Aim: berhenti di dalam band (half ×1.05, 3/4 ×1.10, full ×1.12) | 12–13 Nov |
+| Jarak, full body | `enterHigh` 0.95 → 0.88, `exitHigh` 1.0 → 0.93, `reopenHigh` 1.08 → 1.0 | 13 Nov |
+| Jarak, full body | Terpotong saat HP ±10° dari pitch referensi → "Move back", bukan tilt | 13 Nov |
+| Vantage | Kunci satuan wajah setelah fase vantage | 12 Nov |
+| Tilt | `pitchEnter/Exit` 4/6° → 3/4.5° | 12 Nov |
+| Tilt, full body | `edgeRoomFull` 0.07 (sebelumnya 0.03 untuk semua) | 13 Nov |
+| Horizon | Crop ≤2° (jangkauan 2.5°), "Straighten the phone" >2.3° sampai ≤1.5°, >5° dibiarkan; median roll | 12 Nov |
+| Kiri-kanan (Auto crop) | "Move the phone left/right": crop mentok tepi (>0.05) atau jauh dari tengah (>0.10) | 11–12 Nov |
+| Kiri-kanan (No crop) | Fitur dari `main` tidak ikut saat merge | 13 Nov |
+| Default appMode 1 | Dikembalikan ke **Phased · Auto crop** (zoom 1× tetap). `cc5a19e` sempat mengubahnya ke No crop tanpa sengaja, yang membuat zoom 2× otomatis muncul lagi | 13 Nov |
+| Analisis preset | Vantage range (σ per foto, rentang + keyakinan), tampilan saja | 12 Nov |
+| Developer | Record GT + Share GT (appMode 2); debugphoto: Record + compare | 12 Nov |
