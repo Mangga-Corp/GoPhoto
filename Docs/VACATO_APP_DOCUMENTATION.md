@@ -4,7 +4,8 @@
 > Setiap klaim merujuk ke file di `gophoto/…`. Hal yang tidak bisa dipastikan dari kode ditandai **[PERLU KONFIRMASI]**.
 >
 > - **Snapshot kode:** branch `main`, commit `63a19cd` ("camera permissions updated"), 237 commit sejak 2026-10-10.
-> - **Pembaruan 13 Nov 2026 (branch `Adjust-Live-Guidance`, setelah merge `main`):** perubahan guide Phased, analisis preset, dan fitur developer 12–13 Nov dimasukkan ke §6.4, §6.6, §6.7, §6.12, §6.15, §7.4.2, §14, §16. Ringkasannya di [§17 Changelog](#17-changelog-1213-nov-2026). Sumber angka: `Core/Guide/Phased/PhasedParameters.swift` dan `Docs/Experiments/PhaseGuide/Parameters.md`.
+> - **Pembaruan 13 Nov 2026 (branch `Adjust-Live-Guidance`, setelah merge `main`):** perubahan guide Phased, analisis preset, dan fitur developer 12–13 Nov dimasukkan ke §6.4, §6.6, §6.7, §6.12, §6.15, §7.4.2, §14, §16. Ringkasannya di [§17 Changelog](#17-changelog-1213-nov-2026).
+> - **Pembersihan 13 Nov 2026 (kode developer keluar dari repo ini):** saklar `appMode` dihapus. GoPhoto sekarang hanya berisi **Phased · Auto crop**. Semua alat developer (ExperimentBar, GuideDebugPanel, Replay, Guide log, Record GT, guide Main/Legacy, Analysis Results, Shot Analysis) pindah ke repo **debugphoto** (§6.12). Bagian lain yang masih menyebut "appMode 2" atau "dev-only" menggambarkan keadaan sebelum pembersihan; baris terkait di §13 dan §15 sudah diberi tanda **dipindah ke debugphoto**. Sumber angka: `Core/Guide/Phased/PhasedParameters.swift` dan `Docs/Experiments/PhaseGuide/Parameters.md`.
 > - **Cakupan:** 255 file Swift (sekitar 41.900 baris), 3 model CoreML, `project.pbxproj`, `Info.plist`, entitlements, `Package.resolved`, dan semua dokumen `.md`/gambar spesifikasi di repo.
 > - **Legenda status:**
 >   - ✅ Selesai
@@ -62,7 +63,7 @@ Value proposition utamanya adalah **"orang lain bisa memotret kita persis sesuai
 - Galeri hasil jepretan: filter per preferensi, collections, search, share, hapus (ikut dari Photos iPhone) (§6.19).
 - Editor foto: 5 look "AI Enhanced" + 12 slider manual, disimpan sebagai foto baru (§6.20).
 - Tips cahaya (backlight, arah matahari via SunKit, cuaca via WeatherKit): **sudah dikodekan tetapi tidak tersambung** (§6.14).
-- Alat developer (hanya bila konstanta `appMode = 2`): debug panel, eksperimen guide, replay video, guide log, layar Analysis Results (§6.12, §6.16, §6.17).
+- Alat developer (debug panel, eksperimen guide, replay video, guide log, layar Analysis Results): **sejak 13 Nov ada di repo debugphoto**, bukan di app ini (§6.12, §6.16, §6.17).
 
 **Yang tidak ada:**
 - login/akun;
@@ -173,7 +174,7 @@ GoPhoto/                              (root repo)
     │   ├── Camera/                    AVFoundation service, auto-crop, bokeh (3)
     │   ├── Detection/                 PersonDetector (Vision live), postur, DETR live (3)
     │   ├── Motion/                    CoreMotion hub & tilt (2)
-    │   ├── Guide/                     guide engine (8) + Phased/ (5) + Legacy/ (2) + Experiment/ (2)
+    │   ├── Guide/                     guide engine (8) + Phased/ (6, termasuk FramingPolicy)
     │   ├── Lighting/                  backlight, matahari, heading, lokasi, cuaca (11)
     │   ├── Enhance/                   enhance foto / look (5)
     │   ├── Gallery/                   SwiftData GalleryPhoto, store, sync (3)
@@ -184,17 +185,15 @@ GoPhoto/                              (root repo)
     │   │                              Interpretation (7), Aggregation (1), CameraAngle (9 + GeoCalib 4),
     │   │                              Environment (12), SceneModels (11)
     │   ├── Session/                   konfigurasi & store sesi foto (2)
-    │   ├── Replay/                    harness replay video (dev) (5)
     │   ├── DesignSystem/              token & button style (2)
     │   └── Database/                  ModelContainer (1)
     └── Features/
-        ├── Camera/                    Views (2), ViewModels (3), Components (19) + Guidance3D (20), Onboarding (5)
+        ├── Camera/                    Views (2), ViewModels (2), Components (9) + Guidance3D (20), Onboarding (5)
         ├── ChoosePhotos/              onboarding, picker, analisis, style card, editor (UIKit+SwiftUI) (20)
         ├── PhotoSessionSetup/         layar "Photo Session Setup" (2)
         ├── SessionSetup/              Preference Selection (+ Shot Size yang dead) (10)
         ├── CustomPreference/          flow custom preference (5)
         ├── Gallery/                   galeri, pager, editor (12)
-        ├── AnalysisResults/           layar debug hasil analisis (16)
         └── About/                     Acknowledgements (1)
 ```
 
@@ -780,9 +779,17 @@ sequenceDiagram
 - **Edge case:** Pill demo memakai string lama "Raise your arms", sedangkan judul kartu "Raise the phone".
 - **Status:** ✅ Selesai.
 
-### 6.12 Fitur developer kamera (hanya `appMode = 2`)
+### 6.12 Fitur developer kamera (sejak 13 Nov: repo debugphoto)
 
-Semua fitur berikut di-gate oleh konstanta `CameraView.appMode` (bukan `#if DEBUG`), jadi kodenya ikut ter-compile ke Release. Status semuanya **🟡 dev-only / tidak terjangkau di build saat ini**.
+**Pembersihan 13 Nov 2026.** Saklar `appMode` dihapus dari `CameraView`. GoPhoto hanya menjalankan **Phased · Auto crop** (zoom 1×, foto resolusi penuh, kunci subjek ketat). `CameraViewModel` turun dari sekitar 2.300 ke sekitar 550 baris, `CameraView` dari 656 ke 340 baris.
+
+- **Dipindah ke debugphoto** (cadangan di `_to_delete/pra-bersih-debug/`): `Core/Replay/` (5), `Core/Guide/Legacy/` (2), `Core/Guide/Experiment/` (ExperimentMode, GuideLog, GroundTruth), `Features/AnalysisResults/` (16), `CaptureReview.swift`, dan komponen kamera `ExperimentBar`, `GuideDebugPanel`, `PoseGuidePanel`, `ReplayControls`, `GroundTruthSheet`, `ShotAnalysisScreen`, `AdaptiveFOVStatus`, `GuideChecklistView`, `HeightRuleCard`, `GuideFramesOverlay`.
+- **Dibuang dari ViewModel produksi:** pilihan eksperimen, replay, auto-zoom AdaptiveFOV, guide lama (Main / Main modified), guide log, GT, live depth, Blur On (bokeh), review, lighting, analisis lingkungan live, PoseGuide, bar lama.
+- **Tetap di repo ini (dipakai bersama):** `Core/Guide/Phased/*`, `FramingPolicy` (pindah dari `ExperimentMode.swift` ke `Core/Guide/Phased/FramingPolicy.swift`), `GuideFlow`, `GuideInstruction`, `GuidanceMotion`, `HorizonState`, `AdaptiveFOV` (dipakai `CameraService`), `FramingTarget`, `WideCrop`, `PersonLossZoomReset` (dipakai debugphoto), `CropPreviewOverlay` (frame Auto crop), `Debug/DebugFixtures` (`#if DEBUG`), serta hook di `CameraService`/`PersonDetector`.
+- **Cara berbagi kode (pendekatan A):** debugphoto memakai `Core`, `Features`, dan `Resource` repo ini langsung lewat folder tersinkron, dengan pengecualian untuk file yang punya salinan Lab. Perubahan Phased di sini otomatis ikut di debugphoto, dan sebaliknya alat developer tidak lagi ikut ter-compile ke app ini.
+- **Sisa pekerjaan:** merapikan hook developer di `CameraService`/`PersonDetector` (replay source, depth, dimming) menjadi colokan tipis.
+
+Daftar di bawah ini menjelaskan fitur developer yang **sekarang ada di debugphoto** (sebelumnya di repo ini di balik `appMode = 2`):
 
 - **ExperimentBar:** memilih guide (Main / Main modified / Phased / Phased + Depth) dan framing (Auto crop / No crop), plus sheet info `ExperimentInfoSheet`.
 - **GuideDebugPanel** (ikon ladybug): menampilkan baris status preset, angle, blur, target, phone, exposure, sun, light, crop, steps, plus "Share log". Dari panel ini bisa membuka `AnalysisResultsScreen` dan `ShotAnalysisScreen`.
@@ -1038,14 +1045,14 @@ String yang tampil ke user:
   - kartu karakteristik dan kartu lingkungan;
   - "Model output details";
   - Preference Profile (distribusi, peta posisi, depth, lingkungan, batasan).
-- **Akses:** Satu-satunya pintu masuk adalah `AnalysisResultsScreen`, sheet dari tombol "Analysis details" di `GuideDebugPanel`, yang hanya ada di `appMode = 2`. Jadi **tidak terjangkau di build saat ini**. `AnalysisFlowView` 🗑️ tanpa pemanggil.
+- **Akses (sejak 13 Nov: hanya di debugphoto, file `Features/AnalysisResults/**` dipindah):** Satu-satunya pintu masuk adalah `AnalysisResultsScreen`, sheet dari tombol "Analysis details" di `GuideDebugPanel`, yang hanya ada di `appMode = 2`. Jadi **tidak terjangkau di build saat ini**. `AnalysisFlowView` 🗑️ tanpa pemanggil.
 - **Data:** `AnalysisSession` in-memory. Bila tidak ada, tampil "No details in memory" dengan tombol "Analyze again", yang juga menyimpan ulang analisis (efek samping).
 - **File:** `Features/AnalysisResults/**` (16 file).
 - **Status:** 🟡 dev-only.
 
 ### 6.17 Replay harness & Guide Log (alat uji developer)
 
-- **Deskripsi:** Alat regresi untuk menjalankan guide pada video rekaman (bukan kamera). Hanya ada di `appMode = 2`, diakses lewat tombol film di top bar.
+- **Deskripsi:** Alat regresi untuk menjalankan guide pada video rekaman (bukan kamera). Sejak 13 Nov hanya ada di debugphoto (dulu `appMode = 2`), diakses lewat tombol film di top bar.
 - **Cara kerja:**
   - `VideoReplaySource` men-decode video lewat `AVAssetReader`, dipacu 1× menurut PTS, lalu menghitung SHA-256 file.
   - `ReplayCameraService` berperan sebagai `CameraServiceProtocol` palsu dengan `PersonDetector` sendiri (`analysisStride = 2`). Zoom selalu 1, FOV dan pitch `nil`, dan sumber disimulasikan 48 MP.
@@ -1286,10 +1293,10 @@ DepthAnything dan GeoCalib **tidak** dipakai di kamera live, hanya di analisis p
 
 | Mode | Cara aktif | Guide yang jalan | Status |
 |---|---|---|---|
-| `appMode = 1` (build saat ini, `CameraView.swift:18`) | Default | **Phased engine + No crop** (`Core/Guide/Phased/*`), `HorizonState`, overlay 3D `GuidanceMotion` | ✅ |
-| `appMode = 2` (developer, harus edit source) | Ubah konstanta lalu build ulang | Dipilih via `ExperimentBar`: Main (`Legacy/TeamGuideFlow` + `TeamAdaptiveFOV`, salinan beku dari commit a68494f), Main modified (`GuideFlow` + `AdaptiveFOV` + `PersonLossZoomReset`), Phased, Phased + Depth | 🟡 dev-only |
+| GoPhoto (satu-satunya mode sejak 13 Nov; `appMode` dihapus) | Default | **Phased engine + Auto crop**, zoom 1× (`Core/Guide/Phased/*`), `HorizonState`, overlay 3D `GuidanceMotion` | ✅ |
+| debugphoto (repo terpisah, dulu `appMode = 2`) | Build debugphoto | Dipilih via `ExperimentBar`: Main (`Legacy/TeamGuideFlow` + `TeamAdaptiveFOV`, salinan beku dari commit a68494f), Main modified (`GuideFlow` + `AdaptiveFOV` + `PersonLossZoomReset`), Phased, Phased + Depth | 🟡 dev-only |
 
-Di kedua mode, `guideMode` dipaksa `.heightFirstCrop` ("B · Height first + crop"). Akibatnya 11 dari 12 `GuideMode` (A, A old look, A steps, B, B old, C, C old, D, E, F) dan `GuideInstruction.next()` tidak terjangkau. Kode appMode 2 tidak dibungkus `#if DEBUG`, jadi ikut ter-compile di Release.
+Sebelum 13 Nov, di kedua mode `guideMode` dipaksa `.heightFirstCrop` ("B · Height first + crop"). Akibatnya 11 dari 12 `GuideMode` (A, A old look, A steps, B, B old, C, C old, D, E, F) dan `GuideInstruction.next()` tidak terjangkau. Kode appMode 2 tidak dibungkus `#if DEBUG`, jadi ikut ter-compile di Release.
 
 #### 7.4.2 Phased engine (guide utama) — `Core/Guide/Phased/PhasedEngine.swift`
 
@@ -1808,15 +1815,15 @@ Campuran UIKit/SwiftUI & gaya:
 **Kamera (`Features/Camera`, `Core/Camera`, `Core/Detection`, `Core/Motion`)**
 
 Konfigurasi & hardcode:
-- `Features/Camera/Views/CameraView.swift:18`: `appMode = 1` di-hardcode sebagai saklar tester/developer. Tidak ada build flag, dan semua UI developer ikut ter-ship di binary.
-- `CameraViewModel.swift:531-544`: `guideMode` dipaksa `.heightFirstCrop` di kedua mode. Nilai UserDefaults `guideMode` tidak berguna, dan mode A–F tidak terjangkau.
+- `Features/Camera/Views/CameraView.swift:18`: `appMode = 1` di-hardcode sebagai saklar tester/developer. Tidak ada build flag, dan semua UI developer ikut ter-ship di binary. **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
+- `CameraViewModel.swift:531-544`: `guideMode` dipaksa `.heightFirstCrop` di kedua mode. Nilai UserDefaults `guideMode` tidak berguna, dan mode A–F tidak terjangkau. **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
 - `CameraService.swift:281-284, 476-482`, `CameraPreviewView.swift:24-27`: rotasi 90° di-hardcode (hanya portrait).
 - `CameraService.swift:416`: hanya `.builtInWideAngleCamera`, dan min zoom di-clamp ke 1 (`:447`).
 - `CameraView.swift:82, 638`: teks yang terlihat user menyebut "GoPhoto", padahal display name "Vacato".
 
 Kode mati:
-- Review/enhance: `CameraViewModel.swift:38-47, 1312-1355`, `CaptureReview.swift`, `CapturedPhotoView.swift`. `review` tidak pernah di-set, tetapi `PhotoEnhancer()` tetap diinstansiasi (`:46`).
-- `CameraViewModel.swift:104` `exposure` tidak pernah di-set. `:105` `lighting` tidak pernah `run()`/`ingest`. Akibatnya `LightingTipPill.swift` dan `LightingAdvicePill.swift` mati.
+- Review/enhance: `CameraViewModel.swift:38-47, 1312-1355`, `CaptureReview.swift`, `CapturedPhotoView.swift`. `review` tidak pernah di-set, tetapi `PhotoEnhancer()` tetap diinstansiasi (`:46`). **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
+- `CameraViewModel.swift:104` `exposure` tidak pernah di-set. `:105` `lighting` tidak pernah `run()`/`ingest`. Akibatnya `LightingTipPill.swift` dan `LightingAdvicePill.swift` mati. **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
 - `CameraService.swift:225-229, 753-776`: pengukuran backlight tiap 0.5 s tetap jalan, tetapi `statusContinuation` tidak pernah di-assign. CPU terbuang.
 - `CameraViewModel.swift:370-384`: `heightRings` dan `confirmPhoneHeight` tidak dipakai. `HeightRuleCard.swift` dan `GuideFramesOverlay.swift` tidak terjangkau.
 - `CameraView.swift:52, 119-123`: sheet Acknowledgements tidak terjangkau. `:460-462` `showsStepBar` tidak dipakai.
@@ -1845,7 +1852,7 @@ Inkonsistensi / potensi bug:
 **Guide engine, Guidance3D, Replay, Debug**
 
 Arsitektur & kode mati:
-- `CameraView.swift:18` + `CameraViewModel.swift:531-544`: sekitar 2.500 baris kode appMode 2 (ExperimentBar, GuideLog, Replay, Legacy, GuideFlow, AdaptiveFOV, PersonLossZoomReset, GuideMode A–F) ter-compile ke Release tetapi tidak terjangkau, dan tidak dibungkus `#if DEBUG`.
+- `CameraView.swift:18` + `CameraViewModel.swift:531-544`: sekitar 2.500 baris kode appMode 2 (ExperimentBar, GuideLog, Replay, Legacy, GuideFlow, AdaptiveFOV, PersonLossZoomReset, GuideMode A–F) ter-compile ke Release tetapi tidak terjangkau, dan tidak dibungkus `#if DEBUG`. **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
 - `Core/Guide/GuideFlow.swift:11-58, 93-104`: 12 `GuideMode` tetapi hanya `.heightFirstCrop` yang dipakai. `GuideProgress.heightConfirmed` (`:207`) tidak pernah di-set, sehingga mode E akan macet di `setPhoneHeight`.
 - `Core/Guide/GuideInstruction.swift:33-65`: `next()` tidak terjangkau.
 - `Core/Guide/Legacy/TeamGuideFlow.swift`, `TeamAdaptiveFOV.swift`: duplikasi beku sekitar 400 baris ("Do not edit").
@@ -1975,7 +1982,7 @@ Lain-lain:
 
 **Environment, SceneModels, AnalysisResults**
 
-- Seluruh UI `Features/AnalysisResults` tidak terjangkau (`CameraView.swift:18` appMode 1) tetapi ikut ter-compile ke Release.
+- Seluruh UI `Features/AnalysisResults` tidak terjangkau (`CameraView.swift:18` appMode 1) tetapi ikut ter-compile ke Release. **✅ Beres 13 Nov: kode developer dipindah ke debugphoto (§6.12).**
 - Kode mati:
   - `AnalysisFlowView` (`Views/AnalysisFlowView.swift:6`);
   - `DepthAnythingEstimator`, `DepthMap`, `DepthEstimating`, `ImageClassifying`, `ClassificationHint`;
@@ -2078,7 +2085,7 @@ Board `UserFlowMangga.jpg` juga memuat sisa template yang tidak relevan ("As an 
 | **Taste / mixed / default** | Sumber keputusan sisi kamera: kebiasaan jelas (≥70%), campuran, atau aturan default framing |
 | **Usability** | `.usable` / `.requiredAnalysisFailed` / `.noUsableFraming` |
 | **Style card / persona** | Kartu "YOUR STYLE" (mis. "The Explorer") hasil `StyleSummary` |
-| **appMode** | Konstanta `CameraView.appMode`: 1 = build tester/rilis, 2 = developer |
+| **appMode** | (Dihapus 13 Nov.) Dulu konstanta `CameraView.appMode`: 1 = build tester/rilis, 2 = developer. Mode developer sekarang = repo debugphoto |
 | **Main / Main modified / Legacy** | Guide step-by-step lama (`TeamGuideFlow` beku / `GuideFlow`), hanya dev |
 | **Replay** | Menjalankan guide pada video rekaman untuk uji regresi (dev) |
 | **Fixture** | Data contoh DEBUG via launch argument `-GoPhoto…` |
@@ -2120,20 +2127,21 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Core/Gallery/GalleryStore.swift` | `GalleryStore`, `GalleryStoreProtocol`, `MockGalleryStore` | Insert/hapus record galeri |
 | `gophoto/Core/Gallery/GallerySync.swift` | `GallerySync` | Hapus record yang aset-nya sudah tidak ada di Photos |
 | `gophoto/Core/Guide/AdaptiveFOV.swift` | `AdaptiveFOV` | Keputusan auto-zoom 1–2× (dev); `baselineZoom` dipakai live |
-| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.autoCrop` di appMode 1 (dikembalikan 13 Nov; `cc5a19e` sempat mengubahnya ke `.noCrop` tanpa sengaja) |
-| `gophoto/Core/Guide/Experiment/GuideLog.swift` | `GuideLogger`, `LogFields`, `LogValue` | Log JSONL guide + JSON per capture (dev) |
+| `gophoto/Core/Guide/Experiment/ExperimentMode.swift` | `ExperimentGuide`, `FramingPolicy`, `ExperimentSelection` | Pilihan guide + framing; tetap `.phased/.autoCrop` di appMode 1 (dikembalikan 13 Nov; `cc5a19e` sempat mengubahnya ke `.noCrop` tanpa sengaja) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Guide/Experiment/GuideLog.swift` | `GuideLogger`, `LogFields`, `LogValue` | Log JSONL guide + JSON per capture (dev) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Core/Guide/FramingTarget.swift` | `FramingTarget`, `FramingOffset` | Rect target orang + toleransi; target live = `subjectBox` atau `.center` |
 | `gophoto/Core/Guide/GuidanceMotion.swift` | `GuidanceMotion`, `Direction`, `TiltView` | Memetakan instruksi ke animasi 3D (height/tilt) |
 | `gophoto/Core/Guide/GuideFlow.swift` | `GuideMode`, `GuideStep`, `GuideFlow`, `GuideLive`, `GuideEvaluation`, `GuideProgress` | Guide step-by-step "Main modified" (dev) |
 | `gophoto/Core/Guide/GuideInstruction.swift` | `GuideInstruction` | Kosakata instruksi guide lama + logika prioritas mode A (`next()` tidak terjangkau) |
 | `gophoto/Core/Guide/HorizonState.swift` | `HorizonState` | State hysteresis garis horizon |
-| `gophoto/Core/Guide/Legacy/TeamAdaptiveFOV.swift` | `TeamAdaptiveFOV` | Salinan beku auto-zoom tim (baseline "Main") |
-| `gophoto/Core/Guide/Legacy/TeamGuideFlow.swift` | `TeamGuideFlow` | Salinan beku GuideFlow tim (baseline "Main") |
+| `gophoto/Core/Guide/Legacy/TeamAdaptiveFOV.swift` | `TeamAdaptiveFOV` | Salinan beku auto-zoom tim (baseline "Main") — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Guide/Legacy/TeamGuideFlow.swift` | `TeamGuideFlow` | Salinan beku GuideFlow tim (baseline "Main") — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Core/Guide/PersonLossZoomReset.swift` | `PersonLossZoomReset` | Mengembalikan zoom ke 1× saat orang hilang (dev) |
 | `gophoto/Core/Guide/Phased/PhasedEngine.swift` | `PhasedEngine` | State machine 5 fase dengan hysteresis, dwell, reopen, at-the-limit |
 | `gophoto/Core/Guide/Phased/PhasedMeasure.swift` | `PhasedMeasure`, `Span`, `Vantage`, `Crop` | Geometri: span per shot, tinggi kamera vs mata, rect crop |
 | `gophoto/Core/Guide/Phased/PhasedParameters.swift` | `PhasedParameters`, `SizeBand`, `ShotMargins`, `TimedSamples`, `Dwell` | Semua ambang/timer Phased + median berjendela waktu |
 | `gophoto/Core/Guide/Phased/PhasedSubjectPicker.swift` | `PhasedSubjectPicker` | Memilih/mengunci subjek (auto-lock, tap, point back) |
+| `gophoto/Core/Guide/Phased/FramingPolicy.swift` | `FramingPolicy` | Auto crop / No crop; dipindah dari `ExperimentMode.swift` (13 Nov), dipakai bersama GoPhoto dan debugphoto |
 | `gophoto/Core/Guide/Phased/PhasedTypes.swift` | `PhasedPhase`, `PhasedInstruction`, `PhasedTarget`, `PhasedFrame`, `PhasedOutput`, `SubjectObservation`, `DepthSample` | Tipe nilai & string instruksi Phased; target dari `PresetAnalysis` |
 | `gophoto/Core/Guide/WideCrop.swift` | `WideCrop` | Geometri crop mode F/B+crop; rutinitas crop foto mati |
 | `gophoto/Core/Lighting/BacklightController.swift` | `BacklightController`, `BacklightTip` | Logika murni deteksi backlight + arah pindah (tidak tersambung) |
@@ -2222,36 +2230,36 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Core/PreferenceAnalysis/SceneModels/SceneModelLoader.swift` | `SceneModelLoader` | Load `.mlmodelc` dari bundle |
 | `gophoto/Core/PreferenceAnalysis/SceneModels/SceneModelProtocols.swift` | `SemanticSegmenting`, `DepthEstimating`, `ImageClassifying` | Abstraksi peran model |
 | `gophoto/Core/PreferenceAnalysis/SceneModels/SegmentationMap.swift` | `SegmentationMap` | Indeks kelas per piksel + label |
-| `gophoto/Core/Replay/ReplayBatch.swift` | `ReplayBatchPlan`, `ReplayBatchItem` | Rencana "Run all" replay (dev) |
-| `gophoto/Core/Replay/ReplayCameraService.swift` | `ReplayCameraService`, `ReplayPipelineStats`, `ReplayError2` | Kamera palsu dari video untuk replay (dev) |
-| `gophoto/Core/Replay/ReplayLibrary.swift` | `ReplayLibrary`, `ReplayMovie` | Path, impor video, simpan frame uji (dev) |
-| `gophoto/Core/Replay/ReplayRunRecorder.swift` | `ReplayRunRecorder`, `ReplayScenario` | Timeline per run → JSON/CSV (dev) |
-| `gophoto/Core/Replay/VideoReplaySource.swift` | `VideoReplaySource`, `ReplayFrame`, `ReplayVideoInfo` | Decoder AVAssetReader dengan pacing 1× (dev) |
+| `gophoto/Core/Replay/ReplayBatch.swift` | `ReplayBatchPlan`, `ReplayBatchItem` | Rencana "Run all" replay (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Replay/ReplayCameraService.swift` | `ReplayCameraService`, `ReplayPipelineStats`, `ReplayError2` | Kamera palsu dari video untuk replay (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Replay/ReplayLibrary.swift` | `ReplayLibrary`, `ReplayMovie` | Path, impor video, simpan frame uji (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Replay/ReplayRunRecorder.swift` | `ReplayRunRecorder`, `ReplayScenario` | Timeline per run → JSON/CSV (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Core/Replay/VideoReplaySource.swift` | `VideoReplaySource`, `ReplayFrame`, `ReplayVideoInfo` | Decoder AVAssetReader dengan pacing 1× (dev) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Core/Session/PhotoSessionConfiguration.swift` | `PhotoSessionConfiguration`, `SessionShotSize`, `PhotoSessionError` | Konfigurasi sesi foto tervalidasi (in-memory) |
 | `gophoto/Core/Session/PhotoSessionStore.swift` | `PhotoSessionStore`, `PhotoSessionStatus` | State sesi aktif, start/end |
 | `gophoto/Debug/DebugFixtures.swift` | `DebugFixtures`, `DebugSessionStatus`, `DebugFixtureStatus` | Fixture launch-argument untuk UI test/simulator (DEBUG) |
 | `gophoto/Features/About/Views/AcknowledgementsView.swift` | `AcknowledgementsView` | Atribusi SunKit & Apple Weather (tidak terjangkau) |
-| `gophoto/Features/AnalysisResults/Components/CameraAngleComparisonViews.swift` | `CameraAngleComparisonCard` | Perbandingan metode sudut kamera (dev) |
-| `gophoto/Features/AnalysisResults/Components/CameraAngleSourcesView.swift` | `CameraAngleSourcesView` | Daftar provider evidence sudut (dev) |
-| `gophoto/Features/AnalysisResults/Components/CharacteristicCard.swift` | `CharacteristicCard`, `ResultMeasurementRows`, `EvidenceList` | Kartu per karakteristik (dev) |
-| `gophoto/Features/AnalysisResults/Components/EnvironmentCards.swift` | `EnvironmentSection` + kartu privat | Empat kartu lingkungan per foto (dev) |
-| `gophoto/Features/AnalysisResults/Components/EvidenceImageView.swift` | `EvidenceImageView`, `EvidenceLayer`, `EvidenceLayerPicker` | Foto + overlay evidence (dev) |
-| `gophoto/Features/AnalysisResults/Components/ModelOutputSection.swift` | `ModelOutputSection` | Output mentah model & timing (dev) |
-| `gophoto/Features/AnalysisResults/Components/OverlayRasterizer.swift` | `OverlayRasterizer`, `OverlayImageCache` | Render grid mask/segmentasi/depth ke gambar (dev) |
-| `gophoto/Features/AnalysisResults/Components/ProfileComponents.swift` | `PhotoThumb`, `CoverageSummary`, `FindingSection`, `PositionMap`, `SummaryRow` | Komponen profil generik (dev) |
-| `gophoto/Features/AnalysisResults/Presentation/EnvironmentPresentation.swift` | `RegionPalette`, `EnvironmentFormat` | Kata-kata & warna UI lingkungan (dev) |
-| `gophoto/Features/AnalysisResults/Presentation/ResultPresentation.swift` | `ResultCard`, `EvidenceBadge`, `PhotoValueText`, `AnalysisResultsPalette` | Kata-kata & warna UI hasil (dev) |
-| `gophoto/Features/AnalysisResults/Views/AnalysisFlowView.swift` | `AnalysisFlowView`, `AnalysisProgressPanel` | Flow progres→hasil (dead) + panel progres (dev) |
-| `gophoto/Features/AnalysisResults/Views/AnalysisResultsScreen.swift` | `AnalysisResultsScreen` | Root sheet hasil analisis (dev) |
-| `gophoto/Features/AnalysisResults/Views/EnvironmentProfileSection.swift` | `EnvironmentProfileSection` | Bagian lingkungan profil (dev) |
-| `gophoto/Features/AnalysisResults/Views/PhotoResultDetailView.swift` | `PhotoResultDetailView`, `PhotoDetailRoute` | Detail evidence per foto (dev) |
-| `gophoto/Features/AnalysisResults/Views/ProfileDetailView.swift` | `ProfileDetailView`, `ProfileRoute` | Profil gabungan lengkap (dev) |
-| `gophoto/Features/AnalysisResults/Views/ResultsOverviewView.swift` | `ResultsOverviewView`, `PhotoResultRow` | Ringkasan profil, blur, peringatan, daftar foto (dev) |
-| `gophoto/Features/Camera/Components/AdaptiveFOVStatus.swift` | `AdaptiveFOVStatus` | Kapsul "Zooming in…/out…" (guide non-Phased) |
+| `gophoto/Features/AnalysisResults/Components/CameraAngleComparisonViews.swift` | `CameraAngleComparisonCard` | Perbandingan metode sudut kamera (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/CameraAngleSourcesView.swift` | `CameraAngleSourcesView` | Daftar provider evidence sudut (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/CharacteristicCard.swift` | `CharacteristicCard`, `ResultMeasurementRows`, `EvidenceList` | Kartu per karakteristik (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/EnvironmentCards.swift` | `EnvironmentSection` + kartu privat | Empat kartu lingkungan per foto (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/EvidenceImageView.swift` | `EvidenceImageView`, `EvidenceLayer`, `EvidenceLayerPicker` | Foto + overlay evidence (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/ModelOutputSection.swift` | `ModelOutputSection` | Output mentah model & timing (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/OverlayRasterizer.swift` | `OverlayRasterizer`, `OverlayImageCache` | Render grid mask/segmentasi/depth ke gambar (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Components/ProfileComponents.swift` | `PhotoThumb`, `CoverageSummary`, `FindingSection`, `PositionMap`, `SummaryRow` | Komponen profil generik (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Presentation/EnvironmentPresentation.swift` | `RegionPalette`, `EnvironmentFormat` | Kata-kata & warna UI lingkungan (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Presentation/ResultPresentation.swift` | `ResultCard`, `EvidenceBadge`, `PhotoValueText`, `AnalysisResultsPalette` | Kata-kata & warna UI hasil (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/AnalysisFlowView.swift` | `AnalysisFlowView`, `AnalysisProgressPanel` | Flow progres→hasil (dead) + panel progres (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/AnalysisResultsScreen.swift` | `AnalysisResultsScreen` | Root sheet hasil analisis (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/EnvironmentProfileSection.swift` | `EnvironmentProfileSection` | Bagian lingkungan profil (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/PhotoResultDetailView.swift` | `PhotoResultDetailView`, `PhotoDetailRoute` | Detail evidence per foto (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/ProfileDetailView.swift` | `ProfileDetailView`, `ProfileRoute` | Profil gabungan lengkap (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/AnalysisResults/Views/ResultsOverviewView.swift` | `ResultsOverviewView`, `PhotoResultRow` | Ringkasan profil, blur, peringatan, daftar foto (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/AdaptiveFOVStatus.swift` | `AdaptiveFOVStatus` | Kapsul "Zooming in…/out…" (guide non-Phased) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Features/Camera/Components/CameraGridOverlay.swift` | `CaptureAspect`, `CameraGridOverlay` | Grid rule-of-thirds & mask rasio |
 | `gophoto/Features/Camera/Components/CameraPreviewView.swift` | `CameraPreviewView`, `PreviewView` | Host `AVCaptureVideoPreviewLayer` |
 | `gophoto/Features/Camera/Components/CropPreviewOverlay.swift` | `CropPreviewOverlay` | Menggambar jendela crop (dev, guide lama) |
-| `gophoto/Features/Camera/Components/ExperimentBar.swift` | `ExperimentBar`, `ExperimentInfoSheet` | Menu pilih guide/framing + sheet info (dev) |
+| `gophoto/Features/Camera/Components/ExperimentBar.swift` | `ExperimentBar`, `ExperimentInfoSheet` | Menu pilih guide/framing + sheet info (dev) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Features/Camera/Components/Guidance3D/GuidanceGalleryView.swift` | `GuidanceGalleryView` | Galeri dev seluruh overlay (DEBUG/Preview) |
 | `gophoto/Features/Camera/Components/Guidance3D/GuidanceLoadingArrowView.swift` | `CurvedTiltArrowView`, `HeightLoadingArrowView` | Desain panah alternatif (dead) |
 | `gophoto/Features/Camera/Components/Guidance3D/GuidanceMotionOverlay.swift` | `GuidanceMotionOverlay`, `GuidanceAnimationStyle`, `RacingArrowView`, `CurvedRacingArrowView` | Overlay live: redupkan preview + animasi HP 3D + panah |
@@ -2273,28 +2281,28 @@ Total **255** file Swift, diurutkan per path. Status per file ada di §6/§13 da
 | `gophoto/Features/Camera/Components/Guidance3D/TiltGuidanceView.swift` | `TiltGuidanceView`, `TiltDriver` | RealityView animasi tilt HP |
 | `gophoto/Features/Camera/Components/Guidance3D/TiltTimeline.swift` | `TiltTimeline`, `TiltFrame` | Kurva loop 2.5 s animasi tilt (salinan) |
 | `gophoto/Features/Camera/Components/GuideBars.swift` | `DistanceBar`, `GuideVerticalBar` | Bar jarak (log-scale) & bar vertikal tinggi/tilt |
-| `gophoto/Features/Camera/Components/GuideChecklistView.swift` | `GuideChecklistView` | Chip status per step guide (dev) |
-| `gophoto/Features/Camera/Components/GuideDebugPanel.swift` | `GuideDebugPanel` | Overlay debug + akses layar analisis (dev) |
-| `gophoto/Features/Camera/Components/GuideFramesOverlay.swift` | `GuideFramesOverlay` | Kotak target & outline gaya lama (tidak terjangkau) |
-| `gophoto/Features/Camera/Components/HeightRuleCard.swift` | `HeightRuleCard` | Kartu "pegang HP setinggi dada" mode E/F (tidak terjangkau) |
+| `gophoto/Features/Camera/Components/GuideChecklistView.swift` | `GuideChecklistView` | Chip status per step guide (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/GuideDebugPanel.swift` | `GuideDebugPanel` | Overlay debug + akses layar analisis (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/GuideFramesOverlay.swift` | `GuideFramesOverlay` | Kotak target & outline gaya lama (tidak terjangkau) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/HeightRuleCard.swift` | `HeightRuleCard` | Kartu "pegang HP setinggi dada" mode E/F (tidak terjangkau) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Features/Camera/Components/HorizonLevelView.swift` | `HorizonLevelView` | Garis horizon 3 segmen |
 | `gophoto/Features/Camera/Components/InstructionPill.swift` | `InstructionPill` | Pill teks+ikon untuk `GuideInstruction` (guide lama & demo onboarding) |
 | `gophoto/Features/Camera/Components/LightingAdvicePill.swift` | `LightingAdvicePill` | Pill saran cahaya berbasis cuaca (dead) |
 | `gophoto/Features/Camera/Components/LightingTipPill.swift` | `LightingTipPill` | Pill tip matahari/backlight (dead, hanya preview) |
 | `gophoto/Features/Camera/Components/PhasedOverlays.swift` | `PhasedInstructionPill`, `PhasedPreviewLayer` | Pill instruksi Phased & layer dim/tap pilih orang |
-| `gophoto/Features/Camera/Components/PoseGuidePanel.swift` | `PoseGuideState`, `PoseGuideStyle`, `PoseGuidePanel` | Diagram samping tinggi/tilt HP (dev) |
-| `gophoto/Features/Camera/Components/ReplayControls.swift` | `ReplayControls`, `ReplayPreview`, `ReplayBadges` | Kontrol harness replay video (dev) |
-| `gophoto/Features/Camera/Components/ShotAnalysisScreen.swift` | `ShotAnalysisScreen` | Sheet dev: nilai analisis per shot size |
+| `gophoto/Features/Camera/Components/PoseGuidePanel.swift` | `PoseGuideState`, `PoseGuideStyle`, `PoseGuidePanel` | Diagram samping tinggi/tilt HP (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/ReplayControls.swift` | `ReplayControls`, `ReplayPreview`, `ReplayBadges` | Kontrol harness replay video (dev) — **dipindah ke debugphoto 13 Nov** |
+| `gophoto/Features/Camera/Components/ShotAnalysisScreen.swift` | `ShotAnalysisScreen` | Sheet dev: nilai analisis per shot size — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Features/Camera/Components/ShotSizePicker.swift` | `ShotSizePicker` | Picker shot size horizontal dengan snapping |
 | `gophoto/Features/Camera/Onboarding/Cameraoboardingtargets.swift` | `CameraOnboardingTarget` | Melaporkan frame elemen UI asli agar visual onboarding sejajar |
 | `gophoto/Features/Camera/Onboarding/Cameraonboardingcopy.swift` | `CameraOnboardingStep`, `CameraOnboardingCopy` | Urutan langkah & teks onboarding kamera |
 | `gophoto/Features/Camera/Onboarding/Cameraonboardingview.swift` | `CameraOnboardingView` | Overlay coach mark 6 langkah di atas kamera |
 | `gophoto/Features/Camera/Onboarding/OnboardingDemoShotPicker.swift` | `OnboardingDemoShotPicker` | Picker shot size palsu beranimasi untuk onboarding |
 | `gophoto/Features/Camera/Onboarding/OnboardingMotionDemo.swift` | `OnboardingMotionDemo` | Demo animasi 3D tilt/height untuk onboarding |
-| `gophoto/Features/Camera/ViewModels/CameraViewModel.swift` | `CameraViewModel`, `CameraState`, `CaptureContext` | ViewModel tunggal layar kamera: izin, stream sensor, guide (Phased/legacy), auto-zoom, postur, capture & simpan, replay, log |
-| `gophoto/Features/Camera/ViewModels/CaptureReview.swift` | `CaptureReview` | Model foto yang menunggu review (dead) |
+| `gophoto/Features/Camera/ViewModels/CameraViewModel.swift` | `CameraViewModel`, `CameraState`, `CaptureContext` | ViewModel layar kamera (sejak 13 Nov hanya produksi): izin, stream sensor, guide Phased · Auto crop, zoom 1×, postur, capture & simpan crop |
+| `gophoto/Features/Camera/ViewModels/CaptureReview.swift` | `CaptureReview` | Model foto yang menunggu review (dead) — **dipindah ke debugphoto 13 Nov** |
 | `gophoto/Features/Camera/ViewModels/LightingCoordinator.swift` | `LightingCoordinator` | Menggabungkan lokasi, matahari, heading, cuaca, dan luminance menjadi satu tip cahaya (tidak pernah dijalankan) |
-| `gophoto/Features/Camera/Views/CameraView.swift` | `CameraView` | Layar kamera: layout, overlay, sheet, haptic, state izin; berisi saklar `appMode` |
+| `gophoto/Features/Camera/Views/CameraView.swift` | `CameraView` | Layar kamera: layout, overlay Phased, haptic, state izin (saklar `appMode` dihapus 13 Nov) |
 | `gophoto/Features/Camera/Views/CapturedPhotoView.swift` | `CapturedPhotoView`, `ZoomablePhoto` | Layar review & enhance pasca-capture (dead) |
 | `gophoto/Features/ChoosePhotos/Components/CircleButton.swift` | `CircleButton` | Tombol bulat SF Symbol (UIKit) |
 | `gophoto/Features/ChoosePhotos/Components/PhotoCell.swift` | `PhotoCell` | Sel grid foto dengan badge pilihan |
@@ -2440,3 +2448,5 @@ Branch `Adjust-Live-Guidance`. Semua angka dari `PhasedParameters.swift`; catata
 | Default appMode 1 | Dikembalikan ke **Phased · Auto crop** (zoom 1× tetap). `cc5a19e` sempat mengubahnya ke No crop tanpa sengaja, yang membuat zoom 2× otomatis muncul lagi | 13 Nov |
 | Analisis preset | Vantage range (σ per foto, rentang + keyakinan), tampilan saja | 12 Nov |
 | Developer | Record GT + Share GT (appMode 2); debugphoto: Record + compare | 12 Nov |
+| Struktur repo | Semua kode developer pindah ke debugphoto; `appMode` dihapus; `CameraViewModel` dan `CameraView` ditulis ulang khusus produksi; `FramingPolicy` pindah ke `Core/Guide/Phased/` | 13 Nov |
+| Zoom | Guide terus menarik zoom kembali ke 1× bila bergeser (dulu ada di jalur eksperimen, dipertahankan) | 13 Nov |
