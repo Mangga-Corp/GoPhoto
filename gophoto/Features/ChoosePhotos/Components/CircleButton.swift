@@ -8,17 +8,19 @@
 import UIKit
 
 /// Round icon button (SF Symbol). Liquid Glass on iOS 26, system gray before that. At least 44 x 44 pt.
-/// Pass `tint: Theme.destructive` for destructive actions, or `prominent: true` for primary purple background.
+/// Pass `tint: Theme.destructive` for destructive actions, `prominent: true` for primary purple background, or `glassTint:` for a softly tinted Liquid Glass
+/// (e.g. `Theme.accent.withAlphaComponent(0.6)`) that keeps the icon color neutral.
 final class CircleButton: UIButton {
-    init(symbol: String, accessibilityLabel label: String, tint: UIColor? = nil, prominent: Bool = false) {
+    init(symbol: String, accessibilityLabel label: String, tint: UIColor? = nil, prominent: Bool = false, glassTint: UIColor? = nil) {
         super.init(frame: .zero)
         var configuration: UIButton.Configuration
         if prominent {
-            configuration = .filled()
+            configuration = .prominentGlass()
             configuration.baseBackgroundColor = Theme.accent
             configuration.baseForegroundColor = Theme.onAccent
         } else if #available(iOS 26, *) {
             configuration = .glass()
+            configuration.baseBackgroundColor = glassTint
             configuration.baseForegroundColor = tint ?? Theme.text
         } else {
             configuration = .gray()
@@ -37,7 +39,7 @@ final class CircleButton: UIButton {
                     updated?.baseBackgroundColor = Theme.accent.withAlphaComponent(0.4)
                     updated?.baseForegroundColor = Theme.onAccent.withAlphaComponent(0.6)
                 } else {
-                    updated?.baseBackgroundColor = button.isHighlighted ? Theme.accentPressed : Theme.accent
+                    updated?.baseBackgroundColor = Theme.accent
                     updated?.baseForegroundColor = Theme.onAccent
                 }
                 button.configuration = updated

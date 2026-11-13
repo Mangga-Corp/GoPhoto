@@ -9,7 +9,7 @@ import UIKit
 
 /// Text button ("Select", "Done", "Add", "Edit").
 /// Non-prominent: system Liquid Glass on iOS 26, system gray before that.
-/// Prominent: the app's primary button (solid `Theme.accent` capsule, darker when pressed, muted
+/// Prominent: the app's primary button (`Theme.accent`-tinted Liquid Glass capsule, muted
 /// when disabled), matching the SwiftUI `.goPhotoPrimary` style. Use it for the single most likely
 /// action in a view; `fullWidthHeight` gives it the standard 56 pt primary height.
 /// Always at least 44 pt tall.
@@ -18,7 +18,7 @@ final class PillButton: UIButton {
         super.init(frame: .zero)
         var configuration: UIButton.Configuration
         if prominent {
-            configuration = .filled()
+            configuration = .prominentGlass()
         } else if #available(iOS 26, *) {
             configuration = .glass()
         } else {
@@ -44,7 +44,7 @@ final class PillButton: UIButton {
                     updated?.baseBackgroundColor = Theme.disabledFill
                     updated?.baseForegroundColor = Theme.disabledText
                 } else {
-                    updated?.baseBackgroundColor = button.isHighlighted ? Theme.accentPressed : Theme.accent
+                    updated?.baseBackgroundColor = Theme.accent
                     updated?.baseForegroundColor = Theme.onAccent
                 }
                 button.configuration = updated
