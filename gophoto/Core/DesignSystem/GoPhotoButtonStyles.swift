@@ -10,36 +10,33 @@ import SwiftUI
 //
 // Primary and secondary are full-width capsules of `GoPhotoDesign.buttonHeight`.
 
-/// Filled brand button: the one main action of a screen.
+/// Tinted Liquid Glass brand button: the one main action of a screen.
 struct GoPhotoPrimaryButtonStyle: ButtonStyle {
     var isLoading = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         let isActive = isEnabled && !isLoading
-        let fill: Color = !isEnabled ? GoPhotoDesign.secondaryBackground
-            : (configuration.isPressed ? GoPhotoDesign.primaryPressed : GoPhotoDesign.primary)
+        let tint: Color = !isEnabled ? GoPhotoDesign.secondaryBackground : GoPhotoDesign.primary
         GoPhotoButtonLabel(configuration: configuration, isLoading: isLoading, spinnerColor: GoPhotoDesign.onPrimary)
             .foregroundStyle(isEnabled ? GoPhotoDesign.onPrimary : GoPhotoDesign.disabledText)
             .frame(maxWidth: .infinity, minHeight: GoPhotoDesign.buttonHeight)
-            .background(fill, in: Capsule())
+            .glassEffect(.regular.tint(tint).interactive(isActive), in: Capsule())
             .contentShape(Capsule())
             .allowsHitTesting(isActive)
     }
 }
 
-/// Outlined button on a neutral surface: a secondary action next to a primary one.
+/// Lightly tinted Liquid Glass button: a secondary action next to a primary one.
 struct GoPhotoSecondaryButtonStyle: ButtonStyle {
     var isLoading = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        let fill: Color = configuration.isPressed ? GoPhotoDesign.primarySubtle : GoPhotoDesign.surface
         GoPhotoButtonLabel(configuration: configuration, isLoading: isLoading, spinnerColor: GoPhotoDesign.primary)
             .foregroundStyle(isEnabled ? GoPhotoDesign.primary : GoPhotoDesign.disabledText)
             .frame(maxWidth: .infinity, minHeight: GoPhotoDesign.buttonHeight)
-            .background(fill, in: Capsule())
-            .overlay(Capsule().strokeBorder(isEnabled ? GoPhotoDesign.primaryBorder : GoPhotoDesign.border, lineWidth: 1.5))
+            .glassEffect(.regular.tint(GoPhotoDesign.primary.opacity(isEnabled ? 0.15 : 0)).interactive(isEnabled && !isLoading), in: Capsule())
             .contentShape(Capsule())
             .allowsHitTesting(isEnabled && !isLoading)
     }

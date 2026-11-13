@@ -16,7 +16,8 @@ final class SelectPhotoViewController: UIViewController {
     private let viewModel: SelectPhotoViewModel
     var requiresReanalyzeConfirmation = false
     private let closeButton = CircleButton(symbol: "xmark", accessibilityLabel: "Close")
-    private let doneButton = CircleButton(symbol: "checkmark", accessibilityLabel: "Done", prominent: true)
+    private let doneButton = CircleButton(symbol: "checkmark", accessibilityLabel: "Done",
+                                    glassTint: Theme.accent.withAlphaComponent(0.6))
     private lazy var selectPan: UIPanGestureRecognizer = {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleSelectPan(_:)))
         pan.delegate = self
@@ -181,7 +182,7 @@ final class SelectPhotoViewController: UIViewController {
         text.textContainerInset = .zero
         text.textContainer.lineFragmentPadding = 0
 
-        var config = UIButton.Configuration.filled()
+        var config = UIButton.Configuration.prominentGlass()
         config.title = "Add more"
         config.cornerStyle = .capsule
         config.baseBackgroundColor = Theme.accent
