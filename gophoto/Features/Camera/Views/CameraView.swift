@@ -144,6 +144,10 @@ struct CameraView: View {
             ExperimentInfoSheet(selection: viewModel.experiment, depthSupport: viewModel.effectiveDepthSupport,
                                 photoMegapixels: viewModel.largestPhotoMegapixels)
         }
+        // GT recording (appMode 2): what the photographer measured, right after each shutter.
+        .sheet(item: $viewModel.gtPending) { entry in
+            GroundTruthSheet(entry: entry) { viewModel.saveGroundTruth($0) }
+        }
         .sheet(isPresented: $isShowingShotAnalysis) {
             ShotAnalysisScreen(analysis: viewModel.presetAnalysis, photos: viewModel.presetPhotos,
                                presetName: viewModel.presetName ?? "Preset", initial: viewModel.activeShot)

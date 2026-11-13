@@ -35,6 +35,11 @@ nonisolated enum PhasedPhase: String, Sendable, Codable, CaseIterable {
 /// One instruction at a time. No steps, no centimetres, no per-phase "OK".
 nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, Codable {
     case tapPerson, moveCloser, moveBack, raisePhone, lowerPhone, tiltUp, tiltDown, pointBack, holdIt, takePhoto
+    /// Auto crop (11 Nov): the crop cannot put the person where the reference has them → turn the phone.
+    /// Directions are for the photographer: moving the phone left slides the person RIGHT in the picture.
+    case moveLeft, moveRight
+    /// 12 Nov: horizon 2–5° off → straighten the phone (beyond that it is left as a Dutch angle).
+    case levelPhone
 
     var text: String {
         switch self {
@@ -48,6 +53,9 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
         case .pointBack:  "Point back at the person"
         case .holdIt:     "Hold it there"
         case .takePhoto:  "Take the photo now"
+        case .moveLeft:   "Move the phone left"
+        case .moveRight:  "Move the phone right"
+        case .levelPhone: "Straighten the phone"
         }
     }
 
@@ -63,6 +71,9 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
         case .pointBack:  "viewfinder"
         case .holdIt:     "hand.raised"
         case .takePhoto:  "camera"
+        case .moveLeft:   "arrow.left"
+        case .moveRight:  "arrow.right"
+        case .levelPhone: "level"
         }
     }
 

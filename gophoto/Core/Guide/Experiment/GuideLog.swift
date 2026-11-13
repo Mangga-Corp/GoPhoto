@@ -127,6 +127,25 @@ nonisolated final class GuideLogger: @unchecked Sendable {
         }
     }
 
+    /// GT recording (12 Nov): a file next to the capture notes (original photo, ground truth).
+    func attach(_ data: Data, named name: String) {
+        let url = captureDirectory.appending(path: name)
+        queue.async { try? data.write(to: url) }
+    }
+
+    func attachJSON<T: Encodable & Sendable>(_ value: T, named name: String) {
+        let url = captureDirectory.appending(path: name)
+        queue.async {
+            if let data = try? self.prettyEncoder.encode(value) { try? data.write(to: url) }
+        }
+    }
+
+    /// Everything to share: the session log plus every capture note / photo / ground truth.
+    var exportFiles: [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: captureDirectory, includingPropertiesForKeys: nil)) ?? []
+        return [fileURL] + files.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     /// The shutter note: a line in the session file and its own document.
     func capture(_ fields: LogFields) {
         let doc = entry("capture", fields)

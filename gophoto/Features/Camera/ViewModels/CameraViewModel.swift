@@ -785,6 +785,38 @@ final class CameraViewModel {
     /// The session's log (appMode 2 only; nil in appMode 1).
     @ObservationIgnored private(set) var guideLog: GuideLogger?
 
+    // MARK: GT recording (appMode 2, 12 Nov)
+    /// On: the live analysis is logged twice a second and every shutter keeps the original photo and
+    /// asks for ground truth (`GroundTruthEntry`). Off by default.
+    var gtRecording = false {
+        didSet {
+            guard gtRecording != oldValue, let guideLog else { return }
+            var f = logBase()
+            f["event"] = .string(gtRecording ? "gt on" : "gt off")
+            guideLog.log("gt", f)
+        }
+    }
+    /// The form waiting for the photographer after a GT shutter.
+    var gtPending: GroundTruthEntry?
+    @ObservationIgnored private var gtLastTrack: TimeInterval = -1
+    var gtExportFiles: [URL] { guideLog?.exportFiles ?? [] }
+
+    func saveGroundTruth(_ entry: GroundTruthEntry) {
+        gtPending = nil
+        guard let guideLog else { return }
+        guideLog.attachJSON(entry, named: entry.id + ".json")
+        var f = logBase()
+        f["event"] = "ground truth"
+        f["gtID"] = .string(entry.id)
+        f["skipped"] = .bool(entry.skipped)
+        f.set("cameraVsEyesCm", entry.cameraVsEyesCm)
+        f.set("heightLevel", entry.heightLevel)
+        f.set("posture", entry.posture)
+        f.set("facing", entry.facing)
+        f.set("shot", entry.shot)
+        guideLog.log("gt", f)
+    }
+
     /// Common fields: app mode, guide, framing (Phased only), zoom.
     private func logBase(_ selection: ExperimentSelection? = nil) -> LogFields {
         let selection = selection ?? experiment
@@ -1544,6 +1576,14 @@ extension CameraViewModel {
 
         let final: PhasedInstruction? = selection.instruction ?? (phasedSubjectLocked ? out.instruction : nil)
         if out != phased { phased = out }
+        // GT recording: the live analysis twice a second (not only when the instruction changes).
+        if gtRecording, let guideLog, clockNow - gtLastTrack >= 0.5 {
+            gtLastTrack = clockNow
+            var f = phasedFields(out)
+            f["event"] = "track"
+            f["instruction"] = .string(final?.rawValue ?? "none")
+            guideLog.log("track", f)
+        }
         if final != phasedInstruction {
             logPhasedInstruction(final, out)
             phasedInstruction = final
@@ -1660,6 +1700,33 @@ extension CameraViewModel {
         f.set("limitation", out.limitation)
         f["subjectLocked"] = .bool(phasedSubjectLocked)
         f.set("maskEdges", phasedSubject?.touches.label)
+        // GT recording (12 Nov): the raw values behind the decisions, so the main analysis and the
+        // measured truth can be compared with what the guide saw (only while recording).
+        if gtRecording {
+            func rect(_ r: CGRect?) -> LogValue? {
+                r.map { .string(String(format: "%.4f,%.4f,%.4f,%.4f", $0.minX, $0.minY, $0.width, $0.height)) }
+            }
+            f["subjectBox"] = rect(phasedSubject?.box)
+            f["faceBox"] = rect(phasedSubject?.face)
+            f["maskBox"] = rect(phasedSubject?.extent)
+            f["captureCrop"] = rect(out.captureCrop)
+            f.set("captureRoll", out.captureRoll)
+            f.set("verticalFOV", verticalFOV)
+            f.set("tiltNeed", out.tiltNeed)
+            f.set("sizeEnterLow", out.sizeEnterLow)
+            f.set("sizeEnterHigh", out.sizeEnterHigh)
+            if let t = phasedEngine?.target {
+                f["targetShot"] = .string(t.shot.rawValue)
+                f.set("targetSpan", t.span)
+                f.set("targetTop", t.top)
+                f.set("targetMidX", t.midX)
+                f.set("targetVantageFaces", t.vantageFaces)
+                f.set("targetVantageDegrees", t.vantageDegrees)
+                f.set("targetPitch", t.pitch)
+                f["targetSitting"] = .bool(t.sitting)
+            }
+            if !out.notEvaluated.isEmpty { f["notEvaluated"] = .string(out.notEvaluated.joined(separator: " | ")) }
+        }
         if let c = out.cropWindow {
             f["crop"] = .string(String(format: "%.3f,%.3f,%.3f,%.3f", c.minX, c.minY, c.width, c.height))
         }
@@ -1777,7 +1844,25 @@ extension CameraViewModel {
             f["cropApplied"] = "none"
         }
         f.set("secondsToSaved", seconds)
+        // GT recording: keep the original photo (the main analysis runs on it later) and ask for truth.
+        if gtRecording {
+            let stamp = DateFormatter()
+            stamp.dateFormat = "yyyyMMdd-HHmmss-SSS"
+            stamp.locale = Locale(identifier: "en_US_POSIX")
+            let id = "gt-" + stamp.string(from: Date())
+            let ext = Self.isHEIC(data) ? "heic" : "jpg"
+            guideLog.attach(data, named: id + "." + ext)
+            f["gtID"] = .string(id)
+            f["gtPhoto"] = .string(id + "." + ext)
+            gtPending = GroundTruthEntry(id: id, shot: activeShot?.rawValue, guideShot: activeShot?.rawValue)
+        }
         guideLog.capture(f)
+    }
+
+    nonisolated static func isHEIC(_ data: Data) -> Bool {
+        guard data.count > 12 else { return false }
+        let brand = String(decoding: data[8..<12], as: UTF8.self)
+        return ["heic", "heix", "hevc", "mif1", "msf1"].contains(brand)
     }
 
     nonisolated static func pixelSize(of data: Data) -> CGSize {

@@ -2,11 +2,11 @@
 //  PhasedSubjectPicker.swift
 //  gophoto
 //
-//  Phased guide: who is the subject. One clear person → locked automatically after a stable
-//  moment; several → the photographer taps one (non-persons dimmed). After the lock the tracker in
+//  Phased guide: who is the subject. The person nearest the frame centre is locked automatically
+//  after a stable moment (one person or several; no tap prompt since 11 Nov). After the lock the tracker in
 //  `PersonDetector` follows that person (strict: never the largest one instead). A short loss is
 //  silent; a long one asks "Point back at the person"; on return only a candidate near the last
-//  place is taken back, otherwise the photographer chooses again. Pure logic.
+//  place is taken back, otherwise the centre person is locked again. Pure logic.
 //
 import CoreGraphics
 import Foundation
@@ -69,6 +69,12 @@ nonisolated struct PhasedSubjectPicker: Sendable, Equatable {
         return d < reacquireDistance && ratio > 0.65 && ratio < 1.5
     }
 
+    /// The candidate nearest the frame centre (ties: the taller one). Nil without candidates.
+    static func centred(_ people: [CGRect]) -> CGRect? {
+        func d(_ r: CGRect) -> Double { hypot(Double(r.midX - 0.5), Double(r.midY - 0.5)) }
+        return people.min { a, b in abs(d(a) - d(b)) > 0.02 ? d(a) < d(b) : a.height > b.height }
+    }
+
     /// Same candidate as the pending one (small movement allowed) for `dwell` seconds.
     private mutating func stable(_ box: CGRect, now: TimeInterval, dwell: TimeInterval) -> Bool {
         if let p = pendingBox, hypot(Double(box.midX - p.midX), Double(box.midY - p.midY)) < 0.08 {
@@ -104,18 +110,18 @@ nonisolated struct PhasedSubjectPicker: Sendable, Equatable {
             }
             let elapsed = now - since
             if elapsed >= lossGrace { out.instruction = .pointBack }
+            // Long loss and someone else in view: lock the centre person again (no tap prompt).
             if elapsed >= lossGrace + Self.chooseAfterLoss, !people.isEmpty, near.isEmpty {
-                state = .choosing
+                state = .searching
+                pendingBox = nil; pendingSince = nil
             }
         case .searching:
-            if people.count == 1 {
-                if stable(people[0], now: now, dwell: Self.autoLockDwell) {
-                    requested = people[0]
-                    out.action = .lock(people[0])
+            // One person or several: the one nearest the centre, once it holds still for `autoLockDwell`.
+            if let box = Self.centred(people) {
+                if stable(box, now: now, dwell: Self.autoLockDwell) {
+                    requested = box
+                    out.action = .lock(box)
                 }
-            } else if people.count >= 2 {
-                state = .choosing
-                pendingBox = nil; pendingSince = nil
             } else {
                 pendingBox = nil; pendingSince = nil
             }

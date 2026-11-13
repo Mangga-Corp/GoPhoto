@@ -66,12 +66,42 @@ nonisolated struct PhasedParameters: Sendable, Equatable {
     // Tilt.
     /// Reference pitch (Auto crop only). ±4° (Reynard) ≈ the GeoCalib uncertainty of the references (QA:
     /// median 3.9–4.5°): asking for more precision than the reference has made tilt ping-pong.
-    var pitchEnter = 4.0, pitchExit = 6.0
+    /// 12 Nov (Reynard: "tilt agak ketat, jangan terlalu"): 4/6 → 3/4.5 (25% tighter). A tilt that cannot get
+    /// closer is still accepted at the limit after `stuckAfter`, so a tighter band cannot loop forever.
+    var pitchEnter = 3.0, pitchExit = 4.5
     /// Room to a frame edge under which the reference pitch is not pushed further.
     var edgeRoom = 0.03
+    /// 13 Nov (Reynard: full body "tilt ke atas langsung hancur, kaki kepotong"): full body stops a reference-
+    /// pitch tilt earlier, while the feet still have this much room (frame units), to absorb overshoot.
+    var edgeRoomFull = 0.07
     var topEnter = 0.05, topExit = 0.08
     /// Auto crop: the crop may run this far past the frame before tilt is asked for.
     var cropSlack = 0.02
+    /// Auto crop (11 Nov): the crop would leave the frame sideways by more than this (frame width units)
+    /// → "Move the phone left / right" (stops below `panExit`). Before, the crop was clamped silently and
+    /// the person ended up nearer the centre than the reference.
+    var panEnter = 0.05, panExit = 0.02
+    /// 12 Nov (Reynard: "biar ga crop parah, suruh geser HP dikit"): the crop's centre is this far from the frame
+    /// centre (frame width units) → turn the phone toward the person until within `panCentreExit`, so the crop
+    /// stays near the middle of the sensor instead of cutting from one side. Accepted at the limit like pan.
+    var panCentreEnter = 0.10, panCentreExit = 0.04
+
+    // Distance aim (12 Nov, Reynard: "minimal 2 m, ijonya di 2,2 m"). While "Move back / closer" is shown,
+    // it stops a margin INSIDE the band, not at its edge: distance × this (r ÷ this), so a small sway after
+    // stopping does not fall out again. Only when the band is wide enough (Auto crop); No crop keeps its band.
+    /// 12 Nov: 1.10 → 1.05 (Reynard: "2,1 aja"). Full body keeps more room: with the feet and head margins a
+    /// person at r 0.95 barely fits, and a small tilt cut the feet (log 17:15: tilt down ↔ move back for 17 s).
+    var distanceAim = 1.05
+    var distanceAimFull = 1.12
+    /// 13 Nov (Reynard: "3/4 butuh mundur sedikit juga"): 3/4 stops 10% inside (r 0.95 → 0.86).
+    var distanceAimThreeQuarter = 1.10
+    /// 13 Nov: full body cut at the start while the phone is within this many degrees of the reference pitch →
+    /// "Move back" instead of "Tilt down/up" (the tilt phase would tilt back later and cut the feet again).
+    var cutTiltBeyond = 10.0
+    /// 13 Nov (Reynard: "full body harus agak rough, kalau nggak jelek"): Auto crop, full body only — the
+    /// closest allowed size is lower than 0.95 so the feet and head always keep room (with aim ×1.12 the
+    /// move back stops at r ≈ 0.79). Exit / reopen move down with it.
+    var fullEnterHigh = 0.88, fullExitHigh = 0.93, fullReopenHigh = 1.0
 
     // At the limit (Reynard: "udah limit, kudu lebih fleksibel").
     /// A phone-height or tilt instruction that brought no progress for this long is accepted as the
@@ -82,7 +112,15 @@ nonisolated struct PhasedParameters: Sendable, Equatable {
 
     // Framing.
     /// Auto crop: straighten the horizon in the crop up to this roll, degrees (if the crop still fits).
-    var maxCropRoll = 3.0
+    /// 12 Nov (Reynard): roll 0–2° straightened by the crop; 2–5° → "Straighten the phone" until ≤ `rollStop`;
+    /// above `rollAskMax` left as it is (a deliberate Dutch angle). Was 3° crop-only, no instruction.
+    var maxCropRoll = 2.0
+    var rollStop = 1.5
+    var rollAskMax = 5.0
+    /// Log 17:15: a roll hovering at 1.9–2.1° flipped "ready" on and off. The ask starts only when the median
+    /// roll (over `window`) passes `maxCropRoll + rollAskMargin`; the crop straightens up to `rollCropReach`.
+    var rollAskMargin = 0.3
+    var rollCropReach = 2.5
     /// No crop: horizontal offset accepted without comment (logged), frame units.
     var noCropCentreTolerance = 0.10
 
@@ -126,7 +164,8 @@ nonisolated struct PhasedParameters: Sendable, Equatable {
 
     /// For the log: every parameter that changes behaviour.
     var logSummary: String {
-        String(format: "window %.1f quick %.1f reopenWin %.1f start %.1f complete %.1f reopen %.1f stale %.1f loss %.1f · vantage ±%.1f/±%.1f/±%.1f faces · pitch ±%.0f/±%.0f · top ±%.2f/±%.2f · 2× below %.2f · floor %.0f/%.0f MP · head eye %.2f face %.2f after %.1f s %@ · limit after %.1f s (< %.0f%% progress)",
+        String(format: "aim ×%.2f (3/4 ×%.2f full ×%.2f) · roll crop ≤%.1f ask ≤%.1f stop %.1f · ", distanceAim, distanceAimThreeQuarter, distanceAimFull, maxCropRoll, rollAskMax, rollStop)
+        + String(format: "window %.1f quick %.1f reopenWin %.1f start %.1f complete %.1f reopen %.1f stale %.1f loss %.1f · vantage ±%.1f/±%.1f/±%.1f faces · pitch ±%.0f/±%.0f · top ±%.2f/±%.2f · 2× below %.2f · floor %.0f/%.0f MP · head eye %.2f face %.2f after %.1f s %@ · limit after %.1f s (< %.0f%% progress)",
                window, quickWindow, reopenWindow, startDwell, completeDwell, reopenDwell, staleAfter, lossGrace,
                vantageFacesEnter, vantageFacesExit, vantageFacesReopen, pitchEnter, pitchExit, topEnter, topExit,
                twoXBelow, cropFloorMegapixels, depthCropFloorMegapixels,

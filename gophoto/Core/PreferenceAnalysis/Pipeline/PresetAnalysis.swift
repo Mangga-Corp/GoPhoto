@@ -81,6 +81,25 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     /// angle: walking closer or farther changes the angle but not this. Nil = no face read.
     var eyeOffsetFaces: Double? = nil
 
+    /// Vantage target as a range + confidence (12 Nov, display only; the guide still uses
+    /// `eyeOffsetFaces`). Optional, decoded if present; version unchanged (no field changed meaning).
+    /// Face heights, + = camera above the eyes. Older presets need a Rescan to fill it.
+    var vantageRange: VantageRange? = nil
+
+    nonisolated struct VantageRange: Codable, Sendable, Equatable {
+        /// Photos that shaped the range / left out because their σ was too large.
+        var used = 0, excluded = 0
+        /// agree / varied / twoGroups / uncertain
+        var kind = "uncertain"
+        /// high / low
+        var confidence = "low"
+        var low: Double? = nil, high: Double? = nil
+        /// twoGroups only: [[low, high], [low, high]].
+        var groups: [[Double]]? = nil
+        /// 1/σ²-weighted centre, sample spread, median σ, largest neighbour gap in σ units.
+        var center = 0.0, spread = 0.0, medianSigma = 0.0, gapZ = 0.0
+    }
+
     /// How blurred the references' backgrounds are (version 18): median of background / person
     /// sharpness (`BackgroundBlurMeter`), ~1 = sharp background, ~0.2 = strong bokeh. The blur
     /// copy is rendered to match it. Nil = no photo could be measured.
