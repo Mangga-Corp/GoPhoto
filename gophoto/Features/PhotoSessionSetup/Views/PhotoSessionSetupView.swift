@@ -2,6 +2,8 @@ import Observation
 import SwiftUI
 
 struct PhotoSessionSetupView: View {
+    @State private var isChoosingPhotoSource = false
+    @State private var isShowingSuggestionsSoon = false
     @State private var selection = PhotoSessionSetupSelection()
     @State private var isPresentingPicker = false
     /// The custom preference flow while it is open (a new one each time it opens).
@@ -104,6 +106,22 @@ struct PhotoSessionSetupView: View {
         .navigationDestination(isPresented: isShowingCustomPreference) {
             if let customPreferenceFlow {
                 SubjectPlacementSelectionView(model: customPreferenceFlow)
+            }
+        }
+        .navigationDestination(isPresented: $isChoosingPhotoSource) {
+            PhotoSourceChoiceView { source in
+                switch source {
+                case .manual:
+                    isChoosingPhotoSource = false
+                    openPicker()
+                case .suggested:
+                    isShowingSuggestionsSoon = true
+                }
+            }
+            .alert("Coming soon", isPresented: $isShowingSuggestionsSoon) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Automatic photo suggestions are being built. Choose photos yourself for now.")
             }
         }
         .onAppear {
@@ -357,9 +375,11 @@ struct PhotoSessionSetupView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
             } else {
-                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle", action: openPicker)
-                    .padding(.horizontal, GoPhotoDesign.sessionMargin)
-                    .padding(.bottom, 8)
+                SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle") {
+                    isChoosingPhotoSource = true
+                }
+                .padding(.horizontal, GoPhotoDesign.sessionMargin)
+                .padding(.bottom, 8)
 
                 Button("Create a Custom Preference", action: openCustomPreference)
                     .buttonStyle(.goPhotoText)
