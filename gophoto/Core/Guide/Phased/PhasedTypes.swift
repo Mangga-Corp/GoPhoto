@@ -208,6 +208,7 @@ nonisolated struct PhasedFrame: Sendable {
 
 /// What the engine decided this update.
 nonisolated struct PhasedOutput: Equatable, Sendable {
+    var horizontalError: Double?
     var phase: PhasedPhase = .acquire
     var instruction: PhasedInstruction?
     /// Every phase is valid: "Take the photo now" (never blocks the shutter).

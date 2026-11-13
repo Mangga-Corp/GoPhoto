@@ -32,7 +32,7 @@ enum GoPhotoDesign {
 
     // MARK: Neutrals
 
-    static let background = Color(hex: 0xF7F2FA)
+    static let background = Color(hex: 0xFAF8F5)
     static let secondaryBackground = Color(hex: 0xEFE9F3)
     /// Cards and sheets.
     static let surface = Color.white

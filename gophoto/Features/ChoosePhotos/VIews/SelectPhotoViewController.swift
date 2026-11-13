@@ -14,8 +14,9 @@ final class SelectPhotoViewController: UIViewController {
     var onDone: (([PhotoItem]) -> Void)?
 
     private let viewModel: SelectPhotoViewModel
+    var requiresReanalyzeConfirmation = false
     private let closeButton = CircleButton(symbol: "xmark", accessibilityLabel: "Close")
-    private let doneButton = PillButton(title: "Done", prominent: true)
+    private let doneButton = CircleButton(symbol: "checkmark", accessibilityLabel: "Done", prominent: true)
     private lazy var selectPan: UIPanGestureRecognizer = {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleSelectPan(_:)))
         pan.delegate = self
@@ -27,6 +28,7 @@ final class SelectPhotoViewController: UIViewController {
     private var panLastRange: ClosedRange<Int>?
     private var panHitLimit = false
     private let selectionHaptic = UISelectionFeedbackGenerator()
+    private var didSelectAlreadyAdded = false
     private lazy var collectionView: UICollectionView = {
         let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(0.25), heightDimension: .fractionalHeight(1)))
         item.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
@@ -87,6 +89,8 @@ final class SelectPhotoViewController: UIViewController {
             title.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
             doneButton.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
             doneButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            doneButton.widthAnchor.constraint(equalToConstant: 48),
+            doneButton.heightAnchor.constraint(equalToConstant: 48),
             collectionView.topAnchor.constraint(equalTo: gridTopAnchor, constant: 16),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -94,12 +98,50 @@ final class SelectPhotoViewController: UIViewController {
         ])
     }
 
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        guard !didSelectAlreadyAdded else { return }
+        didSelectAlreadyAdded = true
+        collectionView.layoutIfNeeded()
+        for index in viewModel.alreadyAddedIndexes() {
+            collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
+        }
+    }
+
     private func doneTapped() {
-        viewModel.done(selectedIndexes: (collectionView.indexPathsForSelectedItems ?? []).map(\.item))
+        let selected = (collectionView.indexPathsForSelectedItems ?? []).map(\.item)
+        guard selected.isEmpty else {
+            if requiresReanalyzeConfirmation {
+                let alert = UIAlertController(
+                    title: "Re-analyze the AI preferences",
+                    message: "By adding those picture it will redefined the ai model, are you sure ?",
+                    preferredStyle: .alert
+                )
+                let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
+                let yesAction = UIAlertAction(title: "Yes", style: .default) { [weak self] _ in
+                    self?.viewModel.done(selectedIndexes: selected)
+                }
+                alert.addAction(cancelAction)
+                alert.addAction(yesAction)
+                present(alert, animated: true)
+                return
+            }
+            viewModel.done(selectedIndexes: selected)
+            return
+        }
+        let alert = UIAlertController(
+            title: "No photos selected",
+            message: "This preference won't have any photos. Select at least \(ChoosePhotosViewModel.minPhotos) photos to create it.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Keep Selecting", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Leave Anyway", style: .destructive) { [weak self] _ in
+            self?.viewModel.done(selectedIndexes: [])
+        })
+        present(alert, animated: true)
     }
 
     private func setLoading(_ on: Bool) {
-        doneButton.setLoading(on)
+        doneButton.isEnabled = !on
         view.isUserInteractionEnabled = !on
     }
 
@@ -172,7 +214,7 @@ final class SelectPhotoViewController: UIViewController {
         let selectedIDs = Set((collectionView.indexPathsForSelectedItems ?? []).map { viewModel.identifier(at: $0.item) })
         viewModel.reload()
         collectionView.reloadData()
-        for index in 0..<viewModel.count where selectedIDs.contains(viewModel.identifier(at: index)) {
+        for index in 0..<viewModel.count where selectedIDs.contains(viewModel.identifier(at: index)) || viewModel.isAlreadyAdded(at: index) {
             collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
         }
     }
@@ -228,6 +270,7 @@ final class SelectPhotoViewController: UIViewController {
             }
             collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
         } else {
+            guard viewModel.canRemoveExisting || !viewModel.isAlreadyAdded(at: item) else  { return }
             collectionView.deselectItem(at: indexPath, animated: false)
         }
     }
@@ -250,6 +293,10 @@ extension SelectPhotoViewController: UICollectionViewDataSource, UICollectionVie
 
     func collectionView(_ cv: UICollectionView, shouldSelectItemAt ip: IndexPath) -> Bool {
         viewModel.canSelect(currentCount: cv.indexPathsForSelectedItems?.count ?? 0)
+    }
+
+    func collectionView(_ cv: UICollectionView, shouldDeselectItemAt ip: IndexPath) -> Bool {
+        viewModel.canRemoveExisting || !viewModel.isAlreadyAdded(at: ip.item)
     }
 }
 

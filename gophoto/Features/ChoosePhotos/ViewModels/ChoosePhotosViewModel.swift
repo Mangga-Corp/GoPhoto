@@ -29,6 +29,7 @@ final class ChoosePhotosViewModel {
     private let service: ChoosePhotosService
     private(set) var title: String
     private(set) var items: [PhotoItem]
+    var canRemoveInPicker = false
     private(set) var isSelecting = false { didSet { onSelectionChange?() } }
     private(set) var checked: Set<UUID> = []
     private var didRequestAccessOnAppear = false
@@ -147,7 +148,15 @@ final class ChoosePhotosViewModel {
     }
 
     func makePickerViewModel() -> SelectPhotoViewModel {
-        SelectPhotoViewModel(service: service, remaining: Self.maxPhotos - items.count, limit: Self.maxPhotos)
+        SelectPhotoViewModel(service: service, existing: items, limit: Self.maxPhotos, canRemoveExisting: canRemoveInPicker)
+    }
+
+    func differs(from picked: [PhotoItem]) -> Bool { picked.map(\.id) != items.map(\.id) }
+
+    func replaceItems(_ picked: [PhotoItem]) {
+        items = Array(picked.prefix(Self.maxPhotos))
+        onItemsChange?()
+        onPhotosChange?(items)
     }
 
     func append(_ newItems: [PhotoItem]) {

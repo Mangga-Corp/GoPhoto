@@ -51,22 +51,48 @@ struct SessionPrimaryButton: View {
     }
 }
 
+/// Thin, very transparent frosted-glass bar background for headers and footers.
+/// Content scrolls beneath it; no border line; the blur fades out toward the middle.
+struct GlassBarBackground: View {
+    enum Edge { case top, bottom }
+    let edge: Edge
+
+    var body: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay(GoPhotoDesign.background.opacity(0.12))
+            // Strongest at the outer edge, fading smoothly toward the middle
+            // so there is no visible seam with the content.
+            .mask {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.85), location: 0),
+                        .init(color: .black.opacity(0.5), location: 0.55),
+                        .init(color: .black.opacity(0), location: 1)
+                    ],
+                    startPoint: edge == .top ? .top : .bottom,
+                    endPoint: edge == .top ? .bottom : .top
+                )
+            }
+            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
+            .allowsHitTesting(false)
+    }
+}
+
 extension View {
-    /// Pins `button` above the bottom safe area on a light bar; the content scrolls behind it.
+    /// Frosted-glass header/footer background (see `GlassBarBackground`).
+    func glassBar(_ edge: GlassBarBackground.Edge) -> some View {
+        background { GlassBarBackground(edge: edge) }
+    }
+
+    /// Pins `button` above the bottom safe area on a thin frosted-glass bar.
     func sessionBottomBar<Button: View>(@ViewBuilder _ button: () -> Button) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             button()
                 .padding(.horizontal, GoPhotoDesign.sessionMargin)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background {
-                    GoPhotoDesign.background
-                        .overlay(alignment: .top) {
-                            Rectangle().fill(GoPhotoDesign.divider).frame(height: 1)
-                        }
-                        .ignoresSafeArea(edges: .bottom)
-                }
+                .glassBar(.bottom)
         }
     }
 }

@@ -3,7 +3,8 @@
 //  gophoto
 //
 //  Returning users configure sessions here: Preference Selection → Camera. Add New Preference
-//  opens Photo Session Setup, then the existing analysis and Style Card flow returns here.
+//  opens Photo Session Setup, then the existing analysis and Style Card flow returns here; the
+//  style card's Continue (or a saved custom preference) starts the session and opens the camera.
 //
 //  Session start: both paths call `PhotoSessionStore.startSession`, which resolves the request
 //  again against the latest analysis, creates the session and only then records the last used
@@ -67,6 +68,12 @@ struct SessionSetupFlowView: View {
                         onStartAnalyzing: { id in
                             path = [.createdPreferenceAnalysis(preferenceID: id)]
                         },
+                        onCustomPreferenceCreated: { id in
+                            // Saved: straight to the camera. If the start fails, fall back to
+                            // Preference Selection with the new preference selected.
+                            selection.selectCreated(id)
+                            if startSession(preferenceID: id) != nil { path.removeAll() }
+                        },
                         showsBackButton: true
                     )
                 case .createdPreferenceAnalysis(let preferenceID):
@@ -81,7 +88,9 @@ struct SessionSetupFlowView: View {
                         },
                         onFinish: {
                             selection.selectCreated(preferenceID)
-                            path.removeAll()
+                            if let error = startSession(preferenceID: preferenceID) {
+                                return error.message
+                            }
                             return nil
                         }
                     )

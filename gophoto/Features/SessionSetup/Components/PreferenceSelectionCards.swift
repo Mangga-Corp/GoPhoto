@@ -2,7 +2,7 @@
 //  PreferenceSelectionCards.swift
 //  gophoto
 //
-//  Cards of the Preference Selection screen: one per saved preference, and Add New Preference.
+//  Created by Sebastian Darren on 11/11/26
 //
 
 import SwiftUI
@@ -13,14 +13,22 @@ struct PreferenceSelectionCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            PreferenceThumbnail(image: card.thumbnail, cacheKey: card.thumbnailKey)
+            if let style = card.customStyle {
+                CustomPreferenceThumbnail(style: style)
+            } else {
+                PreferenceThumbnail(image: card.thumbnail, cacheKey: card.thumbnailKey)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    // Name wraps over up to 3 lines (no running text).
                     Text(card.name)
                         .font(GoPhotoDesign.cardTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
-                        .lineLimit(1)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .layoutPriority(0)
                     if card.isLastUsed {
                         Text("Last Used")
@@ -106,5 +114,78 @@ struct AddPreferenceCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens the photo picker to create a preference")
+    }
+}
+
+/// Displays text as static if it fits within the available width; if it overflows, it scrolls continuously in an infinite circular marquee loop.
+struct MarqueeText: View {
+    let text: String
+    let font: Font
+    let color: Color
+
+    @State private var startDate = Date()
+
+    private var textWidth: CGFloat {
+        let uiFont = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .headline).pointSize, weight: .semibold)
+        let size = (text as NSString).size(withAttributes: [.font: uiFont])
+        return ceil(size.width)
+    }
+
+    private let gap: CGFloat = 44
+    private let speed: CGFloat = 30 // pt / second
+    private let initialPause: Double = 1.2 // pause at start before scrolling
+
+    var body: some View {
+        GeometryReader { geo in
+            let containerWidth = geo.size.width
+            let overflow = textWidth > containerWidth && containerWidth > 0
+
+            if overflow {
+                let pitch = textWidth + gap
+                let scrollDuration = Double(pitch / speed)
+
+                TimelineView(.animation) { timeline in
+                    let elapsed = max(0, timeline.date.timeIntervalSince(startDate))
+                    let progress: CGFloat = {
+                        if elapsed < initialPause {
+                            return 0
+                        }
+                        let scrollElapsed = elapsed - initialPause
+                        let remainder = scrollElapsed.truncatingRemainder(dividingBy: scrollDuration)
+                        return CGFloat(remainder / scrollDuration)
+                    }()
+                    let currentOffset = -progress * pitch
+
+                    HStack(spacing: gap) {
+                        Text(text)
+                            .font(font)
+                            .foregroundStyle(color)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+
+                        Text(text)
+                            .font(font)
+                            .foregroundStyle(color)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .offset(x: currentOffset)
+                    .frame(width: containerWidth, alignment: .leading)
+                }
+                .clipped()
+                .id(text)
+                .onAppear {
+                    startDate = Date()
+                }
+            } else {
+                Text(text)
+                    .font(font)
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(width: containerWidth, alignment: .leading)
+            }
+        }
+        .frame(height: 22)
     }
 }

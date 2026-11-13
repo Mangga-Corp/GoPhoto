@@ -33,6 +33,9 @@ final class PreferencesStorage {
             /// EXIF 35 mm-equivalent focal length per photo (`UUID.uuidString`), when known.
             var focals: [String: Double]?
             var sourceAssetIdentifiers: [String: String]?
+            /// A custom preference's placement and angle. Its analysis is not saved: it is rebuilt
+            /// from this on load (`CustomPresetAnalysisFactory`).
+            var customStyle: CustomPreferenceStyle?
 
             init(
                 id: UUID,
@@ -40,10 +43,12 @@ final class PreferencesStorage {
                 photoIDs: [UUID],
                 analysis: PresetAnalysis?,
                 focals: [String: Double]?,
-                sourceAssetIdentifiers: [String: String]?
+                sourceAssetIdentifiers: [String: String]?,
+                customStyle: CustomPreferenceStyle?
             ) {
                 self.id = id; self.name = name; self.photoIDs = photoIDs; self.analysis = analysis
                 self.focals = focals; self.sourceAssetIdentifiers = sourceAssetIdentifiers
+                self.customStyle = customStyle
             }
 
             /// An unreadable analysis is dropped (the preset is analysed again), the preset is kept.
@@ -55,6 +60,15 @@ final class PreferencesStorage {
                 analysis = try? c.decodeIfPresent(PresetAnalysis.self, forKey: .analysis)
                 focals = try? c.decodeIfPresent([String: Double].self, forKey: .focals)
                 sourceAssetIdentifiers = try? c.decodeIfPresent([String: String].self, forKey: .sourceAssetIdentifiers)
+                customStyle = try? c.decodeIfPresent(CustomPreferenceStyle.self, forKey: .customStyle)
+            }
+
+            /// The preference this entry describes, with its already loaded photos.
+            func preference(photos: [PhotoItem]) -> Preference {
+                if let customStyle {
+                    return Preference(id: id, name: name, customStyle: customStyle)
+                }
+                return Preference(id: id, name: name, photos: photos, analysis: analysis)
             }
         }
         var entries: [Entry]
@@ -101,7 +115,7 @@ final class PreferencesStorage {
                     focalLength35mm: entry.focals?[id.uuidString]
                 )
             }
-            return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
+            return entry.preference(photos: photos)
         }
         return (preferences, snapshot.selectedID)
     }
@@ -159,8 +173,10 @@ final class PreferencesStorage {
                 }
             }
             return .init(id: preference.id, name: preference.name, photoIDs: photos.map(\.id),
-                         analysis: preference.analysis, focals: focals.isEmpty ? nil : focals,
-                         sourceAssetIdentifiers: sourceAssetIdentifiers.isEmpty ? nil : sourceAssetIdentifiers)
+                         analysis: preference.isCustom ? nil : preference.analysis,
+                         focals: focals.isEmpty ? nil : focals,
+                         sourceAssetIdentifiers: sourceAssetIdentifiers.isEmpty ? nil : sourceAssetIdentifiers,
+                         customStyle: preference.customStyle)
         }
         let snapshot = Snapshot(entries: entries, selectedID: selectedID)
         let indexData = try JSONEncoder().encode(snapshot)
@@ -213,7 +229,7 @@ final class PreferencesStorage {
                 focalLength35mm: entry.focals?[photoID.uuidString]
             )
         }
-        return Preference(id: entry.id, name: entry.name, photos: photos, analysis: entry.analysis)
+        return entry.preference(photos: photos)
     }
 
     private func removeUnreferencedPhotoFiles(keeping referencedFiles: Set<String>) {

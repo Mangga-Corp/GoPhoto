@@ -13,51 +13,58 @@ import SwiftUI
 
 struct PhotoStripView: View {
     let photos: [GalleryPhoto]
-    /// Shared with PhotoPagerView: swipe the pager → strip follows, tap the strip → pager follows
     @Binding var currentID: String
     let loadThumbnail: (String, CGSize) async -> UIImage?
 
-    private let itemSize: CGFloat = 44   // HIG minimum tap target
+    private let itemSize: CGFloat = 34
 
     var body: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { proxy in
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 2) {
-                    ForEach(photos) { photo in
-                        let isCurrent = photo.assetID == currentID
-
-                        Button {
-                            withAnimation { currentID = photo.assetID }
-                        } label: {
-                            GalleryThumbnailView(assetID: photo.assetID,
-                                                 createdAt: photo.createdAt,
-                                                 loadThumbnail: loadThumbnail)
-                                .frame(width: itemSize, height: itemSize)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay {
-                                    if isCurrent {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(.primary, lineWidth: 2)
-                                    }
-                                }
-                                .opacity(isCurrent ? 1 : 0.6)
-                        }
-                        .buttonStyle(.plain)
-                        .id(photo.assetID)
-                        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+                    ForEach(photos, id: \.assetID) { photo in
+                        thumbnail(for: photo)
                     }
                 }
-                .padding(.horizontal, 16)
-                .frame(height: itemSize)
+                .scrollTargetLayout()
             }
             .scrollIndicators(.hidden)
-            // Centre the current photo when the strip appears…
-            .onAppear { proxy.scrollTo(currentID, anchor: .center) }
-            // …and whenever the photo changes (swipe or tap)
-            .onChange(of: currentID) { _, newID in
-                withAnimation { proxy.scrollTo(newID, anchor: .center) }
+            .contentMargins(.horizontal, max(0, (proxy.size.width - itemSize) / 2), for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: centredID, anchor: .center)
+        }
+        .frame(height: itemSize + 12)
+    }
+
+    private var centredID: Binding<String?> {
+        Binding(get: { currentID },
+                set: { if let id = $0, id != currentID { currentID = id } })
+    }
+
+    private func thumbnail(for photo: GalleryPhoto) -> some View {
+        let isCurrent = photo.assetID == currentID
+        return Button {
+            withAnimation(.snappy) { currentID = photo.assetID }
+        } label: {
+            VStack(spacing: 4) {
+                Circle()
+                    .fill(isCurrent ? Color(hex: 0x9A69C9) : Color.clear)
+                    .frame(width: 5, height: 5)
+                GalleryThumbnailView(assetID: photo.assetID,
+                                     createdAt: photo.createdAt,
+                                     loadThumbnail: loadThumbnail)
+                    .frame(width: itemSize, height: itemSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .overlay {
+                        if isCurrent {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(Color(hex: 0x9A69C9), lineWidth: 2)
+                        }
+                    }
+                    .opacity(isCurrent ? 1 : 0.6)
             }
         }
-        .padding(.vertical, 8)
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 }

@@ -33,8 +33,12 @@ struct PreferenceCardModel: Identifiable {
     let isUpdating: Bool
     /// The preference used to start the most recent session.
     let isLastUsed: Bool
+    /// Set for a custom preference (placement + angle): the card draws it instead of a photo.
+    let customStyle: CustomPreferenceStyle?
 
     var isAvailable: Bool { availability == .available }
+    /// Custom preferences have no reference photos, so their photos can't be edited.
+    var canEditPhotos: Bool { customStyle == nil }
 
     static let maxChips = 2
 
@@ -43,6 +47,7 @@ struct PreferenceCardModel: Identifiable {
         id = preference.id
         name = preference.name
         self.isLastUsed = isLastUsed
+        customStyle = preference.customStyle
         let photo = preference.photos.first
         thumbnail = photo?.image
         thumbnailKey = "\(preference.id.uuidString)-\(photo?.id.uuidString ?? "none")"
@@ -53,13 +58,16 @@ struct PreferenceCardModel: Identifiable {
         case .failure where isAnalyzing:
             self.availability = .analyzing
         case .failure(let error):
-            self.availability = .unavailable(Self.reason(for: error, photoCount: preference.photos.count))
+            self.availability = .unavailable(Self.reason(for: error, preference: preference))
         }
         isUpdating = isAnalyzing && self.availability == .available
 
         let analysis = preference.analysis
         let style = StyleSummary(analysis: analysis, photos: preference.photos)
         switch self.availability {
+        case .available where preference.customStyle != nil:
+            summary = "Custom preference"
+            chips = preference.customStyle.map(Self.chips(for:)) ?? []
         case .available:
             let count = preference.photos.count
             summary = style?.tagline ?? "Based on \(count) reference \(count == 1 ? "photo" : "photos")"
@@ -73,8 +81,8 @@ struct PreferenceCardModel: Identifiable {
         }
     }
 
-    private static func reason(for error: PhotoSessionError, photoCount: Int) -> String {
-        if photoCount == 0 { return "No reference photos. Edit to add some." }
+    private static func reason(for error: PhotoSessionError, preference: Preference) -> String {
+        if preference.photos.isEmpty && !preference.isCustom { return "No reference photos. Edit to add some." }
         switch error {
         case .analysisUnavailable: return "Not analyzed yet. Edit photos to try again."
         case .analysisFailed: return "Analysis failed. Edit photos to try again."
@@ -84,6 +92,11 @@ struct PreferenceCardModel: Identifiable {
     }
 
     // MARK: Chips
+
+    /// A custom preference's two choices.
+    static func chips(for style: CustomPreferenceStyle) -> [String] {
+        ["Placement: \(style.placement.shortTitle)", "Angle: \(style.angle.shortTitle)"]
+    }
 
     /// Lighting, angle, framing, placement, in that order, each only when the analysis has it.
     /// Thresholds match the style card (`StyleSummary`) so both screens make the same claims.

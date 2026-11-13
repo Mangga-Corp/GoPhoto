@@ -185,6 +185,44 @@ final class PreferencesViewModel {
         }
     }
 
+    /// Saves a custom preference (subject placement + camera angle, no photos) and publishes it
+    /// once it is on disk. Its name is the combination's suggested name, numbered when that name
+    /// is already used ("Heroic Thirds 2"), so creating it never asks the user for a name.
+    func addCustomPersisted(
+        style: CustomPreferenceStyle,
+        completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
+    ) {
+        guard !isSavingNewPreference else {
+            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            return
+        }
+        guard !preferences.contains(where: { $0.customStyle == style }) else {
+            completion(.failure(PreferenceNameError(
+                message: "This combination has already been created. You can only have one of each combination."
+            )))
+            return
+        }
+        let name = CustomPreferenceNaming.uniqueName(style.suggestedName, existing: preferences.map(\.name))
+        let preference = Preference(name: name, customStyle: style)
+        isSavingNewPreference = true
+        storage.save(preferences + [preference], selectedID: lastSelectedID) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isSavingNewPreference = false
+                switch result {
+                case .success:
+                    self.preferences.append(preference)
+                    self.persistCount += 1
+                    completion(.success(preference.id))
+                case .failure:
+                    completion(.failure(PreferenceNameError(
+                        message: "Couldn't save the custom preference. Check available storage and try again."
+                    )))
+                }
+            }
+        }
+    }
+
     /// Returns an error message, or nil when renamed.
     func rename(id: UUID, to name: String) -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -198,8 +236,10 @@ final class PreferencesViewModel {
         return nil
     }
 
+    /// Custom preferences have no photos: they are left unchanged.
     func updatePhotos(_ photos: [PhotoItem], for id: UUID) {
-        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = preferences.firstIndex(where: { $0.id == id }),
+              !preferences[index].isCustom else { return }
         preferences[index].photos = photos
         persist()
         reanalyze(id: id)   // PRD 1.3: adding or removing photos analyses the preset again
@@ -228,6 +268,10 @@ final class PreferencesViewModel {
         }
         guard let index = preferences.firstIndex(where: { $0.id == id }) else {
             completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+        guard !preferences[index].isCustom else {
+            completion(.failure(Self.customPhotosError))
             return
         }
 
@@ -305,6 +349,10 @@ final class PreferencesViewModel {
             completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
             return
         }
+        guard !preferences[index].isCustom else {
+            completion(.failure(Self.customPhotosError))
+            return
+        }
         cancelCurrentAnalysis(for: id)
         guard preferences[index].analysis != nil else {
             completion(.success(()))
@@ -329,6 +377,10 @@ final class PreferencesViewModel {
             }
         }
     }
+
+    private static let customPhotosError = PreferenceNameError(
+        message: "Custom preferences are made from a placement and an angle, so they have no photos to edit."
+    )
 
     private func cancelCurrentAnalysis(for id: UUID) {
         analysisTokens[id, default: 0] += 1
@@ -372,9 +424,10 @@ final class PreferencesViewModel {
 
     /// Analyses a preset's photos and saves the result with the preset.
     /// Only the newest request per preset is saved. Await `value` to know when it is done.
+    /// Custom preferences are never analysed: their targets come from their style.
     @discardableResult
     func reanalyze(id: UUID) -> Task<Void, Never>? {
-        guard let existingPhotos = preference(id: id)?.photos, !existingPhotos.isEmpty else { return nil }
+        guard let existing = preference(id: id), !existing.isCustom, !existing.photos.isEmpty else { return nil }
         let token = (analysisTokens[id] ?? 0) + 1
         analysisTokens[id] = token
         let session = AnalysisSession()
@@ -455,7 +508,8 @@ final class PreferencesViewModel {
     }
 
     func setAnalysis(_ analysis: PresetAnalysis, for id: UUID) {
-        guard let index = preferences.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = preferences.firstIndex(where: { $0.id == id }),
+              !preferences[index].isCustom else { return }
         preferences[index].analysis = analysis
         persist()
     }

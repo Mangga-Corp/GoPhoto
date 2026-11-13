@@ -4,7 +4,8 @@
 //
 //  "What would you like to shoot today?": pick the preference for the next session. A card tap
 //  only changes the draft selection; Continue hands the preference ID on without starting a
-//  session or saving anything. Long-press a card to rename, edit its photos or delete it.
+//  session or saving anything. Long-press a card to rename, edit its photos or delete it
+//  (custom preferences have no photos, so they offer no Edit Photos).
 //
 
 import SwiftUI
@@ -33,13 +34,11 @@ struct PreferenceSelectionView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
 
-                HStack(alignment: .center) {
-                    Text("Your Preferences")
-                        .font(GoPhotoDesign.sectionTitle)
-                        .foregroundStyle(GoPhotoDesign.primaryText)
-                    Spacer(minLength: 12)
-                    Text(selection.savedCountText)
-                        .goPhotoTag()
+                // "Your Preferences" row with the Add Preferences button.
+                HStack(alignment: .center, spacing: 12) {
+                    preferencesTitle
+                    Spacer(minLength: 8)
+                    addButton
                 }
                 .padding(.top, 28)
 
@@ -50,8 +49,6 @@ struct PreferenceSelectionView: View {
                     ForEach(cards) { card in
                         cardView(card)
                     }
-                    AddPreferenceCard(action: onAddNew)
-                        .accessibilityIdentifier("preferenceSelection.addNew")
                 }
                 .padding(.top, 12)
                 .padding(.bottom, 24)
@@ -59,7 +56,7 @@ struct PreferenceSelectionView: View {
             .padding(.horizontal, GoPhotoDesign.sessionMargin)
         }
         .scrollIndicators(.hidden)
-        .background(GoPhotoDesign.background.ignoresSafeArea())
+        .appPatternBackground()
         .sessionBottomBar {
             SessionPrimaryButton(title: "Continue", isEnabled: selection.continueTarget != nil) {
                 // Re-validated at the tap: never hands on a deleted or unusable preference.
@@ -119,6 +116,34 @@ struct PreferenceSelectionView: View {
         .padding(.top, 36)
     }
 
+    private var preferencesTitle: some View {
+        Text("Your Preferences")
+            .font(GoPhotoDesign.sectionTitle)
+            .foregroundStyle(GoPhotoDesign.primaryText)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// Opens the same flow the Add New Preference card used to.
+    private var addButton: some View {
+        Button(action: onAddNew) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .bold))
+                Text("Add Preferences")
+                    .font(.system(.subheadline, weight: .semibold))
+            }
+            .foregroundStyle(GoPhotoDesign.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add Preferences")
+        .accessibilityHint("Opens the photo picker to create a preference")
+        .accessibilityIdentifier("preferenceSelection.addNew")
+    }
+
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle.angled")
@@ -127,7 +152,7 @@ struct PreferenceSelectionView: View {
             Text("No preferences yet")
                 .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
-            Text("Add reference portraits below to create your first photography preference.")
+            Text("Tap Add Preferences to add reference portraits and create your first photography preference.")
                 .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -148,7 +173,11 @@ struct PreferenceSelectionView: View {
             .accessibilityHint(card.isAvailable ? "Selects this preference" : card.summary)
             .accessibilityIdentifier("preferenceCard.\(card.name)")
             .accessibilityAction(named: "Rename") { startRename(card) }
-            .accessibilityAction(named: "Edit Photos") { editPhotos(card) }
+            .accessibilityActions {
+                if card.canEditPhotos {
+                    Button("Edit Photos") { editPhotos(card) }
+                }
+            }
             .accessibilityAction(named: "Delete") { confirmDelete(card) }
             // Visible way into the same actions (long-press still works). Outside the card's
             // combined element so its tap opens the menu instead of selecting the card.
@@ -172,7 +201,9 @@ struct PreferenceSelectionView: View {
             .disabled(styleSummary(for: card.id) == nil)
             .accessibilityAction(named: "About This Style") { showAbout(card) }
         Button("Rename", systemImage: "pencil") { startRename(card) }
-        Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
+        if card.canEditPhotos {
+            Button("Edit Photos", systemImage: "photo.on.rectangle") { editPhotos(card) }
+        }
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(card) }
     }
@@ -195,7 +226,7 @@ struct PreferenceSelectionView: View {
     }
 
     private func editPhotos(_ card: PreferenceCardModel) {
-        guard let presenter = anchor.presenter else { return }
+        guard card.canEditPhotos, let presenter = anchor.presenter else { return }
         let editor = PreferenceEditorPresenter(preferences: selection.preferences)
         editorPresenter = editor   // kept alive while the editor is open
         editor.presentEditor(for: card.id, from: presenter) { _ in editorPresenter = nil }

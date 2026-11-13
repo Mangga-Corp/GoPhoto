@@ -9,6 +9,8 @@ final class PhotoPreferencePickerFlow {
     private let onSaveAsync: (([PhotoItem], String, @escaping (String?) -> Void) -> Void)?
     private let onSaveSuccess: (() -> Void)?
     private var isSavingPreference = false
+    /// Editor mode: called after the picker closes with at least one photo added (no naming step).
+    var onPhotosAddedToExisting: (() -> Void)?
 
     init(
         presenter: UIViewController,
@@ -49,22 +51,26 @@ final class PhotoPreferencePickerFlow {
 
     private func presentPicker() {
         let picker = SelectPhotoViewController(viewModel: viewModel.makePickerViewModel())
+        picker.requiresReanalyzeConfirmation = (viewModel.mode == .editor || !viewModel.items.isEmpty)
         picker.modalPresentationStyle = .fullScreen
         picker.onCancel = { [weak self, weak picker] in
             picker?.dismiss(animated: true) {
                 self?.onCancel()
             }
         }
-        picker.onDone = { [weak self, weak picker] newItems in
+        picker.onDone = { [weak self, weak picker] pickedItems in
             guard let self else { return }
-            self.viewModel.append(newItems)
+            let changed = self.viewModel.differs(from: pickedItems)
+            if changed { self.viewModel.replaceItems(pickedItems) }
             picker?.dismiss(animated: true) {
-                guard !newItems.isEmpty else {
+                guard changed else {
                     self.onPickerFinished?()
                     return
                 }
                 if self.viewModel.asksNameAfterPicking {
                     self.continueAfterSelection()
+                } else if let onPhotosAddedToExisting = self.onPhotosAddedToExisting {
+                    onPhotosAddedToExisting()
                 } else {
                     self.onPickerFinished?()
                 }
