@@ -149,8 +149,7 @@ struct CameraView: View {
                                presetName: viewModel.presetName ?? "Preset", initial: viewModel.activeShot)
         }
         .fullScreenCover(isPresented: $isShowingGallery) {
-            // Its own view with no inputs: camera updates never rebuild the gallery
-            GalleryScreen()
+            LatestPhotoView()
                 .navigationTransition(.zoom(sourceID: "gallery", in: galleryZoom))
         }
         .preferredColorScheme(.dark)
