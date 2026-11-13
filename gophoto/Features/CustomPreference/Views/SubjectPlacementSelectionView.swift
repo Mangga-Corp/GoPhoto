@@ -20,7 +20,7 @@ struct SubjectPlacementSelectionView: View {
             message: "Where should the person be in the frame? The camera will guide you to this spot.",
             selection: $model.placement,
             isOptionAvailable: { placement in model.isPlacementAvailable(placement) },
-            primaryTitle: "Continue",
+            primaryTitle: "Next",
             onPrimary: { isShowingAngles = true }
         ) { placement in
             SubjectPlacementArtwork(placement: placement)

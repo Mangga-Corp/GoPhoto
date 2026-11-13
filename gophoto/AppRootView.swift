@@ -69,7 +69,7 @@ struct AppRootView: View {
                         firstTimeOnboardingStep = FirstTimeOnboardingStep.styleCard.rawValue
                     },
                     onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
-                    onFinish: continueToPreferenceSelection
+                    onFinish: continueToCamera
                 )
                 .preferredColorScheme(.light)
                 .tint(GoPhotoDesign.primary)
@@ -154,22 +154,28 @@ struct AppRootView: View {
             || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue
     }
 
-    /// Continues to the existing Preference Selection screen without starting a session.
-    private func continueToPreferenceSelection() -> String? {
-        guard savedOnboardingPreference != nil else { return PhotoSessionError.preferenceNotFound.message }
-        welcomeOnboardingCompleted = true
-        welcomeOnboardingStarted = false
-        firstTimeOnboardingStep = FirstTimeOnboardingStep.preferenceSelection.rawValue
-        pendingOnboardingPreferenceIDString = ""
-        return nil
+    /// Ends onboarding and goes straight to the camera with the saved preference (the existing
+    /// default shot size), skipping Preference Selection. Returns an error message on failure.
+    private func continueToCamera() -> String? {
+        guard let preference = savedOnboardingPreference else { return PhotoSessionError.preferenceNotFound.message }
+        switch PhotoSessionStore.shared.startSession(preferenceID: preference.id, shotSize: .initialSelection) {
+        case .failure(let error):
+            return error.message
+        case .success:
+            welcomeOnboardingCompleted = true
+            welcomeOnboardingStarted = false
+            firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+            onboardingPreferenceIDString = ""
+            pendingOnboardingPreferenceIDString = ""
+            return nil
+        }
     }
 
-    /// A custom preference needs no analysis: onboarding ends on Preference Selection with it
-    /// selected (the same handoff as a preference made from photos).
+    /// A custom preference needs no analysis: it is saved and onboarding ends in the camera.
     private func finishOnboarding(withCustomPreference id: UUID) {
         onboardingPreferenceIDString = id.uuidString
         pendingOnboardingPreferenceIDString = ""
-        _ = continueToPreferenceSelection()
+        _ = continueToCamera()
     }
 
     /// No readable person in the onboarding photos: that preference is discarded (it is the one

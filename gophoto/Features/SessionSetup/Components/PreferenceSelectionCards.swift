@@ -2,7 +2,7 @@
 //  PreferenceSelectionCards.swift
 //  gophoto
 //
-//  Cards of the Preference Selection screen: one per saved preference, and Add New Preference.
+//  Created by Sebastian Darren on 11/11/26
 //
 
 import SwiftUI
@@ -20,13 +20,16 @@ struct PreferenceSelectionCard: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    MarqueeText(
-                        text: card.name,
-                        font: GoPhotoDesign.cardTitle,
-                        color: GoPhotoDesign.primaryText
-                    )
-                    .layoutPriority(0)
+                HStack(alignment: .top, spacing: 8) {
+                    // Name wraps over up to 3 lines (no running text).
+                    Text(card.name)
+                        .font(GoPhotoDesign.cardTitle)
+                        .foregroundStyle(GoPhotoDesign.primaryText)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(0)
                     if card.isLastUsed {
                         Text("Last Used")
                             .lineLimit(1)

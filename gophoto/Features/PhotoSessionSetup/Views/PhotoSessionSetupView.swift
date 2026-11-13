@@ -366,6 +366,9 @@ struct PhotoSessionSetupView: View {
                     .padding(.bottom, 12)
             }
         }
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity)
+        .glassBar(.bottom)
     }
 
     // MARK: - Custom Naming Modal as in Image 2 (iPhone 17 - 1)

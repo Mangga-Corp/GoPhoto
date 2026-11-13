@@ -34,13 +34,11 @@ struct PreferenceSelectionView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
 
-                HStack(alignment: .center) {
-                    Text("Your Preferences")
-                        .font(GoPhotoDesign.sectionTitle)
-                        .foregroundStyle(GoPhotoDesign.primaryText)
-                    Spacer(minLength: 12)
-                    Text(selection.savedCountText)
-                        .goPhotoTag()
+                // "Your Preferences" row with the Add Preferences button.
+                HStack(alignment: .center, spacing: 12) {
+                    preferencesTitle
+                    Spacer(minLength: 8)
+                    addButton
                 }
                 .padding(.top, 28)
 
@@ -51,8 +49,6 @@ struct PreferenceSelectionView: View {
                     ForEach(cards) { card in
                         cardView(card)
                     }
-                    AddPreferenceCard(action: onAddNew)
-                        .accessibilityIdentifier("preferenceSelection.addNew")
                 }
                 .padding(.top, 12)
                 .padding(.bottom, 24)
@@ -120,6 +116,34 @@ struct PreferenceSelectionView: View {
         .padding(.top, 36)
     }
 
+    private var preferencesTitle: some View {
+        Text("Your Preferences")
+            .font(GoPhotoDesign.sectionTitle)
+            .foregroundStyle(GoPhotoDesign.primaryText)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// Opens the same flow the Add New Preference card used to.
+    private var addButton: some View {
+        Button(action: onAddNew) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .bold))
+                Text("Add Preferences")
+                    .font(.system(.subheadline, weight: .semibold))
+            }
+            .foregroundStyle(GoPhotoDesign.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add Preferences")
+        .accessibilityHint("Opens the photo picker to create a preference")
+        .accessibilityIdentifier("preferenceSelection.addNew")
+    }
+
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle.angled")
@@ -128,7 +152,7 @@ struct PreferenceSelectionView: View {
             Text("No preferences yet")
                 .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
-            Text("Add reference portraits below to create your first photography preference.")
+            Text("Tap Add Preferences to add reference portraits and create your first photography preference.")
                 .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)

@@ -110,7 +110,7 @@ struct ShotSizeSelectionView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 52)
-        .background(GoPhotoDesign.background.ignoresSafeArea(edges: .top))
+        .glassBar(.top)
     }
 
     private var eyebrow: some View {
