@@ -244,7 +244,7 @@ struct PreferenceSelectionView: View {
     private func styleSummary(for id: UUID) -> StyleSummary? {
         guard let preference = selection.preferences.preference(id: id),
               preference.analysis?.usability == .usable else { return nil }
-        return StyleSummary(analysis: preference.analysis, photos: preference.photos)
+        return StyleSummary(analysis: preference.analysis, photos: preference.analyzedPhotos)
     }
 
     private func confirmDelete(_ card: PreferenceCardModel) {

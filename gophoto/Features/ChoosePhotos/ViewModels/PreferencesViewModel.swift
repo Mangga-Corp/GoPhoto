@@ -326,6 +326,84 @@ final class PreferencesViewModel {
         }
     }
 
+    /// After a "Not Enough Photos with People" warning, the user chose Continue: removes the
+    /// photos the latest person check confirmed show no person from this preference's saved
+    /// photo collection. Valid photos and photos that could not be checked stay, and so do the
+    /// preference's ID, name and the remaining photos' identifiers. Only Poto's own copies are
+    /// removed, never anything in the Photos library.
+    ///
+    /// Refused while another photo update of this preference is being saved, and when the
+    /// check is stale (the photos changed since it ran). Like `addPhotosPersisted`, the
+    /// in-memory preference changes only once the new collection was written and read back.
+    func removePhotosWithoutPersonPersisted(
+        from id: UUID,
+        completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
+    ) {
+        guard !updatingPhotoIDs.contains(id) else {
+            completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
+            return
+        }
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else {
+            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+        let current = preferences[index]
+        guard !current.isCustom else {
+            completion(.failure(Self.customPhotosError))
+            return
+        }
+        guard let validation = validationFailure(for: id),
+              validation.sourcePhotos.map(\.id) == current.photos.map(\.id) else {
+            completion(.failure(PreferenceNameError(
+                message: "Your photos changed since they were checked. Analyze them again to check them."
+            )))
+            return
+        }
+        let removedIDs = Set(validation.invalidPhotos.map(\.id))
+        guard !removedIDs.isEmpty else {
+            completion(.success(current))
+            return
+        }
+        let remainingPhotos = current.photos.filter { !removedIDs.contains($0.id) }
+
+        cancelCurrentAnalysis(for: id)
+        var updatedPreferences = preferences
+        updatedPreferences[index].photos = remainingPhotos
+        updatedPreferences[index].analysis = nil
+        updatingPhotoIDs.insert(id)
+
+        storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] saveResult in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard case .success = saveResult else {
+                    self.updatingPhotoIDs.remove(id)
+                    completion(.failure(PreferenceNameError(
+                        message: "Couldn't remove the photos without people. Your photos are unchanged. Please try again."
+                    )))
+                    return
+                }
+                self.storage.loadPreference(id: id) { loadResult in
+                    DispatchQueue.main.async {
+                        guard case .success(let persisted) = loadResult,
+                              persisted.photos.map(\.id) == remainingPhotos.map(\.id),
+                              let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
+                            self.restorePreferencesAfterPhotoUpdateFailure(id: id) {
+                                completion(.failure(PreferenceNameError(
+                                    message: "Couldn't verify the updated photos. Please try again."
+                                )))
+                            }
+                            return
+                        }
+                        self.preferences[currentIndex] = persisted
+                        self.updatingPhotoIDs.remove(id)
+                        self.persistCount += 1
+                        completion(.success(persisted))
+                    }
+                }
+            }
+        }
+    }
+
     private func mergedPhotos(_ existing: [PhotoItem], _ additions: [PhotoItem]) -> [PhotoItem] {
         var merged = existing
         var photoIDs = Set(existing.map(\.id))
@@ -387,6 +465,8 @@ final class PreferencesViewModel {
         analysisTasks[id] = nil
         sessions[id] = nil
         analyzingIDs.remove(id)
+        // The photos are about to change: the old person check no longer applies.
+        subjectValidations[id] = nil
     }
 
     private func restorePreferencesAfterPhotoUpdateFailure(id: UUID, completion: @escaping () -> Void) {
@@ -413,6 +493,20 @@ final class PreferencesViewModel {
     private var analyzingIDs: Set<UUID> = []
     /// The newest analysis task per preset, so a screen can wait for one already running.
     @ObservationIgnored private var analysisTasks: [UUID: Task<Void, Never>] = [:]
+    /// The latest person check of each preset's photos (in memory only: every run checks the
+    /// whole photo collection again). Observed: Photo Session Setup marks photos without a
+    /// person, Preference Selection explains why a preset was not analysed.
+    private var subjectValidations: [UUID: HumanSubjectValidationResult] = [:]
+
+    /// The latest person check of this preset, when it stopped the analysis (too few photos
+    /// show a person), or nil.
+    func validationFailure(for id: UUID) -> HumanSubjectValidationResult? {
+        guard let result = subjectValidations[id], !result.hasEnoughValidPhotos else { return nil }
+        return result
+    }
+
+    /// The latest person check of this preset, passed or not.
+    func subjectValidation(for id: UUID) -> HumanSubjectValidationResult? { subjectValidations[id] }
 
     /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
     func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
@@ -449,19 +543,35 @@ final class PreferencesViewModel {
                 self.analyzingIDs.remove(id)
                 return
             }
-            let photos = persistedPreference.photos
+
+            // Every saved photo is checked; only those that show a person are analysed, and
+            // only when there are enough. The preference keeps all its photos.
+            let validation = await HumanSubjectValidator.validate(persistedPreference.photos)
+            guard self.analysisTokens[id] == token else { return }
+            self.subjectValidations[id] = validation
+            if validation.hasProcessingFailures {
+                self.logger.error("Preference \(id): \(validation.processingFailureCount) photos could not be checked for a person")
+            }
+            guard validation.hasEnoughValidPhotos else {
+                self.logger.notice("Preference \(id) not analysed: \(validation.validCount) of \(validation.totalInspected) photos show a person")
+                self.analyzingIDs.remove(id)
+                return
+            }
+            let photos = validation.validatedPhotos
+
             self.analysisRunCount += 1
             #if DEBUG
             // UI tests only (`-GoPhotoFakeAnalysis <mode>`): a stand-in result instead of Vision.
-            let analysis: PresetAnalysis?
+            var analysis: PresetAnalysis?
             if let fake = await DebugFixtures.fakeAnalysis(for: photos) {
                 analysis = fake
             } else {
                 analysis = await session.analyze(photos)
             }
             #else
-            let analysis = await session.analyze(photos)
+            var analysis = await session.analyze(photos)
             #endif
+            analysis?.analyzedPhotoIDs = photos.map(\.id.uuidString)
             guard self.analysisTokens[id] == token else { return }
             if let analysis, !(await self.setAnalysisPersisted(analysis, for: id)) {
                 self.logger.error("Could not persist analysis for preference \(id)")
@@ -526,6 +636,8 @@ final class PreferencesViewModel {
     func delete(id: UUID, allowingLast: Bool = false) -> Bool {
         guard allowingLast || canDelete,
               let index = preferences.firstIndex(where: { $0.id == id }) else { return false }
+        // Its analysis (running or queued), session and person check go with it.
+        cancelCurrentAnalysis(for: id)
         preferences.remove(at: index)
         if lastSelectedID == id { lastSelectedID = nil }
         persist()
