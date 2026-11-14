@@ -124,7 +124,7 @@ struct CameraView: View {
             ZStack(alignment: .topLeading) {
                 cameraPreview(coveredTop: layout.coveredTop, coveredBottom: layout.coveredBottom)
                     .frame(width: layout.preview.width, height: layout.preview.height)
-                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: layout.isImmersive ? 0 : 24, style: .continuous))
                     .reportOnboardingFrame(.preview, into: $onboardingFrames)
                     .position(x: layout.preview.midX, y: layout.preview.midY)
 
@@ -168,17 +168,26 @@ struct CameraView: View {
 
     /// Shot sizes and shutter, centred in the bottom area (both presentations).
     private var controls: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             shotSizePicker
-            shutterButton
-                .reportOnboardingFrame(.shutter, into: $onboardingFrames)
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .leading) {
-                    GalleryShortcutButton { isShowingGallery = true }
-                        .matchedTransitionSource(id: "gallery", in: galleryZoom)
-                        .padding(.leading, 24)
-                }
+            controlPanel
         }
+    }
+
+    /// Dark rounded panel holding the gallery shortcut and the shutter; stays in 3:4 and 9:16.
+    private var controlPanel: some View {
+        shutterButton
+            .frame(maxWidth: .infinity)
+            .frame(height: 108)
+            .reportOnboardingFrame(.shutter, into: $onboardingFrames)
+            .background(Color(hex: 0x1A1A1A), in: RoundedRectangle(cornerRadius: 40, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 40, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+            .overlay(alignment: .leading) {
+                GalleryShortcutButton { isShowingGallery = true }
+                    .matchedTransitionSource(id: "gallery", in: galleryZoom)
+                    .padding(.leading, 24)
+            }
+            .padding(.horizontal, 20)
     }
 
     /// 9:16: soft dark gradients where the top bar and the controls lie over the image, so they
@@ -223,14 +232,13 @@ struct CameraView: View {
             .overlay(alignment: .bottom) { bottomStepCard.padding(.bottom, coveredBottom) }
             .overlay(alignment: .trailing) { sideBar.padding(.top, coveredTop).padding(.bottom, coveredBottom) }
             .overlay(alignment: .top) { instructionPill.padding(.top, coveredTop) }
-            .overlay(alignment: .top) { preferenceNamePill.padding(.top, coveredTop + 56) }
             .overlay { flashOverlay }
     }
 
-    /// The top bar's height (close, ratio, zoom).
-    private static let topBarHeight: CGFloat = 44
-    /// Shot-size picker (34) + its note + spacing + shutter (80), with a little room.
-    private static let controlsMinHeight: CGFloat = 150
+    /// The top bar's height: close + preference name on top, the ratio picker below.
+    private static let topBarHeight: CGFloat = 76
+    /// Shot-size picker (34) + its note + spacing + control panel (108), with a little room.
+    private static let controlsMinHeight: CGFloat = 170
 
     // MARK: Onboarding (first install only)
 
@@ -281,19 +289,20 @@ struct CameraView: View {
 
     private var instructionPill: some View {
         VStack(spacing: 6) {
-            PhasedInstructionPill(instruction: viewModel.phasedInstruction)
+            PhasedInstructionPill(instruction: viewModel.phasedInstruction, isPlain: true)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(.black.opacity(0.35))
                 .animation(.snappy, value: viewModel.phasedInstruction)
             if let flash = viewModel.phasedFlash {
                 // A phase just finished.
                 Label(flash, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Color.green.opacity(0.9), in: Capsule())
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.top, 12)
         .animation(.snappy, value: viewModel.phasedFlash)
         .sensoryFeedback(.success, trigger: viewModel.phasedFlash) { _, new in new != nil }
     }
@@ -309,51 +318,43 @@ struct CameraView: View {
 
     // MARK: Top bar, shutter, permission
 
-    /// Reserved for future controls (flash, settings). Keeps the image where the Camera app puts it.
+    /// Row 1: close, with the preference name centred on the same line. Row 2: photo ratio.
     private var topBar: some View {
-        HStack {
-            closeButton
-            Spacer()
-            if let zoom = viewModel.currentZoomLabel {
-                Text(zoom)
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Color.black.opacity(0.35), in: Capsule())
-                    .accessibilityLabel("Current camera zoom \(zoom)")
-                    .padding(.trailing, 16)
+        VStack(spacing: 0) {
+            ZStack {
+                HStack {
+                    closeButton
+                    Spacer()
+                }
+                preferenceNamePill
             }
-        }
-        .frame(height: Self.topBarHeight)
-        // Photo ratio, centred on the screen between close and zoom (clear of the shutter,
-        // the shot sizes and the guide pills on the preview).
-        .overlay {
+            .frame(height: 44)
             AspectRatioPicker(selection: viewModel.aspectRatio) { viewModel.selectAspectRatio($0) }
                 .sensoryFeedback(.selection, trigger: viewModel.aspectRatio)
+                .frame(height: 32)
         }
     }
 
-    /// The preference in use, shown under the instruction strip. A frosted capsule with a soft
+    /// The preference in use, centred in the top bar next to the close button (slim, so the ratio picker below stays clear). A frosted capsule with a soft
     /// purple tint, a small sparkle mark and a fine hairline; a label, not a button, so no solid fill.
     @ViewBuilder private var preferenceNamePill: some View {
         if let name = viewModel.presetName {
             let shape = Capsule(style: .continuous)
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 Image(systemName: "sparkle")
-                    .font(AppFont.system(size: 11, weight: .semibold))
+                    .font(AppFont.system(size: 10, weight: .semibold))
                     .foregroundStyle(
                         LinearGradient(colors: [.white, GoPhotoDesign.primaryBorder],
                                        startPoint: .top, endPoint: .bottom))
                 Text(name)
-                    .font(AppFont.system(size: 15, weight: .semibold))
+                    .font(AppFont.system(size: 14, weight: .semibold))
                     .tracking(0.3)
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.horizontal, 16)
-            .frame(height: 36)
+            .padding(.horizontal, 14)
+            .frame(height: 28)
             .background {
                 shape.fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
                 shape.fill(GoPhotoDesign.primary.opacity(0.32))
@@ -364,7 +365,7 @@ struct CameraView: View {
                                    startPoint: .top, endPoint: .bottom),
                     lineWidth: 0.7))
             .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
-            .frame(maxWidth: 230)
+            .frame(maxWidth: 220)
             .allowsHitTesting(false)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Preference \(name)")
@@ -379,7 +380,7 @@ struct CameraView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -396,7 +397,7 @@ struct CameraView: View {
     @ViewBuilder private var shotSizePicker: some View {
         let options = viewModel.shotOptions
         if let note = viewModel.phasedShotNote {
-            Text(note).font(.caption2).foregroundStyle(.white.opacity(0.7))
+            Text(note).font(AppFont.caption2).foregroundStyle(.white.opacity(0.7))
         }
         if !options.isEmpty {
             ShotSizePicker(options: options, selection: viewModel.activeShot,
@@ -458,7 +459,7 @@ private struct CameraScreenLayout {
         let full = CGFloat(CameraAspectRatio.threeFour.ratio)
         // The contained 3:4 image: full width, below the top bar, leaving the controls their
         // minimum (smaller iPhones: narrower, centred). The controls take the rest.
-        let containedHeight = max(0, min(size.width / full, size.height - topBarHeight - controlsMinHeight))
+        let containedHeight = max(0, min((size.width - 40) / full, size.height - topBarHeight - controlsMinHeight))
         let controlsTop = topBarHeight + containedHeight
         let containedControls = CGRect(x: 0, y: controlsTop, width: size.width,
                                        height: max(0, size.height - controlsTop))
