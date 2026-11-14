@@ -20,6 +20,15 @@ struct Preference: Identifiable {
     /// Made from a chosen placement and angle: it has no reference photos to edit or analyse.
     var isCustom: Bool { customStyle != nil }
 
+    /// The photos the analysis was made from, in photo order. Photos without a person were left
+    /// out of it, so style counts and highlights use these, not `photos`. All photos for an
+    /// analysis saved before the person check.
+    var analyzedPhotos: [PhotoItem] {
+        guard let ids = analysis?.analyzedPhotoIDs else { return photos }
+        let analyzed = Set(ids)
+        return photos.filter { analyzed.contains($0.id.uuidString) }
+    }
+
     init(id: UUID = UUID(), name: String, photos: [PhotoItem] = [], analysis: PresetAnalysis? = nil) {
         self.id = id
         self.name = name

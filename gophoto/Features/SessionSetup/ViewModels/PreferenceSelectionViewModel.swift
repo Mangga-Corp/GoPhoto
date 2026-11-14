@@ -32,7 +32,8 @@ final class PreferenceSelectionViewModel {
             PreferenceCardModel(preference: preference,
                                 availability: sessions.sessionAvailability(preferenceID: preference.id),
                                 isAnalyzing: preferences.isAnalyzing(preference.id),
-                                isLastUsed: preference.id == preferences.lastSelectedID)
+                                isLastUsed: preference.id == preferences.lastSelectedID,
+                                needsMorePersonPhotos: preferences.validationFailure(for: preference.id) != nil)
         }
     }
 

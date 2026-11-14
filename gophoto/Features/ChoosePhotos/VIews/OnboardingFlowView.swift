@@ -19,6 +19,10 @@ struct OnboardingFlowView: View {
     let styleButtonTitle: String
     /// "Choose Other Photos" on the no-person screen; nil hides the button.
     let onChooseOtherPhotos: (() -> Void)?
+    /// Fewer than `HumanSubjectValidator.minimumValidPhotos` photos show a person, so nothing
+    /// was analysed: the opener returns to Photo Session Setup with this same preference, which
+    /// shows the warning (`PhotoSessionSetupView`). Nil: the no-person retry screen instead.
+    let onNeedsMorePhotos: (() -> Void)?
     @State private var style: StyleSummary?
     @State private var failure: AnalysisFailure?
     @State private var analysisRetry = 0
@@ -39,16 +43,18 @@ struct OnboardingFlowView: View {
         styleButtonTitle: String = "Open Camera",
         onAnalysisCompleted: @escaping () -> Void,
         onChooseOtherPhotos: (() -> Void)? = nil,
+        onNeedsMorePhotos: (() -> Void)? = nil,
         onFinish: @escaping () -> String?
     ) {
         self.preferenceID = preferenceID
         self.onAnalysisCompleted = onAnalysisCompleted
         self.styleButtonTitle = styleButtonTitle
         self.onChooseOtherPhotos = onChooseOtherPhotos
+        self.onNeedsMorePhotos = onNeedsMorePhotos
         self.onFinish = onFinish
         let preference = PreferencesViewModel.shared.preference(id: preferenceID)
         let usable = preference?.analysis.map { $0.isCurrent && $0.usability == .usable } ?? false
-        let summary = usable ? StyleSummary(analysis: preference?.analysis, photos: preference?.photos ?? []) : nil
+        let summary = usable ? StyleSummary(analysis: preference?.analysis, photos: preference?.analyzedPhotos ?? []) : nil
         _style = State(initialValue: (startsAtStyleCard || usable) ? summary : nil)
         let currentAnalysis = preference?.analysis.flatMap { $0.isCurrent ? $0 : nil }
         let recoveredFailure: AnalysisFailure?
@@ -105,6 +111,16 @@ struct OnboardingFlowView: View {
     }
 
     private func analysisFinished() {
+        // Stopped before the analysis: too few photos show a person.
+        if PreferencesViewModel.shared.validationFailure(for: preferenceID) != nil {
+            Self.log.notice("Analysis of \(preferenceID) needs more photos with a person")
+            if let onNeedsMorePhotos {
+                onNeedsMorePhotos()
+            } else {
+                withAnimation(.easeInOut(duration: 0.4)) { failure = .noUsableFraming }
+            }
+            return
+        }
         let preference = PreferencesViewModel.shared.preference(id: preferenceID)
         guard let analysis = preference?.analysis, analysis.isCurrent else {
             Self.log.error("Analysis of \(preferenceID) produced no current result")
@@ -113,7 +129,7 @@ struct OnboardingFlowView: View {
         }
         switch analysis.usability {
         case .usable:
-            guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.photos) else {
+            guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.analyzedPhotos) else {
                 withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
                 return
             }

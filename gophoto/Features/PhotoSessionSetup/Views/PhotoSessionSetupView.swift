@@ -14,6 +14,9 @@ struct PhotoSessionSetupView: View {
     @State private var isShowingNameModal = false
     @State private var collectionName = ""
     @State private var hasAutoOpenedPicker = false
+    /// The saved preference's last run found too few photos with a person (or could not check
+    /// some): nothing was analysed.
+    @State private var subjectWarning: HumanSubjectValidationResult?
     @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
@@ -21,6 +24,10 @@ struct PhotoSessionSetupView: View {
     let onStartAnalyzing: (UUID) -> Void
     /// A custom preference (placement + angle) was saved; the opener shows the preference list.
     let onCustomPreferenceCreated: (UUID) -> Void
+    /// Cancel on the "Not Enough Photos with People" warning: the opener deletes the saved
+    /// preference being created and leaves this flow for Choose Preference. Nil: Cancel only
+    /// closes the warning.
+    let onDiscardPreference: ((UUID) -> Void)?
     private let showsBackButton: Bool
 
     init(
@@ -29,6 +36,7 @@ struct PhotoSessionSetupView: View {
         onCreatePreference: @escaping ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void,
         onStartAnalyzing: @escaping (UUID) -> Void,
         onCustomPreferenceCreated: @escaping (UUID) -> Void,
+        onDiscardPreference: ((UUID) -> Void)? = nil,
         showsBackButton: Bool = false
     ) {
         let persistedPreference = savedPreference.flatMap { preferences.preference(id: $0.id) }
@@ -40,6 +48,7 @@ struct PhotoSessionSetupView: View {
         self.onCreatePreference = onCreatePreference
         self.onStartAnalyzing = onStartAnalyzing
         self.onCustomPreferenceCreated = onCustomPreferenceCreated
+        self.onDiscardPreference = onDiscardPreference
         self.showsBackButton = showsBackButton
     }
 
@@ -108,6 +117,7 @@ struct PhotoSessionSetupView: View {
         }
         .onAppear {
             reloadSavedPreference()
+            showSubjectWarningIfNeeded()
         }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.primary)
@@ -127,6 +137,31 @@ struct PhotoSessionSetupView: View {
             Button("OK", role: .cancel) { updateError = nil }
         } message: {
             Text(updateError ?? "")
+        }
+        .alert(
+            subjectWarning?.warningTitle ?? "",
+            isPresented: Binding(get: { subjectWarning != nil },
+                                 set: { if !$0 { subjectWarning = nil } }),
+            presenting: subjectWarning
+        ) { warning in
+            // Nothing is removed until the user taps Continue (they can review the result first).
+            Button("Continue") {
+                subjectWarning = nil
+                removePhotosWithoutPerson()
+            }
+            // Photos that could not be checked may pass on another try (same photos, checked again).
+            if warning.hasProcessingFailures {
+                Button("Try Again") {
+                    subjectWarning = nil
+                    startAnalyzingSavedPreference()
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                subjectWarning = nil
+                discardPreference()
+            }
+        } message: { warning in
+            Text(warning.warningMessage)
         }
         .alert("Re-analyze the AI preferences", isPresented: $isConfirmingDeletePhotos) {
             Button("Cancel", role: .destructive) { }
@@ -290,6 +325,9 @@ struct PhotoSessionSetupView: View {
                 .scaledToFill()
                 .frame(width: width, height: width * 4 / 3)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .bottomLeading) {
+                    subjectBadge(for: photo)
+                }
                 .overlay(alignment: .topTrailing) {
                     if isSelecting {
                         ZStack {
@@ -338,7 +376,11 @@ struct PhotoSessionSetupView: View {
             } else if !selection.photos.isEmpty {
                 // "Analyze X photos" Floating purple button as in Image 2
                 Button {
-                    isShowingNameModal = true
+                    if selection.hasSavedPreference {
+                        startAnalyzingSavedPreference()
+                    } else {
+                        isShowingNameModal = true
+                    }
                 } label: {
                     Text("Analyze \(selection.photos.count) photos")
                         .font(.system(size: 16, weight: .semibold))
@@ -346,14 +388,14 @@ struct PhotoSessionSetupView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(
-                            selection.photos.count >= ChoosePhotosViewModel.minPhotos
+                            canAnalyze
                                 ? GoPhotoDesign.primary
                                 : GoPhotoDesign.primary.opacity(0.5),
                             in: Capsule()
                         )
                         .shadow(color: GoPhotoDesign.primary.opacity(0.3), radius: 8, x: 0, y: 4)
                 }
-                .disabled(selection.photos.count < ChoosePhotosViewModel.minPhotos)
+                .disabled(!canAnalyze)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
             } else {
@@ -361,9 +403,13 @@ struct PhotoSessionSetupView: View {
                     .padding(.horizontal, GoPhotoDesign.sessionMargin)
                     .padding(.bottom, 8)
 
-                Button("Create a Custom Preference", action: openCustomPreference)
-                    .buttonStyle(.goPhotoText)
-                    .padding(.bottom, 12)
+                // A saved preference left without photos (all removed as having no person)
+                // gets photos added to it, not a second, custom preference.
+                if !selection.hasSavedPreference {
+                    Button("Create a Custom Preference", action: openCustomPreference)
+                        .buttonStyle(.goPhotoText)
+                        .padding(.bottom, 12)
+                }
             }
         }
         .padding(.top, 10)
@@ -475,6 +521,69 @@ struct PhotoSessionSetupView: View {
             case .failure(let error):
                 updateError = error.message
             }
+        }
+    }
+
+    /// Enough photos to analyse; for a saved preference, also loaded, not saving and not
+    /// already being analysed (one run per preference at a time).
+    private var canAnalyze: Bool {
+        guard selection.photos.count >= ChoosePhotosViewModel.minPhotos else { return false }
+        guard let id = selection.preferenceID else { return true }
+        return selection.canStartAnalyzing && !preferences.isAnalyzing(id)
+    }
+
+    /// A saved preference (back here after "Not Enough Photos") is analysed again as it is:
+    /// no name, and no new preference.
+    private func startAnalyzingSavedPreference() {
+        guard let id = selection.preferenceID, canAnalyze else { return }
+        onStartAnalyzing(id)
+    }
+
+    /// Continue on the warning: the photos confirmed to show no person leave this preference's
+    /// saved collection (photos that could not be checked stay), and the grid shows the rest,
+    /// ready for more photos. The Photos library is never touched.
+    private func removePhotosWithoutPerson() {
+        guard let id = selection.preferenceID, !selection.isSavingPhotos else { return }
+        selection.isSavingPhotos = true
+        preferences.removePhotosWithoutPersonPersisted(from: id) { result in
+            selection.isSavingPhotos = false
+            switch result {
+            case .success(let preference):
+                withAnimation { selection.reloadSavedPreference(preference) }
+            case .failure(let error):
+                updateError = error.message
+            }
+        }
+    }
+
+    /// Cancel on the warning: the preference being created is deleted (with its saved photo
+    /// copies; never the Photos library) by the opener, which returns to Choose Preference.
+    private func discardPreference() {
+        guard let id = selection.preferenceID, let onDiscardPreference,
+              !selection.isSavingPhotos else { return }
+        onDiscardPreference(id)
+    }
+
+    private func showSubjectWarningIfNeeded() {
+        guard let id = selection.preferenceID,
+              let failure = preferences.validationFailure(for: id) else { return }
+        subjectWarning = failure
+    }
+
+    /// Marks a saved preference's photos left out of the analysis by the last person check:
+    /// no person found, or the photo could not be checked. Nothing for valid or unchecked photos.
+    @ViewBuilder
+    private func subjectBadge(for photo: PhotoItem) -> some View {
+        if let id = selection.preferenceID,
+           let status = preferences.subjectValidation(for: id)?.status(of: photo.id),
+           status != .valid {
+            let couldNotCheck = status.isProcessingFailure
+            Image(systemName: couldNotCheck ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, couldNotCheck ? GoPhotoDesign.warning : GoPhotoDesign.error)
+                .padding(6)
+                .accessibilityLabel(couldNotCheck ? "This photo couldn't be checked" : "No person found in this photo")
         }
     }
 

@@ -42,8 +42,9 @@ struct PreferenceCardModel: Identifiable {
 
     static let maxChips = 2
 
+    /// - Parameter needsMorePersonPhotos: its latest run stopped because too few photos show a person.
     init(preference: Preference, availability: Result<Void, PhotoSessionError>, isAnalyzing: Bool,
-         isLastUsed: Bool) {
+         isLastUsed: Bool, needsMorePersonPhotos: Bool = false) {
         id = preference.id
         name = preference.name
         self.isLastUsed = isLastUsed
@@ -58,20 +59,22 @@ struct PreferenceCardModel: Identifiable {
         case .failure where isAnalyzing:
             self.availability = .analyzing
         case .failure(let error):
-            self.availability = .unavailable(Self.reason(for: error, preference: preference))
+            self.availability = .unavailable(needsMorePersonPhotos
+                ? "Needs at least \(HumanSubjectValidator.minimumValidPhotos) photos with a person. Edit photos to add more."
+                : Self.reason(for: error, preference: preference))
         }
         isUpdating = isAnalyzing && self.availability == .available
 
         let analysis = preference.analysis
-        let style = StyleSummary(analysis: analysis, photos: preference.photos)
+        let style = StyleSummary(analysis: analysis, photos: preference.analyzedPhotos)
         switch self.availability {
         case .available where preference.customStyle != nil:
             summary = "Custom preference"
             chips = preference.customStyle.map(Self.chips(for:)) ?? []
         case .available:
-            let count = preference.photos.count
+            let count = preference.analyzedPhotos.count
             summary = style?.tagline ?? "Based on \(count) reference \(count == 1 ? "photo" : "photos")"
-            chips = analysis.map { Array(Self.chips(for: $0, photos: preference.photos).prefix(Self.maxChips)) } ?? []
+            chips = analysis.map { Array(Self.chips(for: $0, photos: preference.analyzedPhotos).prefix(Self.maxChips)) } ?? []
         case .analyzing:
             summary = "Analyzing your reference photos…"
             chips = []

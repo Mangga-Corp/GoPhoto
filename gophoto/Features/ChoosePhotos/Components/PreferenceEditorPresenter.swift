@@ -46,7 +46,8 @@ final class PreferenceEditorPresenter {
                 editor?.dismiss(animated: true) { onComplete(photosChanged.value) }
                 return
             }
-            self.presentAnalysis(of: id, photos: photos, over: editor, buttonTitle: "Done") {
+            self.presentAnalysis(of: id, photos: photos, over: editor, buttonTitle: "Done",
+                                 onPhotosCleaned: { editorViewModel.syncSavedItems($0) }) {
                 presenter?.dismiss(animated: true) { onComplete(true) }
             }
         }
@@ -54,17 +55,60 @@ final class PreferenceEditorPresenter {
     }
 
     /// Analysing screen over `host`, then the "Your style" card; `finish` closes the flow.
+    /// - Parameter onPhotosCleaned: the photos left after Continue removed those without a
+    ///   person (already saved), so the screen underneath can show them.
     func presentAnalysis(of id: UUID, photos: [PhotoItem], over host: UIViewController,
-                         buttonTitle: String, finish: @escaping () -> Void) {
+                         buttonTitle: String, onPhotosCleaned: (([PhotoItem]) -> Void)? = nil,
+                         finish: @escaping () -> Void) {
         let analyzing = AnalyzingViewController(viewModel: AnalyzingViewModel(preferenceID: id, preferences: preferences),
                                                 photos: photos)
         analyzing.modalPresentationStyle = .fullScreen
         analyzing.onFinish = { [weak self, weak analyzing] in
+            // Too few photos show a person: nothing was analysed. Continue removes the photos
+            // without a person from the preference and returns to the editor underneath to add
+            // more; Try Again (some photos could not be checked) checks every photo again;
+            // Cancel closes the flow and removes nothing.
+            if let self, let analyzing, let warning = self.preferences.validationFailure(for: id) {
+                let alert = UIAlertController(title: warning.warningTitle,
+                                              message: warning.warningMessage, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self, weak analyzing] _ in
+                    guard let self else { return }
+                    self.preferences.removePhotosWithoutPersonPersisted(from: id) { result in
+                        let host = analyzing?.presentingViewController
+                        switch result {
+                        case .success(let preference):
+                            onPhotosCleaned?(preference.photos)
+                            analyzing?.dismiss(animated: true)
+                        case .failure(let error):
+                            analyzing?.dismiss(animated: true) {
+                                let errorAlert = UIAlertController(title: "Something went wrong",
+                                                                   message: error.message, preferredStyle: .alert)
+                                errorAlert.addAction(UIAlertAction(title: "OK", style: .cancel))
+                                host?.present(errorAlert, animated: true)
+                            }
+                        }
+                    }
+                })
+                if warning.hasProcessingFailures {
+                    alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self, weak analyzing] _ in
+                        guard let self, let analyzing, let host = analyzing.presentingViewController else { return }
+                        analyzing.dismiss(animated: true) {
+                            self.preferences.reanalyze(id: id)
+                            self.presentAnalysis(of: id, photos: photos, over: host,
+                                                 buttonTitle: buttonTitle, onPhotosCleaned: onPhotosCleaned,
+                                                 finish: finish)
+                        }
+                    })
+                }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in finish() })
+                analyzing.present(alert, animated: true)
+                return
+            }
             // No "Your style" card for an unusable result (a required request failed, or no
             // readable person): the flow closes and the card on Preference Selection says why.
             guard let self, let analyzing, let preference = self.preferences.preference(id: id),
                   preference.analysis?.usability == .usable,
-                  let summary = StyleSummary(analysis: preference.analysis, photos: preference.photos) else {
+                  let summary = StyleSummary(analysis: preference.analysis, photos: preference.analyzedPhotos) else {
                 finish()
                 return
             }

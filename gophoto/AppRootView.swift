@@ -69,6 +69,10 @@ struct AppRootView: View {
                         firstTimeOnboardingStep = FirstTimeOnboardingStep.styleCard.rawValue
                     },
                     onChooseOtherPhotos: { chooseOtherOnboardingPhotos(preference.id) },
+                    // Same saved preference, back on Photo Session Setup with its warning.
+                    onNeedsMorePhotos: {
+                        firstTimeOnboardingStep = FirstTimeOnboardingStep.photoSetup.rawValue
+                    },
                     onFinish: continueToCamera
                 )
                 .preferredColorScheme(.light)
@@ -82,7 +86,8 @@ struct AppRootView: View {
                             guard savedOnboardingPreference?.id == id else { return }
                             firstTimeOnboardingStep = FirstTimeOnboardingStep.analyzing.rawValue
                         },
-                        onCustomPreferenceCreated: finishOnboarding(withCustomPreference:)
+                        onCustomPreferenceCreated: finishOnboarding(withCustomPreference:),
+                        onDiscardPreference: discardOnboardingPreference
                     )
                 }
                 .preferredColorScheme(.light)
@@ -149,7 +154,7 @@ struct AppRootView: View {
 
     private func shouldResumeStyleCard(for preference: Preference) -> Bool {
         guard let analysis = preference.analysis, analysis.isCurrent, analysis.usability == .usable else { return false }
-        guard let _ = StyleSummary(analysis: analysis, photos: preference.photos) else { return false }
+        guard let _ = StyleSummary(analysis: analysis, photos: preference.analyzedPhotos) else { return false }
         return firstTimeOnboardingStep == FirstTimeOnboardingStep.styleCard.rawValue
             || firstTimeOnboardingStep == FirstTimeOnboardingStep.analyzing.rawValue
     }
@@ -181,6 +186,22 @@ struct AppRootView: View {
     /// No readable person in the onboarding photos: that preference is discarded (it is the one
     /// created a moment ago) and the picker opens again.
     private func chooseOtherOnboardingPhotos(_ id: UUID) {
+        deleteOnboardingPreference(id)
+    }
+
+    /// Cancel on the "Not Enough Photos with People" warning: the first-time preference is
+    /// deleted and onboarding ends on Choose Preference (Preference Selection, which has an
+    /// empty state with Add New Preference), never back on Photo Session Setup.
+    private func discardOnboardingPreference(_ id: UUID) {
+        guard savedOnboardingPreference?.id == id else { return }
+        deleteOnboardingPreference(id)
+        welcomeOnboardingStarted = false
+        welcomeOnboardingCompleted = true
+    }
+
+    /// Deletes the first-time preference (saved photo copies, analysis and its running state)
+    /// and every onboarding reference to it.
+    private func deleteOnboardingPreference(_ id: UUID) {
         PreferencesViewModel.shared.delete(id: id, allowingLast: true)
         onboardingPreferenceIDString = ""
         pendingOnboardingPreferenceIDString = ""

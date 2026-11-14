@@ -18,6 +18,8 @@ import SwiftUI
 enum SessionSetupRoute: Hashable {
     case photoSessionSetup
     case createdPreferenceAnalysis(preferenceID: UUID)
+    /// Back on Photo Session Setup with a saved preference whose photos show too few people.
+    case addMorePhotos(preferenceID: UUID)
 }
 
 struct SessionSetupFlowView: View {
@@ -86,6 +88,9 @@ struct SessionSetupFlowView: View {
                             selection.delete(preferenceID)
                             path = [.photoSessionSetup]
                         },
+                        onNeedsMorePhotos: {
+                            path = [.addMorePhotos(preferenceID: preferenceID)]
+                        },
                         onFinish: {
                             selection.selectCreated(preferenceID)
                             if let error = startSession(preferenceID: preferenceID) {
@@ -96,6 +101,26 @@ struct SessionSetupFlowView: View {
                     )
                     .preferredColorScheme(.light)
                     .tint(GoPhotoDesign.primary)
+                case .addMorePhotos(let preferenceID):
+                    // The same preference: added photos are saved to it, and Analyze runs it
+                    // again (never a second preference).
+                    PhotoSessionSetupView(
+                        savedPreference: selection.preferences.preference(id: preferenceID),
+                        onCreatePreference: { _, _, completion in
+                            completion(.failure(PreferenceNameError(message: "This preference has already been saved.")))
+                        },
+                        onStartAnalyzing: { id in
+                            path = [.createdPreferenceAnalysis(preferenceID: id)]
+                        },
+                        onCustomPreferenceCreated: { _ in },
+                        // Cancel on the warning: this new preference is deleted and the user is
+                        // back on Choose Preference (not Photo Session Setup).
+                        onDiscardPreference: { id in
+                            _ = selection.delete(id)
+                            path.removeAll()
+                        },
+                        showsBackButton: true
+                    )
                 }
             }
         }
