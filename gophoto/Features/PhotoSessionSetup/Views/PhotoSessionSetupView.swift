@@ -119,7 +119,11 @@ struct PhotoSessionSetupView: View {
                 }
             }
             .navigationDestination(isPresented: $isShowingFacePicker) {
-                FacePickerView()
+                FacePickerView { items in
+                    selection.replace(with: items)
+                    isShowingFacePicker = false
+                    isChoosingPhotoSource = false
+                }
             }
         }
         .onAppear {
@@ -168,7 +172,7 @@ struct PhotoSessionSetupView: View {
                     Text("AI Preferences")
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(GoPhotoDesign.primaryText)
-                    Text("\(selection.photos.count)/20")
+                    Text("\(selection.photos.count)/\(ChoosePhotosViewModel.maxPhotos)")
                         .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                 }
@@ -374,7 +378,7 @@ struct PhotoSessionSetupView: View {
                 .padding(.bottom, 12)
             } else {
                 SessionPrimaryButton(title: "Add Your Photos", systemImage: "plus.circle") {
-                    isChoosingPhotoSource = true
+                    if FaceGroupingAvailability.isSupported { isChoosingPhotoSource = true } else { openPicker() }
                 }
                 .padding(.horizontal, GoPhotoDesign.sessionMargin)
                 .padding(.bottom, 8)

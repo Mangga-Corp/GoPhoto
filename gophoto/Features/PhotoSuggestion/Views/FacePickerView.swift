@@ -1,15 +1,12 @@
-//
-//  FacePickerView.swift
-//  gophoto
-//
-//  Created by Brian Juniarta Darmadi on 14/11/26.
-//
-
 import SwiftUI
 
 struct FacePickerView: View {
     @State private var viewModel = FacePickerViewModel()
-    @State private var openedGroup: FaceGroup?
+    @State private var isShowingLimitedAccessAlert = false
+    @State private var isShowingReview = false
+    @Environment(\.openURL) private var openURL
+
+    let onPhotosChosen: ([PhotoItem]) -> Void
 
     var body: some View {
         ScrollView {
@@ -17,52 +14,74 @@ struct FacePickerView: View {
                 Text("Which one is you?")
                     .font(GoPhotoDesign.largeTitle)
                     .foregroundStyle(GoPhotoDesign.primaryText)
-
-                switch viewModel.state {
-                case .idle:
-                    SessionPrimaryButton(title: "Scan my photos") { viewModel.startScan() }
-                case .needsAccess:
-                    Text("Allow Poto to access your photos in Settings to scan them.")
-                        .foregroundStyle(GoPhotoDesign.secondaryText)
-                case .scanning(let checked):
-                    ProgressView("Looking for faces… \(checked) photos checked")
-                    Button("Cancel") { viewModel.cancelScan() }
-                        .buttonStyle(.goPhotoText)
-                case .done:
-                    faces
-                    thresholdControl
-                }
+                content
             }
             .padding(GoPhotoDesign.sessionMargin)
         }
         .background(GoPhotoDesign.background)
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: viewModel.threshold) {
-            guard viewModel.state == .done else { return }
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            await viewModel.regroup()
+        .task { viewModel.start() }
+        .onDisappear { if !isShowingReview { viewModel.clear() } }
+        .onChange(of: viewModel.state) { _, state in
+            isShowingLimitedAccessAlert = state == .limitedAccess
         }
-        .onDisappear { viewModel.clear() }
-        .sheet(item: $openedGroup) { group in
-            GroupFacesView(group: group)
+        .alert("Works best with full access", isPresented: $isShowingLimitedAccessAlert) {
+            Button("Open Settings") {
+                viewModel.dismissLimitedAccess()
+                openSettings()
+            }
+            Button("Continue anyway") { viewModel.continueWithLimitedAccess() }
+            Button("Cancel", role: .cancel) { viewModel.dismissLimitedAccess() }
+        } message: {
+            Text("Poto can only look through the photos you've shared with it. Allow access to all photos in Settings to find more photos of you.")
+        }
+        .navigationDestination(isPresented: $isShowingReview) {
+            PhotoReviewView(candidates: viewModel.includedPhotos, leftOut: viewModel.groupPhotos) { items in
+                viewModel.clear()
+                onPhotosChosen(items)
+            }
         }
     }
 
-    private var faces: some View {
+    @ViewBuilder
+    private var content: some View {
+        switch viewModel.state {
+        case .idle, .limitedAccess:
+            SessionPrimaryButton(title: "Scan my photos") { viewModel.start() }
+        case .unsupported:
+            message("Finding your photos automatically needs iOS 27. Choose photos yourself instead.")
+        case .needsAccess:
+            message("Allow Poto to access your photos in Settings to scan them.")
+            Button("Open Settings", action: openSettings)
+                .buttonStyle(.goPhotoText)
+        case .scanning(let progress):
+            ProgressView("Looking for faces… \(progress.photosChecked) photos, \(progress.facesFound) faces")
+            Button("Cancel") { viewModel.cancelScan() }
+                .buttonStyle(.goPhotoText)
+        case .done:
+            if viewModel.groups.isEmpty {
+                message("No faces found in your recent photos.")
+            } else {
+                people
+            }
+        case .failed(let text):
+            message(text)
+            Button("Try again") { viewModel.start() }
+                .buttonStyle(.goPhotoText)
+        }
+    }
+
+    private var people: some View {
         VStack(alignment: .leading, spacing: 12) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
-                ForEach(viewModel.topGroups) { group in
-                    Button { openedGroup = group } label: {
+                ForEach(viewModel.shownGroups) { group in
+                    Button {
+                        viewModel.pick(group)
+                        isShowingReview = true
+                    } label: {
                         VStack(spacing: 6) {
-                            if let cover = group.cover {
-                                Image(uiImage: UIImage(cgImage: cover.faceCrop))
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 88, height: 88)
-                                    .clipShape(Circle())
-                            }
+                            PersonCover(image: viewModel.covers[group.id])
                             Text("\(group.assetIDs.count) photos")
                                 .font(GoPhotoDesign.caption)
                                 .foregroundStyle(GoPhotoDesign.secondaryText)
@@ -71,41 +90,41 @@ struct FacePickerView: View {
                     .buttonStyle(.plain)
                 }
             }
-            Text("\(viewModel.groups.count) groups from \(viewModel.faceCount) faces")
+            if viewModel.hasMoreGroups {
+                Button("Not here? Show more people") { viewModel.showAllGroups() }
+                    .buttonStyle(.goPhotoText)
+            }
+            Text("\(viewModel.groups.count) people from \(viewModel.faceCount) faces in \(viewModel.photosChecked) photos")
                 .font(GoPhotoDesign.caption)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
         }
     }
 
-    private var thresholdControl: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Same person below \(viewModel.threshold, format: .number.precision(.fractionLength(2)))")
-                .font(GoPhotoDesign.caption)
-                .foregroundStyle(GoPhotoDesign.secondaryText)
-            Slider(value: $viewModel.threshold, in: 0.1...1.5)
-        }
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(GoPhotoDesign.body)
+            .foregroundStyle(GoPhotoDesign.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
     }
 }
 
-private struct GroupFacesView: View {
-    let group: FaceGroup
+private struct PersonCover: View {
+    let image: UIImage?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                    ForEach(Array(group.samples.enumerated()), id: \.offset) { _, sample in
-                        Image(uiImage: UIImage(cgImage: sample.faceCrop))
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 72, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-                .padding()
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Circle().fill(GoPhotoDesign.primarySubtle)
+                    .overlay { Image(systemName: "person.fill").foregroundStyle(GoPhotoDesign.primary) }
             }
-            .navigationTitle("\(group.assetIDs.count) photos")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .frame(width: 88, height: 88)
+        .clipShape(Circle())
     }
 }

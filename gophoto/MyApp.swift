@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct MyApp: App {
     init() {
+        Task { await FaceGroupingAvailability.purgeLeftovers() }
         #if DEBUG
         DebugFixtures.prepareLaunchState()
         DebugFixtures.seedIfNeeded()
