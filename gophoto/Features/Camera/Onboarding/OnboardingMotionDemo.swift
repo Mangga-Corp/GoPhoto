@@ -48,7 +48,9 @@ struct OnboardingMotionDemo: View {
  
                     CurvedRacingArrowView(direction: direction)
                         .id("tilt-arrow-\(direction)")
-                        .position(x: gridLineX, y: centerY - (height / 2) + 5)
+                        .position(x: gridLineX,
+                                  y: direction == .up ? centerY - (height / 2) - 34
+                                                      : centerY + (height / 2) + 34)
                         .transition(.opacity)
  
                 case .height:
@@ -65,8 +67,8 @@ struct OnboardingMotionDemo: View {
                     RacingArrowView(direction: direction == .up ? .up : .down)
                         .id("height-arrow-\(direction)")
                         .position(x: gridLineX,
-                                  y: direction == .up ? centerY - (height / 2) - 26
-                                                      : centerY + (height / 2) + 26)
+                                  y: direction == .up ? centerY - (height / 2) - 34
+                                                      : centerY + (height / 2) + 34)
                         .transition(.opacity)
                 }
             }

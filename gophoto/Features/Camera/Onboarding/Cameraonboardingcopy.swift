@@ -17,29 +17,29 @@ enum CameraOnboardingStep: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .shotCards:    "Pick a shot size"
-        case .sitting:      "Sitting? It adapts"
-        case .tiltDown:     "Tilt the phone down"
-        case .tiltUp:       "Tilt the phone up"
-        case .heightUp:     "Raise the phone"
-        case .heightDown:   "Lower the phone"
+        case .shotCards:    "Choose your shot"
+        case .sitting:      "Sitting? We adapt"
+        case .tiltDown:     "Tilt down"
+        case .tiltUp:       "Tilt up"
+        case .heightUp:     "Raise your phone"
+        case .heightDown:   "Lower your phone"
         }
     }
  
     var message: String {
         switch self {
         case .shotCards:
-            "These cards follow your reference photos: Full body, 3/4 or Half body. Swipe left or right to switch."
+            "Swipe to switch between Full, 3/4 or Half Body. They match your reference photos."
         case .sitting:
-            "When your subject sits down, the cards change to sitting and only Full body is offered."
+            "When you sit, only Full Body is offered."
         case .tiltDown:
-            "When you see this animation, tilt the top of your phone down until it matches your reference photos."
+            "See this? Tilt the top of your phone down to match your reference photos."
         case .tiltUp:
-            "When you see this animation, tilt the top of your phone up until it matches your reference photos."
+            "See this? Tilt the top of your phone up to match your reference photos."
         case .heightUp:
-            "When you see this animation, raise your phone higher and keep the same angle."
+            "See this? Lift your phone higher and keep the same tilt."
         case .heightDown:
-            "When you see this animation, lower your phone and keep the same angle."
+            "See this? Lower your phone and keep the same tilt."
         }
     }
 }
@@ -47,8 +47,4 @@ enum CameraOnboardingStep: Int, CaseIterable {
 enum CameraOnboardingCopy {
     static let continueButton = "Continue"
     static let finishButton = "Finish"
- 
-    // Sama dengan ShotSizePicker.postureCaption
-    static let standingCaption = "Standing"
-    static let sittingCaption = "Sitting · full body only"
-}
+ }

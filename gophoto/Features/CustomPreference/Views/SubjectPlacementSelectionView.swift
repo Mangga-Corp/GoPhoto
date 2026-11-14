@@ -16,8 +16,8 @@ struct SubjectPlacementSelectionView: View {
         CustomStyleOptionPage(
             step: 1,
             stepCount: CustomPreferenceFlowModel.stepCount,
-            title: "Choose a Subject Placement",
-            message: "Where should the person be in the frame? The camera will guide you to this spot.",
+            title: "Where Should You Stand?",
+            message: "Where should you appear in the photo? We'll guide you to that spot.",
             selection: $model.placement,
             isOptionAvailable: { placement in model.isPlacementAvailable(placement) },
             primaryTitle: "Next",

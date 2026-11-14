@@ -97,12 +97,12 @@ struct AdjustPanelView: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                Text(selected.title).font(.headline)
+                Text(selected.title).font(AppFont.headline)
                 Spacer()
                 Button("Revert to AI") {
                     if let baseline { settings = baseline }
                 }
-                .font(.subheadline)
+                .font(AppFont.subheadline)
                 .disabled(!isChanged)
             }
             .padding(.horizontal, 16)
@@ -121,10 +121,10 @@ struct AdjustPanelView: View {
                         } label: {
                             VStack(spacing: 4) {
                                 Image(systemName: item.icon)
-                                    .font(.title3)
+                                    .font(AppFont.title3)
                                     .frame(width: 44, height: 44)
                                     .background(isSelected ? GoPhotoDesign.primary.opacity(0.2) : Color.clear, in: Circle())
-                                Text(item.title).font(.caption2)
+                                Text(item.title).font(AppFont.caption2)
                             }
                             .foregroundStyle(isSelected ? GoPhotoDesign.primary : .secondary)
                             .frame(minWidth: 64)

@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct MyApp: App {
     init() {
+        AppFont.register()
         #if DEBUG
         DebugFixtures.prepareLaunchState()
         DebugFixtures.seedIfNeeded()
@@ -15,6 +16,7 @@ struct MyApp: App {
     var body: some Scene {
         WindowGroup {
             AppRootView()
+                .font(AppFont.body)   // default for any text without its own font
         }
         .modelContainer(AppDatabase.container)
     }

@@ -122,7 +122,7 @@ struct CameraAngleArtwork: View {
                 .stroke(GoPhotoDesign.tagText, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [5, 4]))
 
                 Image(systemName: "camera.fill")
-                    .font(.system(size: min(size.width, size.height) * 0.16))
+                    .font(AppFont.system(size: min(size.width, size.height) * 0.16))
                     .foregroundStyle(GoPhotoDesign.tagText)
                     .rotationEffect(sightAngle)
                     .position(camera)
@@ -178,7 +178,7 @@ struct CustomPreferenceThumbnail: View {
         .frame(width: size.width, height: size.height)
         .overlay(alignment: .bottomTrailing) {
             Image(systemName: style.angle.symbolName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(AppFont.system(size: 11, weight: .semibold))
                 .foregroundStyle(GoPhotoDesign.onPrimary)
                 .frame(width: 24, height: 24)
                 .background(GoPhotoDesign.primary, in: Circle())

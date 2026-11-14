@@ -23,42 +23,46 @@ struct DistanceBar: View {
     private static let span = 2.0
 
     var body: some View {
-        VStack(spacing: 4) {
-            GeometryReader { geo in
-                let w = geo.size.width
-                let zoneLeft = x(1 + tolerance, w), zoneRight = x(1 - tolerance, w)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.25)).frame(height: 6)
-                    Capsule().fill(Color.green.opacity(0.8))
-                        .frame(width: zoneRight - zoneLeft, height: 10)
-                        .offset(x: zoneLeft)
-                    if let sizeRatio {
-                        Image(systemName: "figure.stand")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(isOK ? Color.green : Color.yellow)
-                            .shadow(color: .black.opacity(0.5), radius: 1)
-                            .position(x: x(sizeRatio, w), y: geo.size.height / 2)
-                    }
-                }
-                .frame(maxHeight: .infinity)
-            }
-            .frame(height: 30)
+        VStack(spacing: 6) {
             HStack {
                 Text("Too close")
                 Spacer()
                 Text("Too far")
             }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.8))
+            .font(AppFont.footnote.weight(.medium))
+            .foregroundStyle(.white)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let zoneLeft = x(1 + tolerance, w), zoneRight = x(1 - tolerance, w)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(GoPhotoDesign.primarySubtle)
+                    Capsule().fill(Self.zoneColor)
+                        .frame(width: max(0, zoneRight - zoneLeft))
+                        .offset(x: zoneLeft)
+                    if let sizeRatio {
+                        // The person: a white dot on the track, ringed in the zone colour.
+                        Circle().fill(.white)
+                            .overlay(Circle().stroke(Self.zoneColor, lineWidth: 2))
+                            .frame(width: 16, height: 16)
+                            .position(x: x(sizeRatio, w), y: geo.size.height / 2)
+                    }
+                }
+            }
+            .frame(height: 14)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity)
+        .background(.black.opacity(0.45))
         .animation(.easeOut(duration: 0.15), value: sizeRatio)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
+
+    /// The dark purple "right distance" segment.
+    private static let zoneColor = Color(hex: 0x4B2A85)
 
     /// x position for a size ratio: centre = right size, left = too close, right = too far.
     private func x(_ ratio: Double, _ width: CGFloat) -> CGFloat {
@@ -95,7 +99,7 @@ struct GuideVerticalBar: View {
                         .offset(y: y(zone, h))
                     if let value {
                         Image(systemName: symbol)
-                            .font(.title3.weight(.semibold))
+                            .font(AppFont.title3.weight(.semibold))
                             .foregroundStyle(isOK ? Color.green : Color.yellow)
                             .shadow(color: .black.opacity(0.5), radius: 1)
                             .position(x: geo.size.width / 2, y: y(value, h))
@@ -105,7 +109,7 @@ struct GuideVerticalBar: View {
             }
             .frame(width: 36, height: 180)
             Text(caption)
-                .font(.caption2.weight(.semibold))
+                .font(AppFont.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.8))
         }
         .padding(8)

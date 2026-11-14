@@ -101,7 +101,7 @@ struct GuidanceGalleryView: View {
             // Panel Inspeksi Khusus Detail Arrow (Tilting & Height)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Arrow Detail (Tilting Melengkung & Height)")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
 
@@ -109,7 +109,7 @@ struct GuidanceGalleryView: View {
                     // Arrow Tilt Down (melengkung ke kanan bawah)
                     VStack(spacing: 4) {
                         Text("Kanan Bawah (Down)")
-                            .font(.caption2)
+                            .font(AppFont.caption2)
                             .foregroundStyle(.secondary)
 
                         ZStack {
@@ -123,7 +123,7 @@ struct GuidanceGalleryView: View {
                     // Arrow Tilt Up (melengkung ke kiri bawah)
                     VStack(spacing: 4) {
                         Text("Kiri Bawah (Up)")
-                            .font(.caption2)
+                            .font(AppFont.caption2)
                             .foregroundStyle(.secondary)
 
                         ZStack {
@@ -137,7 +137,7 @@ struct GuidanceGalleryView: View {
                     // Height Lower (turun)
                     VStack(spacing: 4) {
                         Text("Lower (Turun)")
-                            .font(.caption2)
+                            .font(AppFont.caption2)
                             .foregroundStyle(.secondary)
 
                         ZStack {
@@ -151,7 +151,7 @@ struct GuidanceGalleryView: View {
                     // Height Raise (naik)
                     VStack(spacing: 4) {
                         Text("Raise (Naik)")
-                            .font(.caption2)
+                            .font(AppFont.caption2)
                             .foregroundStyle(.secondary)
 
                         ZStack {
@@ -168,7 +168,7 @@ struct GuidanceGalleryView: View {
             // Kontrol Kecepatan Animasi
             HStack {
                 Text("Kecepatan:")
-                    .font(.footnote)
+                    .font(AppFont.footnote)
                     .foregroundStyle(.secondary)
 
                 Picker("Speed", selection: $speed) {
