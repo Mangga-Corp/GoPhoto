@@ -3,7 +3,7 @@ import SwiftUI
 
 struct PhotoSessionSetupView: View {
     @State private var isChoosingPhotoSource = false
-    @State private var isShowingSuggestionsSoon = false
+    @State private var isShowingFacePicker = false
     @State private var selection = PhotoSessionSetupSelection()
     @State private var isPresentingPicker = false
     /// The custom preference flow while it is open (a new one each time it opens).
@@ -115,13 +115,11 @@ struct PhotoSessionSetupView: View {
                     isChoosingPhotoSource = false
                     openPicker()
                 case .suggested:
-                    isShowingSuggestionsSoon = true
+                    isShowingFacePicker = true
                 }
             }
-            .alert("Coming soon", isPresented: $isShowingSuggestionsSoon) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Automatic photo suggestions are being built. Choose photos yourself for now.")
+            .navigationDestination(isPresented: $isShowingFacePicker) {
+                FacePickerView()
             }
         }
         .onAppear {
