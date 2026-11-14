@@ -64,6 +64,34 @@ final class PreferenceEditorPresenter {
                                                 photos: photos)
         analyzing.modalPresentationStyle = .fullScreen
         analyzing.onFinish = { [weak self, weak analyzing] in
+            // Enough valid photos, some invalid: tell the user, then (Continue) the view model
+            // removes the invalid photos and starts the analysis; a new analysing screen joins it.
+            if let self, let analyzing, let notice = self.preferences.exclusionNotice(for: id) {
+                let alert = UIAlertController(title: HumanSubjectValidationResult.exclusionTitle,
+                                              message: notice.exclusionMessage, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self, weak analyzing] _ in
+                    guard let self else { return }
+                    self.preferences.confirmExclusions(for: id) { result in
+                        guard let analyzing, let host = analyzing.presentingViewController else { return }
+                        analyzing.dismiss(animated: false) {
+                            switch result {
+                            case .success:
+                                onPhotosCleaned?(self.preferences.preference(id: id)?.photos ?? [])
+                                self.presentAnalysis(of: id, photos: self.preferences.preference(id: id)?.photos ?? photos,
+                                                     over: host, buttonTitle: buttonTitle,
+                                                     onPhotosCleaned: onPhotosCleaned, finish: finish)
+                            case .failure(let error):
+                                let errorAlert = UIAlertController(title: "Something went wrong",
+                                                                   message: error.message, preferredStyle: .alert)
+                                errorAlert.addAction(UIAlertAction(title: "OK", style: .cancel))
+                                host.present(errorAlert, animated: true)
+                            }
+                        }
+                    }
+                })
+                analyzing.present(alert, animated: true)
+                return
+            }
             // Too few photos show a person: nothing was analysed. Continue removes the photos
             // without a person from the preference and returns to the editor underneath to add
             // more; Try Again (some photos could not be checked) checks every photo again;

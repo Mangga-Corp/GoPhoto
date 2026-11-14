@@ -14,7 +14,7 @@ struct PhotoSessionSetupView: View {
     @State private var isShowingNameModal = false
     @State private var collectionName = ""
     @State private var hasAutoOpenedPicker = false
-    /// The saved preference's last run found too few photos with a person (or could not check
+    /// The saved preference's last run found too few photos of exactly one person (or could not check
     /// some): nothing was analysed.
     @State private var subjectWarning: HumanSubjectValidationResult?
     @Environment(\.dismiss) private var dismiss
@@ -571,19 +571,29 @@ struct PhotoSessionSetupView: View {
     }
 
     /// Marks a saved preference's photos left out of the analysis by the last person check:
-    /// no person found, or the photo could not be checked. Nothing for valid or unchecked photos.
+    /// no person or more than one found, or the photo could not be checked. Nothing for valid
+    /// (exactly one person) or unchecked photos.
     @ViewBuilder
     private func subjectBadge(for photo: PhotoItem) -> some View {
         if let id = selection.preferenceID,
            let status = preferences.subjectValidation(for: id)?.status(of: photo.id),
-           status != .valid {
+           !status.isValid {
             let couldNotCheck = status.isProcessingFailure
             Image(systemName: couldNotCheck ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
                 .font(.system(size: 16, weight: .semibold))
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.white, couldNotCheck ? GoPhotoDesign.warning : GoPhotoDesign.error)
                 .padding(6)
-                .accessibilityLabel(couldNotCheck ? "This photo couldn't be checked" : "No person found in this photo")
+                .accessibilityLabel(Self.badgeLabel(for: status))
+        }
+    }
+
+    private static func badgeLabel(for status: HumanSubjectStatus) -> String {
+        switch status {
+        case .multiplePeopleDetected: return "More than one person in this photo"
+        case .noPersonDetected: return "No person found in this photo"
+        case .imageLoadFailed, .visionFailed: return "This photo couldn't be checked"
+        case .validSinglePerson: return ""
         }
     }
 

@@ -27,6 +27,9 @@ struct OnboardingFlowView: View {
     @State private var failure: AnalysisFailure?
     @State private var analysisRetry = 0
     @State private var finishError: String?
+    /// "Some Photos Were Excluded": enough valid photos, some invalid; analysis waits for Continue.
+    @State private var exclusionNotice: HumanSubjectValidationResult?
+    @State private var isConfirmingExclusions = false
 
     private static let log = Logger(subsystem: "co.mango.gophoto", category: "analysis")
 
@@ -102,6 +105,16 @@ struct OnboardingFlowView: View {
         .onAppear {
             if style != nil { onAnalysisCompleted() }
         }
+        .alert(
+            HumanSubjectValidationResult.exclusionTitle,
+            isPresented: Binding(get: { exclusionNotice != nil },
+                                 set: { if !$0 { exclusionNotice = nil } }),
+            presenting: exclusionNotice
+        ) { _ in
+            Button("Continue", action: confirmExclusions)
+        } message: { notice in
+            Text(notice.exclusionMessage)
+        }
         .alert("Couldn't start shooting", isPresented: Binding(get: { finishError != nil },
                                                               set: { if !$0 { finishError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -111,9 +124,15 @@ struct OnboardingFlowView: View {
     }
 
     private func analysisFinished() {
+        // Enough valid photos, some invalid: the user is told before they are removed and the
+        // analysis runs (the analysing screen stays underneath).
+        if let notice = PreferencesViewModel.shared.exclusionNotice(for: preferenceID) {
+            exclusionNotice = notice
+            return
+        }
         // Stopped before the analysis: too few photos show a person.
         if PreferencesViewModel.shared.validationFailure(for: preferenceID) != nil {
-            Self.log.notice("Analysis of \(preferenceID) needs more photos with a person")
+            Self.log.notice("Analysis of \(preferenceID) needs more photos of exactly one person")
             if let onNeedsMorePhotos {
                 onNeedsMorePhotos()
             } else {
@@ -141,6 +160,27 @@ struct OnboardingFlowView: View {
         case .noUsableFraming:
             Self.log.notice("Analysis of \(preferenceID) found no readable framing")
             withAnimation(.easeInOut(duration: 0.4)) { failure = .noUsableFraming }
+        }
+    }
+
+    /// Continue on "Some Photos Were Excluded": the view model removes the invalid photos (saved)
+    /// and starts the analysis on the rest; a new analysing screen joins that run.
+    private func confirmExclusions() {
+        exclusionNotice = nil
+        guard !isConfirmingExclusions else { return }
+        isConfirmingExclusions = true
+        PreferencesViewModel.shared.confirmExclusions(for: preferenceID) { result in
+            isConfirmingExclusions = false
+            switch result {
+            case .success:
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    failure = nil
+                    analysisRetry += 1
+                }
+            case .failure(let error):
+                Self.log.error("Could not remove excluded photos of \(preferenceID): \(error.message, privacy: .public)")
+                withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
+            }
         }
     }
 

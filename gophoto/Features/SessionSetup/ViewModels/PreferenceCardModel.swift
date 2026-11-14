@@ -60,7 +60,7 @@ struct PreferenceCardModel: Identifiable {
             self.availability = .analyzing
         case .failure(let error):
             self.availability = .unavailable(needsMorePersonPhotos
-                ? "Needs at least \(HumanSubjectValidator.minimumValidPhotos) photos with a person. Edit photos to add more."
+                ? "Needs at least \(HumanSubjectValidator.minimumValidPhotos) photos showing only one person. Edit photos to add more."
                 : Self.reason(for: error, preference: preference))
         }
         isUpdating = isAnalyzing && self.availability == .available
