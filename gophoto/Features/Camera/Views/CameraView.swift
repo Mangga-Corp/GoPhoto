@@ -223,6 +223,7 @@ struct CameraView: View {
             .overlay(alignment: .bottom) { bottomStepCard.padding(.bottom, coveredBottom) }
             .overlay(alignment: .trailing) { sideBar.padding(.top, coveredTop).padding(.bottom, coveredBottom) }
             .overlay(alignment: .top) { instructionPill.padding(.top, coveredTop) }
+            .overlay(alignment: .top) { preferenceNamePill.padding(.top, coveredTop + 56) }
             .overlay { flashOverlay }
     }
 
@@ -330,6 +331,43 @@ struct CameraView: View {
         .overlay {
             AspectRatioPicker(selection: viewModel.aspectRatio) { viewModel.selectAspectRatio($0) }
                 .sensoryFeedback(.selection, trigger: viewModel.aspectRatio)
+        }
+    }
+
+    /// The preference in use, shown under the instruction strip. A frosted capsule with a soft
+    /// purple tint, a small sparkle mark and a fine hairline; a label, not a button, so no solid fill.
+    @ViewBuilder private var preferenceNamePill: some View {
+        if let name = viewModel.presetName {
+            let shape = Capsule(style: .continuous)
+            HStack(spacing: 7) {
+                Image(systemName: "sparkle")
+                    .font(AppFont.system(size: 11, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(colors: [.white, GoPhotoDesign.primaryBorder],
+                                       startPoint: .top, endPoint: .bottom))
+                Text(name)
+                    .font(AppFont.system(size: 15, weight: .semibold))
+                    .tracking(0.3)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background {
+                shape.fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+                shape.fill(GoPhotoDesign.primary.opacity(0.32))
+            }
+            .overlay(
+                shape.strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.45), GoPhotoDesign.primaryBorder.opacity(0.12)],
+                                   startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.7))
+            .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+            .frame(maxWidth: 230)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Preference \(name)")
         }
     }
 
