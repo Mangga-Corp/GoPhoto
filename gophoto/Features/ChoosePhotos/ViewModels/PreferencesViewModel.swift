@@ -54,7 +54,9 @@ final class PreferencesViewModel {
         // competing run before that flow can join it.
         for preference in preferences
         where preference.analysis?.isCurrent != true && preference.id != pendingOnboardingID {
-            reanalyze(id: preference.id)
+            // Nobody is there to confirm excluded photos at launch: invalid photos are left out
+            // of the analysis but stay in the preference.
+            reanalyze(id: preference.id, confirmsExclusions: false)
         }
     }
 
@@ -339,6 +341,45 @@ final class PreferencesViewModel {
         from id: UUID,
         completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
     ) {
+        removeInvalidPhotosPersisted(from: id, checkedBy: validationFailure(for: id), completion: completion)
+    }
+
+    /// "Some Photos Were Excluded" → Continue: removes the confirmed invalid photos (no person,
+    /// or more than one) from the preference's saved collection, then starts its analysis on
+    /// the photos left, all of which passed. Photos that could not be checked are kept (and not
+    /// analysed). Runs once per notice: the notice is gone when this succeeds, and a stale
+    /// notice (photos changed since the check) is refused. The analysis never starts before
+    /// the cleanup is saved; screens join it through `runningAnalysis(for:)`.
+    func confirmExclusions(
+        for id: UUID,
+        completion: @escaping (Result<Void, PreferenceNameError>) -> Void
+    ) {
+        guard let notice = exclusionNotice(for: id) else {
+            completion(.failure(PreferenceNameError(
+                message: "Your photos changed since they were checked. Analyze them again to check them."
+            )))
+            return
+        }
+        removeInvalidPhotosPersisted(from: id, checkedBy: notice) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.reanalyze(id: id)
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Removes the photos `validation` confirmed invalid from the preference's saved collection
+    /// (written and read back before the in-memory preference changes). Refused while another
+    /// photo update is being saved, and when `validation` is missing or stale.
+    private func removeInvalidPhotosPersisted(
+        from id: UUID,
+        checkedBy validation: HumanSubjectValidationResult?,
+        completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
+    ) {
         guard !updatingPhotoIDs.contains(id) else {
             completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
             return
@@ -352,7 +393,7 @@ final class PreferencesViewModel {
             completion(.failure(Self.customPhotosError))
             return
         }
-        guard let validation = validationFailure(for: id),
+        guard let validation,
               validation.sourcePhotos.map(\.id) == current.photos.map(\.id) else {
             completion(.failure(PreferenceNameError(
                 message: "Your photos changed since they were checked. Analyze them again to check them."
@@ -467,6 +508,7 @@ final class PreferencesViewModel {
         analyzingIDs.remove(id)
         // The photos are about to change: the old person check no longer applies.
         subjectValidations[id] = nil
+        awaitingExclusionConfirmation.remove(id)
     }
 
     private func restorePreferencesAfterPhotoUpdateFailure(id: UUID, completion: @escaping () -> Void) {
@@ -508,6 +550,18 @@ final class PreferencesViewModel {
     /// The latest person check of this preset, passed or not.
     func subjectValidation(for id: UUID) -> HumanSubjectValidationResult? { subjectValidations[id] }
 
+    /// Presets whose run stopped before the analysis to let the user confirm that the invalid
+    /// photos are removed (enough valid photos, some invalid ones). Observed; in memory only.
+    private var awaitingExclusionConfirmation: Set<UUID> = []
+
+    /// "Some Photos Were Excluded": enough valid photos, some confirmed invalid; nothing is
+    /// analysed until `confirmExclusions(for:)`. Nil otherwise.
+    func exclusionNotice(for id: UUID) -> HumanSubjectValidationResult? {
+        guard awaitingExclusionConfirmation.contains(id), let result = subjectValidations[id],
+              result.hasEnoughValidPhotos, !result.invalidPhotos.isEmpty else { return nil }
+        return result
+    }
+
     /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
     func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
         analyzingIDs.contains(id) ? analysisTasks[id] : nil
@@ -519,8 +573,14 @@ final class PreferencesViewModel {
     /// Analyses a preset's photos and saves the result with the preset.
     /// Only the newest request per preset is saved. Await `value` to know when it is done.
     /// Custom preferences are never analysed: their targets come from their style.
+    ///
+    /// Only photos with exactly one person are analysed. With fewer than 3 the run stops
+    /// (`validationFailure(for:)`). With enough but some confirmed invalid, and
+    /// `confirmsExclusions` (a screen is there to ask), it stops for "Some Photos Were Excluded"
+    /// (`exclusionNotice(for:)`) until the user confirms the removal; without it (launch), the
+    /// valid photos are analysed and the invalid ones stay in the preference.
     @discardableResult
-    func reanalyze(id: UUID) -> Task<Void, Never>? {
+    func reanalyze(id: UUID, confirmsExclusions: Bool = true) -> Task<Void, Never>? {
         guard let existing = preference(id: id), !existing.isCustom, !existing.photos.isEmpty else { return nil }
         let token = (analysisTokens[id] ?? 0) + 1
         analysisTokens[id] = token
@@ -553,10 +613,17 @@ final class PreferencesViewModel {
                 self.logger.error("Preference \(id): \(validation.processingFailureCount) photos could not be checked for a person")
             }
             guard validation.hasEnoughValidPhotos else {
-                self.logger.notice("Preference \(id) not analysed: \(validation.validCount) of \(validation.totalInspected) photos show a person")
+                self.logger.notice("Preference \(id) not analysed: \(validation.validCount) of \(validation.totalInspected) photos show exactly one person")
                 self.analyzingIDs.remove(id)
                 return
             }
+            if confirmsExclusions, !validation.invalidPhotos.isEmpty {
+                self.logger.notice("Preference \(id): \(validation.invalidCount) invalid photos await the user's confirmation before analysis")
+                self.awaitingExclusionConfirmation.insert(id)
+                self.analyzingIDs.remove(id)
+                return
+            }
+            self.awaitingExclusionConfirmation.remove(id)
             let photos = validation.validatedPhotos
 
             self.analysisRunCount += 1
