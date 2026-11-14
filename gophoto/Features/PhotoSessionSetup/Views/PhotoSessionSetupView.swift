@@ -17,6 +17,8 @@ struct PhotoSessionSetupView: View {
     /// The saved preference's last run found too few photos of exactly one person (or could not check
     /// some): nothing was analysed.
     @State private var subjectWarning: HumanSubjectValidationResult?
+    /// A photo the person check left out, tapped to see why (and to check again or replace it).
+    @State private var inspectedPhoto: InspectedPhoto?
     @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
@@ -52,7 +54,54 @@ struct PhotoSessionSetupView: View {
         self.showsBackButton = showsBackButton
     }
 
+    // Split in two so the compiler type-checks each half in reasonable time.
     var body: some View {
+        withSubjectAlerts(screen)
+    }
+
+    /// The person-check alerts: "Not Enough Photos with People" and a tapped flagged photo.
+    private func withSubjectAlerts<Content: View>(_ content: Content) -> some View {
+        content
+        .alert(
+            HumanSubjectValidationResult.warningTitle,
+            isPresented: Binding(get: { subjectWarning != nil },
+                                 set: { if !$0 { subjectWarning = nil } }),
+            presenting: subjectWarning
+        ) { _ in
+            // The confirmed invalid photos were already removed (and saved) by the check: the
+            // grid behind shows what is left. Continue stays here to add photos; photos that
+            // could not be checked are tapped one by one (Check Again / Remove Photo).
+            Button("Continue") { subjectWarning = nil }
+            Button("Cancel", role: .cancel) {
+                subjectWarning = nil
+                discardPreference()
+            }
+        } message: { warning in
+            Text(warning.warningMessage)
+        }
+        .alert(
+            inspectedPhoto?.title ?? "",
+            isPresented: Binding(get: { inspectedPhoto != nil },
+                                 set: { if !$0 { inspectedPhoto = nil } }),
+            presenting: inspectedPhoto
+        ) { inspected in
+            if inspected.canCheckAgain {
+                Button("Check Again") {
+                    inspectedPhoto = nil
+                    startAnalyzingSavedPreference()
+                }
+            }
+            Button("Remove Photo", role: .destructive) {
+                inspectedPhoto = nil
+                removePhoto(inspected.photoID)
+            }
+            Button("Keep", role: .cancel) { inspectedPhoto = nil }
+        } message: { inspected in
+            Text(inspected.message)
+        }
+    }
+
+    private var screen: some View {
         GeometryReader { geometry in
             let thumbnailWidth = min(
                 180,
@@ -137,31 +186,6 @@ struct PhotoSessionSetupView: View {
             Button("OK", role: .cancel) { updateError = nil }
         } message: {
             Text(updateError ?? "")
-        }
-        .alert(
-            subjectWarning?.warningTitle ?? "",
-            isPresented: Binding(get: { subjectWarning != nil },
-                                 set: { if !$0 { subjectWarning = nil } }),
-            presenting: subjectWarning
-        ) { warning in
-            // Nothing is removed until the user taps Continue (they can review the result first).
-            Button("Continue") {
-                subjectWarning = nil
-                removePhotosWithoutPerson()
-            }
-            // Photos that could not be checked may pass on another try (same photos, checked again).
-            if warning.hasProcessingFailures {
-                Button("Try Again") {
-                    subjectWarning = nil
-                    startAnalyzingSavedPreference()
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                subjectWarning = nil
-                discardPreference()
-            }
-        } message: { warning in
-            Text(warning.warningMessage)
         }
         .alert("Re-analyze the AI preferences", isPresented: $isConfirmingDeletePhotos) {
             Button("Cancel", role: .destructive) { }
@@ -318,6 +342,8 @@ struct PhotoSessionSetupView: View {
                 } else {
                     selectedPhotoIDs.insert(photo.id)
                 }
+            } else if let status = subjectStatus(of: photo), !status.isValid {
+                inspectedPhoto = InspectedPhoto(photoID: photo.id, status: status)
             }
         } label: {
             Image(uiImage: photo.image)
@@ -539,23 +565,6 @@ struct PhotoSessionSetupView: View {
         onStartAnalyzing(id)
     }
 
-    /// Continue on the warning: the photos confirmed to show no person leave this preference's
-    /// saved collection (photos that could not be checked stay), and the grid shows the rest,
-    /// ready for more photos. The Photos library is never touched.
-    private func removePhotosWithoutPerson() {
-        guard let id = selection.preferenceID, !selection.isSavingPhotos else { return }
-        selection.isSavingPhotos = true
-        preferences.removePhotosWithoutPersonPersisted(from: id) { result in
-            selection.isSavingPhotos = false
-            switch result {
-            case .success(let preference):
-                withAnimation { selection.reloadSavedPreference(preference) }
-            case .failure(let error):
-                updateError = error.message
-            }
-        }
-    }
-
     /// Cancel on the warning: the preference being created is deleted (with its saved photo
     /// copies; never the Photos library) by the opener, which returns to Choose Preference.
     private func discardPreference() {
@@ -573,12 +582,33 @@ struct PhotoSessionSetupView: View {
     /// Marks a saved preference's photos left out of the analysis by the last person check:
     /// no person or more than one found, or the photo could not be checked. Nothing for valid
     /// (exactly one person) or unchecked photos.
+    /// The last person check of this photo (saved preference only).
+    private func subjectStatus(of photo: PhotoItem) -> HumanSubjectStatus? {
+        guard let id = selection.preferenceID else { return nil }
+        return preferences.subjectValidation(for: id)?.status(of: photo.id)
+    }
+
+    /// Remove Photo on a flagged photo: it leaves the saved preference (never the Photos
+    /// library); the grid shows the rest, ready for a replacement.
+    private func removePhoto(_ photoID: UUID) {
+        guard let id = selection.preferenceID, !selection.isSavingPhotos else { return }
+        selection.isSavingPhotos = true
+        preferences.removePhotoPersisted(photoID, from: id) { result in
+            selection.isSavingPhotos = false
+            switch result {
+            case .success(let preference):
+                withAnimation { selection.reloadSavedPreference(preference) }
+            case .failure(let error):
+                updateError = error.message
+            }
+        }
+    }
+
     @ViewBuilder
     private func subjectBadge(for photo: PhotoItem) -> some View {
-        if let id = selection.preferenceID,
-           let status = preferences.subjectValidation(for: id)?.status(of: photo.id),
-           !status.isValid {
-            let couldNotCheck = status.isProcessingFailure
+        if let status = subjectStatus(of: photo), !status.isValid {
+            // Amber: not decided (could not check, or unsure who the main person is); red: rejected.
+            let couldNotCheck = status.isProcessingFailure || status.isUncertain
             Image(systemName: couldNotCheck ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
                 .font(.system(size: 16, weight: .semibold))
                 .symbolRenderingMode(.palette)
@@ -590,10 +620,11 @@ struct PhotoSessionSetupView: View {
 
     private static func badgeLabel(for status: HumanSubjectStatus) -> String {
         switch status {
-        case .multiplePeopleDetected: return "More than one person in this photo"
+        case .multipleForegroundSubjects: return "More than one person in this photo"
         case .noPersonDetected: return "No person found in this photo"
-        case .imageLoadFailed, .visionFailed: return "This photo couldn't be checked"
-        case .validSinglePerson: return ""
+        case .uncertainForegroundGrouping: return "Couldn't tell who the main person is in this photo"
+        case .imageLoadFailed, .visionFailed, .depthFailed: return "This photo couldn't be checked"
+        case .validSingleForegroundSubject: return ""
         }
     }
 
@@ -718,6 +749,40 @@ final class PhotoSessionSetupSelection {
                 guard assetIdentifiers.insert(sourceAssetIdentifier).inserted else { continue }
             }
             photos.append(photo)
+        }
+    }
+}
+
+/// A photo left out by the person check, with why and what can be done (Photo Session Setup).
+private struct InspectedPhoto {
+    let photoID: UUID
+    let status: HumanSubjectStatus
+
+    /// Uncertain or failed checks may pass on another try; confirmed results will not.
+    var canCheckAgain: Bool { status.isUncertain || status.isProcessingFailure }
+
+    var title: String {
+        switch status {
+        case .uncertainForegroundGrouping: "Main Person Unclear"
+        case .multipleForegroundSubjects: "More Than One Person"
+        case .noPersonDetected: "No Person Found"
+        case .imageLoadFailed, .visionFailed, .depthFailed: "Photo Couldn't Be Checked"
+        case .validSingleForegroundSubject: ""
+        }
+    }
+
+    var message: String {
+        switch status {
+        case .uncertainForegroundGrouping:
+            "This photo has more than one person, and we couldn't confidently tell whether only one of them is in the foreground. It won't be used for your style. Check it again, or replace it with a photo featuring only yourself."
+        case .multipleForegroundSubjects:
+            "This photo has more than one person in the foreground. Please use photos featuring only yourself."
+        case .noPersonDetected:
+            "We couldn't find a person in this photo. Please use photos that clearly show you."
+        case .imageLoadFailed, .visionFailed, .depthFailed:
+            "Something went wrong while checking this photo. Check it again, or replace it."
+        case .validSingleForegroundSubject:
+            ""
         }
     }
 }

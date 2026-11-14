@@ -163,8 +163,8 @@ struct OnboardingFlowView: View {
         }
     }
 
-    /// Continue on "Some Photos Were Excluded": the view model removes the invalid photos (saved)
-    /// and starts the analysis on the rest; a new analysing screen joins that run.
+    /// Continue on "Some Photos Were Excluded": the invalid photos are already removed (saved);
+    /// the view model starts the analysis on the rest and a new analysing screen joins that run.
     private func confirmExclusions() {
         exclusionNotice = nil
         guard !isConfirmingExclusions else { return }

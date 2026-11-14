@@ -64,8 +64,8 @@ final class PreferenceEditorPresenter {
                                                 photos: photos)
         analyzing.modalPresentationStyle = .fullScreen
         analyzing.onFinish = { [weak self, weak analyzing] in
-            // Enough valid photos, some invalid: tell the user, then (Continue) the view model
-            // removes the invalid photos and starts the analysis; a new analysing screen joins it.
+            // Invalid photos were removed (already saved), enough valid ones are left: tell the
+            // user; Continue starts the analysis of the rest and a new analysing screen joins it.
             if let self, let analyzing, let notice = self.preferences.exclusionNotice(for: id) {
                 let alert = UIAlertController(title: HumanSubjectValidationResult.exclusionTitle,
                                               message: notice.exclusionMessage, preferredStyle: .alert)
@@ -92,42 +92,16 @@ final class PreferenceEditorPresenter {
                 analyzing.present(alert, animated: true)
                 return
             }
-            // Too few photos show a person: nothing was analysed. Continue removes the photos
-            // without a person from the preference and returns to the editor underneath to add
-            // more; Try Again (some photos could not be checked) checks every photo again;
-            // Cancel closes the flow and removes nothing.
+            // Fewer than 3 valid photos: nothing was analysed. The confirmed invalid photos were
+            // already removed (and saved) by the check. Continue returns to the editor underneath
+            // (its grid updated) to add more; Cancel closes the flow.
             if let self, let analyzing, let warning = self.preferences.validationFailure(for: id) {
-                let alert = UIAlertController(title: warning.warningTitle,
+                let alert = UIAlertController(title: HumanSubjectValidationResult.warningTitle,
                                               message: warning.warningMessage, preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self, weak analyzing] _ in
-                    guard let self else { return }
-                    self.preferences.removePhotosWithoutPersonPersisted(from: id) { result in
-                        let host = analyzing?.presentingViewController
-                        switch result {
-                        case .success(let preference):
-                            onPhotosCleaned?(preference.photos)
-                            analyzing?.dismiss(animated: true)
-                        case .failure(let error):
-                            analyzing?.dismiss(animated: true) {
-                                let errorAlert = UIAlertController(title: "Something went wrong",
-                                                                   message: error.message, preferredStyle: .alert)
-                                errorAlert.addAction(UIAlertAction(title: "OK", style: .cancel))
-                                host?.present(errorAlert, animated: true)
-                            }
-                        }
-                    }
+                    onPhotosCleaned?(self?.preferences.preference(id: id)?.photos ?? [])
+                    analyzing?.dismiss(animated: true)
                 })
-                if warning.hasProcessingFailures {
-                    alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self, weak analyzing] _ in
-                        guard let self, let analyzing, let host = analyzing.presentingViewController else { return }
-                        analyzing.dismiss(animated: true) {
-                            self.preferences.reanalyze(id: id)
-                            self.presentAnalysis(of: id, photos: photos, over: host,
-                                                 buttonTitle: buttonTitle, onPhotosCleaned: onPhotosCleaned,
-                                                 finish: finish)
-                        }
-                    })
-                }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in finish() })
                 analyzing.present(alert, animated: true)
                 return

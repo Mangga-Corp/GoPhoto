@@ -43,6 +43,20 @@ actor DepthEvidenceModel {
         model = try await SceneModelLoader.load(Self.modelName, configuration: configuration)
     }
 
+    /// The image size the model declares for its input (518x392 for the shipped package), read
+    /// from the model description. Callers that letterbox their image to this exact size get it
+    /// to the model without any further scaling (`scaleFill` of an equal size is the identity).
+    func inputSize() async throws -> (width: Int, height: Int) {
+        try await prepare()
+        guard let model,
+              let constraint = model.modelDescription.inputDescriptionsByName.values
+                .first(where: { $0.type == .image })?.imageConstraint,
+              constraint.pixelsWide > 0, constraint.pixelsHigh > 0 else {
+            throw SceneModelError.unexpectedOutput("Depth: no image input size")
+        }
+        return (constraint.pixelsWide, constraint.pixelsHigh)
+    }
+
     /// Runs the model; if the accelerated path yields a degenerate map, retries
     /// once on the CPU before giving up.
     func estimate(_ image: CGImage) async throws -> DepthGrid {
