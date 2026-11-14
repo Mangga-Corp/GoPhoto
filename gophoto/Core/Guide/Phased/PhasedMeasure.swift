@@ -214,18 +214,32 @@ nonisolated enum PhasedMeasure {
 
     /// The crop that puts the subject where the reference has it: height `c = r` (the subject's span
     /// then fills the reference span), clamped to `[minScale, 1]`, top aligned to the reference top.
-    static func crop(span: Span, subjectMidX: Double, target: PhasedTarget, minScale: Double) -> Crop? {
+    /// `shape`: the photo's shape and the band it must stay in. Its width is `c × widthFactor`, and
+    /// `minScale` (the quality floor of a full-frame-shaped crop) grows so a narrower crop keeps the
+    /// same pixel count. `.fullFrame` is the original 3:4 crop.
+    static func crop(span: Span, subjectMidX: Double, target: PhasedTarget, minScale: Double,
+                     shape: PhasedCropShape = .fullFrame) -> Crop? {
         guard let refSpan = target.span, refSpan > 0 else { return nil }
         let refTop = target.top ?? 0.05, refMid = target.midX ?? 0.5
+        let k = min(1, max(0.01, shape.widthFactor))
+        let floor = shapeMinScale(minScale, shape: shape)
         let raw = span.value / refSpan
-        let c = min(1, max(minScale, raw))
+        let c = min(1, max(floor, raw))
+        let width = c * k
         let wantTop = span.top - refTop * c
-        let wantLeft = subjectMidX - refMid * c
+        let wantLeft = subjectMidX - refMid * width
         let top = min(max(wantTop, 0), 1 - c)
-        let left = min(max(wantLeft, 0), 1 - c)
-        return Crop(rect: CGRect(x: left, y: top, width: c, height: c),
+        let left = min(max(wantLeft, shape.minX), max(shape.minX, shape.maxX - width))
+        return Crop(rect: CGRect(x: left, y: top, width: width, height: c),
                     verticalShift: wantTop - top, horizontalShift: wantLeft - left,
-                    floorLimited: raw < minScale)
+                    floorLimited: raw < floor)
+    }
+
+    /// The crop-height floor for `shape`: a crop `widthFactor` as wide needs `1/√widthFactor` the
+    /// height scale for the same pixel count. Equal to `minScale` for the full frame.
+    static func shapeMinScale(_ minScale: Double, shape: PhasedCropShape) -> Double {
+        let k = min(1, max(0.01, shape.widthFactor))
+        return min(1, minScale / sqrt(k))
     }
 
     /// Whether `crop` (frame units, frame aspect width:height = `aspect`) still lies inside the
