@@ -56,7 +56,7 @@ nonisolated enum PhotoSessionError: Error, Equatable, Sendable {
         case .preferenceNotFound: "This preference no longer exists."
         case .analysisUnavailable: "This preference hasn't been analyzed yet. Try again in a moment."
         case .analysisFailed: "We couldn't analyze this preference's photos. Edit its photos to try again."
-        case .noShotVariant: "We couldn't read the framing of this preference's photos. Add photos that show a person and try again."
+        case .noShotVariant: "We couldn't see a person in these photos. Add clearer photos and try again."
         }
     }
 }

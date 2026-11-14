@@ -41,7 +41,7 @@ struct PhotoResultDetailView: View {
                         EvidenceImageView(image: image, photo: photo, artifacts: artifacts, layers: selectedLayers)
                         if available.isEmpty {
                             Label("No overlays: no measurement from this photo can be drawn.", systemImage: "eye.slash")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(AppFont.footnote).foregroundStyle(.secondary)
                         } else {
                             EvidenceLayerPicker(available: available, selection: $selectedLayers)
                         }
@@ -49,7 +49,7 @@ struct PhotoResultDetailView: View {
                 } else {
                     ResultCard {
                         Label("The original photo could not be loaded, so there is nothing to display.", systemImage: "photo.badge.exclamationmark")
-                            .font(.subheadline)
+                            .font(AppFont.subheadline)
                     }
                 }
 
@@ -69,7 +69,7 @@ struct PhotoResultDetailView: View {
                     DisclosureGroup(isExpanded: $showModelOutput) {
                         ModelOutputSection(photo: photo).padding(.top, 8)
                     } label: {
-                        Label("Model output details", systemImage: "cpu").font(.subheadline.weight(.semibold))
+                        Label("Model output details", systemImage: "cpu").font(AppFont.subheadline.weight(.semibold))
                     }
                 }
             }
@@ -88,12 +88,12 @@ struct PhotoResultDetailView: View {
         ResultCard {
             VStack(alignment: .leading, spacing: 6) {
                 Label("Some analysis steps did not complete", systemImage: "exclamationmark.triangle")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(GoPhotoDesign.warning)
+                    .font(AppFont.subheadline.weight(.semibold)).foregroundStyle(GoPhotoDesign.warning)
                 ForEach(photo.errors, id: \.self) { error in
-                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                    Text(error).font(AppFont.footnote).foregroundStyle(.secondary)
                 }
                 Text("Measurements that did not depend on these steps are unaffected.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(AppFont.footnote).foregroundStyle(.secondary)
             }
         }
     }

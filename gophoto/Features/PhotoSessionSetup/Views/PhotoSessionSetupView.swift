@@ -80,7 +80,8 @@ struct PhotoSessionSetupView: View {
         }
         .appPatternBackground()
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomActions
+            // While the name card is open, only the card is shown (no bottom button).
+            if !isShowingNameModal { bottomActions }
         }
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
@@ -89,17 +90,19 @@ struct PhotoSessionSetupView: View {
             // Back button in the navigation bar, like the Custom Preference steps
             // (Choose a Subject Placement). Asks first if there are unsaved photos.
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: goBack) {
-                    Image(systemName: "chevron.left")
+                if !isShowingNameModal {   // hidden while the name card is open
+                    Button(action: goBack) {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel("Back")
                 }
-                .accessibilityLabel("Back")
             }
         }
         .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
             Button("Leave", role: .destructive) { dismiss() }
             Button("Stay", role: .cancel) { }
         } message: {
-            Text("You have unfinished changes. If you leave now, your selected photos won't be saved.")
+            Text("If you leave now, your selected photos won't be saved.")
         }
         .navigationDestination(isPresented: isShowingCustomPreference) {
             if let customPreferenceFlow {
@@ -128,9 +131,9 @@ struct PhotoSessionSetupView: View {
         } message: {
             Text(updateError ?? "")
         }
-        .alert("Re-analyze the AI preferences", isPresented: $isConfirmingDeletePhotos) {
+        .alert("Update your style?", isPresented: $isConfirmingDeletePhotos) {
             Button("Cancel", role: .destructive) { }
-            Button("Yes") {
+            Button("Continue") {
                 withAnimation {
                     selection.removePhotos(withIDs: selectedPhotoIDs)
                     selectedPhotoIDs.removeAll()
@@ -138,7 +141,7 @@ struct PhotoSessionSetupView: View {
                 }
             }
         } message: {
-            Text("By Delete those picture it will redefined the ai model, are you sure ?")
+            Text("Removing these photos will update your style. Continue?")
         }
     }
 
@@ -149,11 +152,11 @@ struct PhotoSessionSetupView: View {
             HStack(alignment: .center) {
                 // Title and Subtitle
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("AI Preferences")
-                        .font(.system(size: 22, weight: .bold))
+                    Text("Reference Photos")
+                        .font(AppFont.system(size: 22, weight: .bold))
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     Text("\(selection.photos.count)/20")
-                        .font(.system(size: 14, weight: .regular))
+                        .font(AppFont.system(size: 14, weight: .regular))
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                 }
 
@@ -167,10 +170,10 @@ struct PhotoSessionSetupView: View {
                     }
                 } label: {
                     Text(isSelecting ? "Cancel" : "Select")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(AppFont.system(size: 17, weight: .medium))
                         .foregroundStyle(GoPhotoDesign.primaryText)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 26)
+                        .padding(.vertical, 14)
                         .background(Color.white, in: Capsule())
                         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                 }
@@ -184,7 +187,7 @@ struct PhotoSessionSetupView: View {
     private var headerEmpty: some View {
         VStack(spacing: 12) {
             VStack(spacing: 8) {
-                Text("Photo Session Setup")
+                Text("New Preference")
                     .font(GoPhotoDesign.pageTitle)
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .multilineTextAlignment(.center)
@@ -197,13 +200,13 @@ struct PhotoSessionSetupView: View {
 
     private var privacyNote: some View {
         HStack(spacing: 10) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 18, weight: .semibold))
+            Image(systemName: "shield.lefthalf.filled")
+                .font(AppFont.system(size: 18, weight: .semibold))
                 .foregroundStyle(GoPhotoDesign.primary)
 
             Text("Your photos stay on this iPhone. They're analyzed on your device and never uploaded.")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(GoPhotoDesign.primaryText)
+                .font(AppFont.system(size: 15, weight: .regular))
+                .foregroundStyle(GoPhotoDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
@@ -222,7 +225,7 @@ struct PhotoSessionSetupView: View {
                 .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
-            Text("Add at least \(ChoosePhotosViewModel.minPhotos) of your favorite photos to get started.")
+            Text("Add at least \(ChoosePhotosViewModel.minPhotos) photos you love to begin.")
                 .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -249,7 +252,7 @@ struct PhotoSessionSetupView: View {
     }
 
     private func addPhotoTile(width: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         return Button(action: openPicker) {
             shape
                 .fill(GoPhotoDesign.primarySubtle)
@@ -259,10 +262,10 @@ struct PhotoSessionSetupView: View {
                 .overlay {
                     VStack(spacing: 6) {
                         Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .medium))
+                            .font(AppFont.system(size: 24, weight: .medium))
                             .foregroundStyle(GoPhotoDesign.primary)
                         Text("Add photos")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(AppFont.system(size: 12, weight: .medium))
                             .foregroundStyle(GoPhotoDesign.primary)
                     }
                 }
@@ -289,7 +292,7 @@ struct PhotoSessionSetupView: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: width, height: width * 4 / 3)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if isSelecting {
                         ZStack {
@@ -298,7 +301,7 @@ struct PhotoSessionSetupView: View {
                                 .frame(width: 24, height: 24)
                             if isChecked {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(AppFont.system(size: 12, weight: .bold))
                                     .foregroundStyle(.white)
                             } else {
                                 Circle()
@@ -326,7 +329,7 @@ struct PhotoSessionSetupView: View {
                         Image(systemName: "trash")
                         Text("Delete \(selectedPhotoIDs.count) Photos")
                     }
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(AppFont.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
@@ -340,8 +343,8 @@ struct PhotoSessionSetupView: View {
                 Button {
                     isShowingNameModal = true
                 } label: {
-                    Text("Analyze \(selection.photos.count) photos")
-                        .font(.system(size: 16, weight: .semibold))
+                    Text("Analyze \(selection.photos.count) photo\(selection.photos.count == 1 ? "" : "s")")
+                        .font(AppFont.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
@@ -361,7 +364,7 @@ struct PhotoSessionSetupView: View {
                     .padding(.horizontal, GoPhotoDesign.sessionMargin)
                     .padding(.bottom, 8)
 
-                Button("Create a Custom Preference", action: openCustomPreference)
+                Button("Create Custom Preference", action: openCustomPreference)
                     .buttonStyle(.goPhotoText)
                     .padding(.bottom, 12)
             }
@@ -385,20 +388,20 @@ struct PhotoSessionSetupView: View {
 
             // Card
             VStack(alignment: .leading, spacing: 14) {
-                Text("What this collection going to be\n?")
-                    .font(.system(size: 17, weight: .bold))
+                Text("What's this collection for?")
+                    .font(AppFont.system(size: 17, weight: .bold))
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .lineLimit(2)
 
-                Text("“purpose is to know if you are going to take picture based on vacation (beach/OOTD/big statue/city/night life)”")
-                    .font(.system(size: 13, weight: .regular))
+                Text("“For example: beach trip, outfit of the day, city, or night out.”")
+                    .font(AppFont.system(size: 13, weight: .regular))
                     .foregroundStyle(GoPhotoDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Input box
                 HStack {
                     TextField("....", text: $collectionName)
-                        .font(.system(size: 15))
+                        .font(AppFont.system(size: 15))
                         .autocorrectionDisabled()
 
                     if !collectionName.isEmpty {
@@ -420,7 +423,7 @@ struct PhotoSessionSetupView: View {
                         isShowingNameModal = false
                     } label: {
                         Text("Cancel")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(AppFont.system(size: 16, weight: .semibold))
                             .foregroundStyle(GoPhotoDesign.primaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -433,8 +436,8 @@ struct PhotoSessionSetupView: View {
                         isShowingNameModal = false
                         saveAndAnalyze(name: trimmed)
                     } label: {
-                        Text("Save")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text("Continue")
+                            .font(AppFont.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)

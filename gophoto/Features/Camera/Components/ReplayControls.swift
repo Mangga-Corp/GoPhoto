@@ -36,7 +36,7 @@ struct ReplayControls: View {
                     Button("From Photos…", systemImage: "photo.on.rectangle", action: onPickPhotos)
                 } label: {
                     Label(info?.name ?? "Choose video", systemImage: "film")
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote.weight(.semibold))
                         .lineLimit(1)
                         .foregroundStyle(.yellow)
                         .padding(.horizontal, 10)
@@ -46,7 +46,7 @@ struct ReplayControls: View {
                 .accessibilityLabel(info == nil ? "Choose a test video" : "Change test video")
                 if let info {
                     Text(String(format: "%@ / %@", Self.clock(time), Self.clock(info.duration)))
-                        .font(.caption.monospacedDigit())
+                        .font(AppFont.caption.monospacedDigit())
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 Menu {
@@ -59,7 +59,7 @@ struct ReplayControls: View {
                     }
                 } label: {
                     Label("Run all", systemImage: batchStatus == nil ? "square.stack.3d.down.forward" : "stop.circle")
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote.weight(.semibold))
                         .foregroundStyle(batchStatus == nil ? .white : .orange)
                         .padding(.horizontal, 10)
                         .frame(minHeight: 36)
@@ -70,7 +70,7 @@ struct ReplayControls: View {
             }
             if let batchStatus {
                 Text(batchStatus)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
                     .lineLimit(1)
             }
@@ -79,7 +79,7 @@ struct ReplayControls: View {
                 icon("backward.end.fill", "Restart from the beginning", action: onRestart).disabled(info == nil)
                 Button(action: onPlayPause) {
                     Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 52))
+                        .font(AppFont.system(size: 52))
                         .foregroundStyle(.white)
                 }
                 .disabled(info == nil)
@@ -95,7 +95,7 @@ struct ReplayControls: View {
                     }
                 } label: {
                     Image(systemName: scenario == .distanceLocked ? "lock.square" : "eye.square")
-                        .font(.title2)
+                        .font(AppFont.title2)
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                 }
@@ -105,7 +105,7 @@ struct ReplayControls: View {
                 } else {
                     ShareLink(items: exports) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
+                            .font(AppFont.title2)
                             .foregroundStyle(.yellow)
                             .frame(width: 44, height: 44)
                     }
@@ -114,7 +114,7 @@ struct ReplayControls: View {
             }
             if let message {
                 Text(message)
-                    .font(.caption2)
+                    .font(AppFont.caption2)
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -126,7 +126,7 @@ struct ReplayControls: View {
     private func icon(_ name: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: name)
-                .font(.title2)
+                .font(AppFont.title2)
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
         }
@@ -155,7 +155,7 @@ struct ReplayPreview<Overlay: View>: View {
                 } else {
                     Color(white: 0.08).overlay {
                         Text("Choose a video to replay")
-                            .font(.footnote)
+                            .font(AppFont.footnote)
                             .foregroundStyle(.white.opacity(0.7))
                     }
                 }
@@ -175,7 +175,7 @@ struct ReplayBadges: View {
         VStack(spacing: 4) {
             if let maskNote {
                 Text(maskNote)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Color.black.opacity(0.6), in: Capsule())
@@ -190,7 +190,7 @@ struct ReplayBadges: View {
                         .background(Color.orange.opacity(0.85), in: Capsule())
                 }
             }
-            .font(.caption2.weight(.bold))
+            .font(AppFont.caption2.weight(.bold))
             .foregroundStyle(.white)
         }
         .padding(.bottom, 8)

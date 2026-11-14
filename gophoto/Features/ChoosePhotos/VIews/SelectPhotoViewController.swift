@@ -113,12 +113,12 @@ final class SelectPhotoViewController: UIViewController {
         guard selected.isEmpty else {
             if requiresReanalyzeConfirmation {
                 let alert = UIAlertController(
-                    title: "Re-analyze the AI preferences",
-                    message: "By adding those picture it will redefined the ai model, are you sure ?",
+                    title: "Update your style?",
+                    message: "Adding these photos will update your style. Continue?",
                     preferredStyle: .alert
                 )
                 let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
-                let yesAction = UIAlertAction(title: "Yes", style: .default) { [weak self] _ in
+                let yesAction = UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
                     self?.viewModel.done(selectedIndexes: selected)
                 }
                 alert.addAction(cancelAction)
@@ -131,7 +131,7 @@ final class SelectPhotoViewController: UIViewController {
         }
         let alert = UIAlertController(
             title: "No photos selected",
-            message: "This preference won't have any photos. Select at least \(ChoosePhotosViewModel.minPhotos) photos to create it.",
+            message: "Choose at least \(ChoosePhotosViewModel.minPhotos) photos to create it.",
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Keep Selecting", style: .cancel))
         alert.addAction(UIAlertAction(title: "Leave Anyway", style: .destructive) { [weak self] _ in
@@ -165,11 +165,11 @@ final class SelectPhotoViewController: UIViewController {
 
         let message = NSMutableAttributedString(
             string: "You've limited access to selected items. ",
-            attributes: [.font: UIFont.preferredFont(forTextStyle: .subheadline), .foregroundColor: Theme.text])
+            attributes: [.font: UIFont.app(style: .subheadline), .foregroundColor: Theme.text])
         if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
             message.append(NSAttributedString(
                 string: "Settings",
-                attributes: [.font: UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold), .link: settingsURL]))
+                attributes: [.font: UIFont.app(style: .subheadline, weight: .semibold), .link: settingsURL]))
         }
 
         let text = UITextView()

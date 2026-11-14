@@ -75,7 +75,7 @@ struct CustomStyleOptionPage<Option: CustomStyleOption, Artwork: View>: View {
             VStack(spacing: 10) {
                 if let footnote {
                     Text(footnote)
-                        .font(.footnote)
+                        .font(AppFont.footnote)
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -90,7 +90,7 @@ struct CustomStyleOptionPage<Option: CustomStyleOption, Artwork: View>: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text(title)
-                    .font(.headline)
+                    .font(AppFont.headline)
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .lineLimit(1)
                     .opacity(titleCollapse)

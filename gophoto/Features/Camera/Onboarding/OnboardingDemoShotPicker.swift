@@ -27,12 +27,6 @@ struct OnboardingDemoShotPicker: View {
  
     var body: some View {
         VStack(spacing: 6) {
-            Label(isSitting ? CameraOnboardingCopy.sittingCaption : CameraOnboardingCopy.standingCaption,
-                  systemImage: isSitting ? "chair.fill" : "figure.stand")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.7))
-                .contentTransition(.opacity)
- 
             GeometryReader { geometry in
                 HStack(spacing: Self.spacing) {
                     ForEach(options, id: \.self) { shot in
@@ -46,7 +40,7 @@ struct OnboardingDemoShotPicker: View {
                 .animation(.snappy, value: options)
  
                 Image(systemName: "hand.point.up.left.fill")
-                    .font(.system(size: 34))
+                    .font(AppFont.system(size: 34))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
                     .scaleEffect(fingerScale)
@@ -73,13 +67,13 @@ struct OnboardingDemoShotPicker: View {
         let current = options.indices.contains(selectedIndex) ? options[selectedIndex] : options[0]
         let isSelected = shot == current
         return Text(shot.pickerTitle)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isSelected ? Color.black : Color.white.opacity(0.85))
+            .font(AppFont.subheadline.weight(.semibold))
+            .foregroundStyle(isSelected ? GoPhotoDesign.primaryText : Color.white.opacity(0.5))
             .lineLimit(1)
             .padding(.horizontal, 12)
             .frame(height: 32)
             .background {
-                if isSelected { Capsule().fill(Color.white) }
+                if isSelected { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(GoPhotoDesign.background) }
             }
             .frame(width: Self.itemWidth)
             .animation(.smooth(duration: 0.25), value: isSelected)

@@ -51,7 +51,7 @@ struct LightingTipPill: View {
         } icon: {
             Image(systemName: symbol)
         }
-        .font(.subheadline.weight(.semibold))
+        .font(AppFont.subheadline.weight(.semibold))
         .foregroundStyle(.white)
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 14)

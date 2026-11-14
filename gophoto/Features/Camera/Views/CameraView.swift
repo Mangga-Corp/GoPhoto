@@ -163,9 +163,10 @@ struct CameraView: View {
 
             cameraPreview
                 .reportOnboardingFrame(.preview, into: $onboardingFrames)
+                .padding(.horizontal, 20)
                 .layoutPriority(1)   // after the frame report: VStack only sees the outermost priority
 
-            VStack(spacing: 10) {
+            VStack(spacing: 16) {
                 if isDeveloper {
                     ExperimentBar(selection: $viewModel.experiment, depthSupport: viewModel.effectiveDepthSupport) {
                         isShowingExperimentInfo = true
@@ -175,20 +176,11 @@ struct CameraView: View {
                 if viewModel.isReplay {
                     replayControls
                 } else {
-                shutterButton
-                    .reportOnboardingFrame(.shutter, into: $onboardingFrames)
-                    .frame(maxWidth: .infinity)
-                    .overlay(alignment: .leading) {
-                        GalleryShortcutButton { isShowingGallery = true }
-                            .matchedTransitionSource(id: "gallery", in: galleryZoom)
-                            .padding(.leading, 24)
-                    }
-                    .overlay(alignment: .trailing) {
-                        if isDeveloper { blurToggle.padding(.trailing, 16) }
-                    }
+                controlPanel
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // centred in the bottom area
+            .padding(.bottom, 8)
         }
         // Motion runs 30×/s and redraws the camera screen each time: stop it while the gallery
         // covers the camera, otherwise the gallery underneath it is rebuilt 30×/s too (lag).
@@ -272,6 +264,7 @@ struct CameraView: View {
             .overlay(alignment: .bottomLeading) { debugPanel }
             .overlay { flashOverlay }
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .layoutPriority(1)
     }
 
@@ -328,8 +321,6 @@ struct CameraView: View {
                 DistanceBar(sizeRatio: viewModel.phased.sizeRatio.map { $0 / centre },
                             tolerance: (hi - lo) / 2 / centre,
                             isOK: viewModel.phased.sizeRatio.map { $0 >= lo && $0 <= hi } ?? false)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 12)
             }
         } else if activeStep == .heightRule, let rule = viewModel.evaluation.heightRule {
             HeightRuleCard(rule: rule) { viewModel.confirmPhoneHeight() }
@@ -337,15 +328,13 @@ struct CameraView: View {
         } else if activeStep == .distance {
             DistanceBar(sizeRatio: viewModel.barSizeRatio, tolerance: GuideFlow.sizeEnter,
                         isOK: viewModel.evaluation.checks[.distance] == .ok)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 12)
         }
     }
 
     @ViewBuilder private var stepBannerView: some View {
         if let banner = stepBanner {
             Text(banner)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline.weight(.semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(Color.green, in: Capsule())
@@ -385,31 +374,33 @@ struct CameraView: View {
     @ViewBuilder private var instructionPill: some View {
         if viewModel.isPhased {
             VStack(spacing: 6) {
-                PhasedInstructionPill(instruction: viewModel.phasedInstruction)
+                PhasedInstructionPill(instruction: viewModel.phasedInstruction, isPlain: true)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(.black.opacity(0.35))
                     .animation(.snappy, value: viewModel.phasedInstruction)
                 if let flash = viewModel.phasedFlash {
                     // A phase just finished.
                     Label(flash, systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(Color.green.opacity(0.9), in: Capsule())
                         .transition(.scale.combined(with: .opacity))
                 }
             }
-            .padding(.top, 12)
             .animation(.snappy, value: viewModel.phasedFlash)
             .sensoryFeedback(.success, trigger: viewModel.phasedFlash) { _, new in new != nil }
         } else {
-            InstructionPill(instruction: viewModel.instruction)
-                .padding(.top, 12)
+            InstructionPill(instruction: viewModel.instruction, isPlain: true)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(.black.opacity(0.35))
         }
     }
 
     @ViewBuilder private var fovStatus: some View {
         if let status = viewModel.adaptiveFOVStatusText {
             AdaptiveFOVStatus(text: status)
-                .padding(.top, 48)
+                .padding(.top, 52)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
         }
     }
@@ -417,7 +408,7 @@ struct CameraView: View {
     @ViewBuilder private var checklist: some View {
         if showsDebug, !viewModel.guideMode.steps.isEmpty, viewModel.instruction != .findPerson {
             GuideChecklistView(steps: viewModel.guideMode.steps, checks: viewModel.evaluation.checks)
-                .padding(.top, 56)   // below the instruction pill
+                .padding(.top, 60)   // below the instruction strip
         }
     }
 
@@ -466,12 +457,15 @@ struct CameraView: View {
     private var topBar: some View {
         HStack {
             closeButton
+            if !isDeveloper {
+                Spacer()   // the preference name pill below sits in the middle
+            }
             if isDeveloper {
                 Button {
                     isShowingDebug.toggle()
                 } label: {
                     Image(systemName: isShowingDebug ? "ladybug.fill" : "ladybug")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body.weight(.semibold))
                         .foregroundStyle(isShowingDebug ? .yellow : .white)
                         .frame(width: 44, height: 44)
                 }
@@ -483,7 +477,7 @@ struct CameraView: View {
                     }
                 } label: {
                     Image(systemName: poseGuideStyle == .off ? "figure.stand" : "figure.stand.line.dotted.figure.stand")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body.weight(.semibold))
                         .foregroundStyle(poseGuideStyle == .off ? .white : .yellow)
                         .frame(width: 44, height: 44)
                 }
@@ -492,7 +486,7 @@ struct CameraView: View {
                     showsGrid.toggle()
                 } label: {
                     Image(systemName: showsGrid ? "grid.circle.fill" : "grid")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body.weight(.semibold))
                         .foregroundStyle(showsGrid ? .yellow : .white)
                         .frame(width: 44, height: 44)
                 }
@@ -501,7 +495,7 @@ struct CameraView: View {
                     Task { viewModel.isReplay ? await viewModel.exitReplay() : await viewModel.enterReplay() }
                 } label: {
                     Image(systemName: viewModel.isReplay ? "film.fill" : "film")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body.weight(.semibold))
                         .foregroundStyle(viewModel.isReplay ? .yellow : .white)
                         .frame(width: 44, height: 44)
                 }
@@ -510,7 +504,7 @@ struct CameraView: View {
                     viewModel.captureAspect = viewModel.captureAspect.next
                 } label: {
                     Text(viewModel.captureAspect.title)
-                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .font(AppFont.footnote.weight(.semibold).monospacedDigit())
                         .foregroundStyle(viewModel.captureAspect == .fourThree ? .white : .yellow)
                         .padding(.horizontal, 8).frame(height: 28)
                         .overlay(Capsule().stroke(Color.white.opacity(0.6), lineWidth: 1))
@@ -519,25 +513,52 @@ struct CameraView: View {
                 .accessibilityLabel("Photo ratio \(viewModel.captureAspect.title)")
             }
             Spacer()
-            if let zoom = viewModel.currentZoomLabel {
-                Text(zoom)
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Color.black.opacity(0.35), in: Capsule())
-                    .accessibilityLabel("Current camera zoom \(zoom)")
-                    .padding(.trailing, 16)
-            }
         }
         .frame(minHeight: 44)
+        .overlay { if !isDeveloper { preferenceNamePill } }
+        .padding(.bottom, 12)
+    }
+
+    /// The preference in use, centred above the preview. A frosted capsule with a soft purple
+    /// tint, a small sparkle mark and a fine hairline; a label, not a button, so no solid fill.
+    private var preferenceNamePill: some View {
+        let shape = Capsule(style: .continuous)
+        return HStack(spacing: 7) {
+            Image(systemName: "sparkle")
+                .font(AppFont.system(size: 11, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(colors: [.white, GoPhotoDesign.primaryBorder],
+                                   startPoint: .top, endPoint: .bottom))
+            Text(viewModel.presetName ?? "Preference")
+                .font(AppFont.system(size: 15, weight: .semibold))
+                .tracking(0.3)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 36)
+        .background {
+            shape.fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            shape.fill(GoPhotoDesign.primary.opacity(0.32))
+        }
+        .overlay(
+            shape.strokeBorder(
+                LinearGradient(colors: [.white.opacity(0.45), GoPhotoDesign.primaryBorder.opacity(0.12)],
+                               startPoint: .top, endPoint: .bottom),
+                lineWidth: 0.7))
+        .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+        .frame(maxWidth: 230)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Preference \(viewModel.presetName ?? "")")
     }
 
     /// Developer mode only (temporary): background blur Off / On for the next photos.
     private var blurToggle: some View {
         VStack(spacing: 4) {
             Text(viewModel.bokehEnabled ? (viewModel.bokehUsesDepth ? "Blur · Apple" : "Blur · custom") : "Blur")
-                .font(.caption2.weight(.semibold))
+                .font(AppFont.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.8))
             HStack(spacing: 0) {
                 blurOption("Off", on: false)
@@ -553,7 +574,7 @@ struct CameraView: View {
             viewModel.bokehEnabled = on
         } label: {
             Text(title)
-                .font(.footnote.weight(.semibold))
+                .font(AppFont.footnote.weight(.semibold))
                 .foregroundStyle(selected ? .black : .white)
                 .padding(.horizontal, 10)
                 .frame(minWidth: 44, minHeight: 44)
@@ -571,7 +592,7 @@ struct CameraView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -588,7 +609,7 @@ struct CameraView: View {
     @ViewBuilder private var shotSizePicker: some View {
         let options = viewModel.shotOptions
         if let note = viewModel.phasedShotNote {
-            Text(note).font(.caption2).foregroundStyle(.white.opacity(0.7))
+            Text(note).font(AppFont.caption2).foregroundStyle(.white.opacity(0.7))
         }
         if !options.isEmpty {
             ShotSizePicker(options: options, selection: viewModel.activeShot,
@@ -616,14 +637,32 @@ struct CameraView: View {
                        onStopBatch: { viewModel.cancelReplayBatch("stopped by you") })
     }
 
+    /// Dark rounded panel: gallery shortcut, shutter(developer: blur toggle on the right).
+    private var controlPanel: some View {
+        shutterButton
+            .frame(maxWidth: .infinity)
+            .frame(height: 108)
+            .reportOnboardingFrame(.shutter, into: $onboardingFrames)
+            .background(Color(hex: 0x1A1A1A), in: RoundedRectangle(cornerRadius: 40, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 40, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+            .overlay(alignment: .leading) {
+                GalleryShortcutButton { isShowingGallery = true }
+                    .matchedTransitionSource(id: "gallery", in: galleryZoom)
+                    .padding(.leading, 24)
+            }
+            .overlay(alignment: .trailing) {
+                if isDeveloper { blurToggle.padding(.trailing, 16) }
+            }
+            .padding(.horizontal, 20)
+    }
+
     private var shutterButton: some View {
         Button {
             Task { await viewModel.takePhoto() }
         } label: {
-            ZStack {
-                Circle().fill(.white).frame(width: 68, height: 68)
-                Circle().stroke(.white, lineWidth: 4).frame(width: 80, height: 80)
-            }
+            Circle().fill(.white).frame(width: 68, height: 68)
+                .frame(width: 80, height: 80)
+                .contentShape(Circle())
         }
         .disabled(viewModel.isCapturing)
         .opacity(viewModel.isCapturing ? 0.5 : 1)
@@ -634,7 +673,7 @@ struct CameraView: View {
         ContentUnavailableView {
             Label("Camera Access Needed", systemImage: "camera")
         } description: {
-            Text("GoPhoto needs your camera to guide photos. Tap Open Settings, then turn on Camera.")
+            Text("GoPhoto needs your camera to guide you. Open Settings and turn on Camera.")
         } actions: {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {

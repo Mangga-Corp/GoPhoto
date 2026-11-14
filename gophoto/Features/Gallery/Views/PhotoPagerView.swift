@@ -74,7 +74,7 @@ struct PhotoPagerView: View {
                             // Love ungu jika foto ini difavoritkan
                             if favoriteIDs.contains(photo.assetID) {
                                 Image(systemName: "heart.fill")
-                                    .font(.system(size: 20, weight: .bold))
+                                    .font(AppFont.system(size: 20, weight: .bold))
                                     .foregroundStyle(Color(hex: 0x9A69C9))
                                     .frame(width: 42, height: 42)
                                     .background(.ultraThinMaterial, in: Circle())
@@ -135,7 +135,7 @@ struct PhotoPagerView: View {
                 dismiss()
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(AppFont.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
@@ -155,7 +155,7 @@ struct PhotoPagerView: View {
                         toggleFavoriteCurrent()
                     } label: {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(AppFont.system(size: 16, weight: .bold))
                             .foregroundStyle(Color(hex: 0x9A69C9))
                             .frame(width: 44, height: 44)
                             .background(.ultraThinMaterial, in: Circle())
@@ -175,7 +175,7 @@ struct PhotoPagerView: View {
                     }
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(AppFont.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                         .frame(width: 44, height: 44)
                         .background(.ultraThinMaterial, in: Circle())
@@ -200,7 +200,7 @@ struct PhotoPagerView: View {
                 // No-op as requested
             } label: {
                 Image(systemName: "info")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(AppFont.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 48, height: 48)
                     .background(.ultraThinMaterial, in: Circle())
@@ -217,9 +217,9 @@ struct PhotoPagerView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "slider.horizontal.2.square")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(AppFont.system(size: 16, weight: .semibold))
                     Text("Edit")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(AppFont.system(size: 15, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 28)
@@ -235,7 +235,7 @@ struct PhotoPagerView: View {
                 preview: SharePreview("Photo", image: Image(systemName: "photo"))
             ) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(AppFont.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 48, height: 48)
                     .background(.ultraThinMaterial, in: Circle())
@@ -263,12 +263,12 @@ struct PhotoPagerView: View {
             VStack(spacing: 16) {
                 VStack(spacing: 6) {
                     Text("Allow “Pico” to delete\n1 photo?")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(AppFont.system(size: 18, weight: .bold))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                         .multilineTextAlignment(.center)
 
                     Text("These photos will also be deleted from an album.")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(AppFont.system(size: 13, weight: .regular))
                         .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                         .multilineTextAlignment(.center)
                 }
@@ -295,7 +295,7 @@ struct PhotoPagerView: View {
                         }
                     } label: {
                         Text("Don’t Allow")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppFont.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -312,7 +312,7 @@ struct PhotoPagerView: View {
                         }
                     } label: {
                         Text("Delete")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppFont.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)

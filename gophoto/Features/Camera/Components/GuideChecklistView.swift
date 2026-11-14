@@ -26,7 +26,7 @@ struct GuideChecklistView: View {
         let state = isOK ? "done" : isSkipped ? "skipped" : isLocked ? "waiting" : "now"
         Label(step.title, systemImage: symbol)
             .labelStyle(.titleAndIcon)
-            .font(.caption2.weight(.semibold))
+            .font(AppFont.caption2.weight(.semibold))
             .foregroundStyle(color)
             .accessibilityLabel("\(step.title): \(state)")
     }

@@ -55,17 +55,17 @@ enum GoPhotoDesign {
     static let info = Color(hex: 0x1F5FA8)
 
     // MARK: Typography
-    // System font (San Francisco) on Dynamic Type text styles, so every role scales.
+    // App font (see AppFont.swift) on Dynamic Type text styles, so every role scales.
 
-    static let largeTitle = Font.system(.largeTitle, design: .default, weight: .bold)
-    static let pageTitle = Font.system(.title, design: .default, weight: .bold)
-    static let sectionTitle = Font.system(.title3, design: .default, weight: .semibold)
-    static let cardTitle = Font.system(.headline, design: .default, weight: .semibold)
-    static let body = Font.system(.body, design: .default, weight: .regular)
-    static let secondaryBody = Font.system(.subheadline, design: .default, weight: .regular)
-    static let caption = Font.system(.caption, design: .default, weight: .regular)
-    static let buttonLabel = Font.system(.headline, design: .default, weight: .semibold)
-    static let smallLabel = Font.system(.caption, design: .default, weight: .medium)
+    static let largeTitle = AppFont.system(.largeTitle, design: .default, weight: .bold)
+    static let pageTitle = AppFont.system(.title, design: .default, weight: .bold)
+    static let sectionTitle = AppFont.system(.title3, design: .default, weight: .semibold)
+    static let cardTitle = AppFont.system(.headline, design: .default, weight: .semibold)
+    static let body = AppFont.system(.body, design: .default, weight: .regular)
+    static let secondaryBody = AppFont.system(.subheadline, design: .default, weight: .regular)
+    static let caption = AppFont.system(.caption, design: .default, weight: .regular)
+    static let buttonLabel = AppFont.system(.headline, design: .default, weight: .semibold)
+    static let smallLabel = AppFont.system(.caption, design: .default, weight: .medium)
 
     // MARK: Shape & spacing
 

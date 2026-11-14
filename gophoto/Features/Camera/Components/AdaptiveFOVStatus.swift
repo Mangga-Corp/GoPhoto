@@ -11,7 +11,7 @@ struct AdaptiveFOVStatus: View {
     var body: some View {
         Label {
             Text(text)
-                .font(.caption.weight(.medium))
+                .font(AppFont.caption.weight(.medium))
         } icon: {
             Image(systemName: "arrow.left.and.right.magnifyingglass")
         }

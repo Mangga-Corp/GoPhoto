@@ -14,18 +14,18 @@ struct CharacteristicCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Label(kind.title, systemImage: kind.systemImage)
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     EvidenceBadge(assessment)
                 }
 
                 Text(headline(assessment))
-                    .font(.title2.bold())
+                    .font(AppFont.title2.bold())
                     .accessibilityAddTraits(.isHeader)
 
                 Text(assessment.explanation)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -37,7 +37,7 @@ struct CharacteristicCard: View {
                                 Spacer(minLength: 12)
                                 Text(row.value).multilineTextAlignment(.trailing).monospacedDigit()
                             }
-                            .font(.footnote)
+                            .font(AppFont.footnote)
                             .accessibilityElement(children: .combine)
                         }
                     }
@@ -49,14 +49,14 @@ struct CharacteristicCard: View {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(assessment.limitations, id: \.self) { limitation in
                                 Label(limitation, systemImage: "exclamationmark.circle")
-                                    .font(.footnote)
+                                    .font(AppFont.footnote)
                                     .foregroundStyle(.secondary)
                                     .labelStyle(TopAlignedLabelStyle())
                             }
                         }
                         .padding(.top, 4)
                     } label: {
-                        Text("Uncertainty and limitations (\(assessment.limitations.count))").font(.footnote.weight(.medium))
+                        Text("Uncertainty and limitations (\(assessment.limitations.count))").font(AppFont.footnote.weight(.medium))
                     }
                 }
 
@@ -68,7 +68,7 @@ struct CharacteristicCard: View {
                     DisclosureGroup {
                         EvidenceList(references: assessment.evidence).padding(.top, 4)
                     } label: {
-                        Text("Technical evidence").font(.footnote.weight(.medium))
+                        Text("Technical evidence").font(AppFont.footnote.weight(.medium))
                     }
                 }
             }
@@ -230,20 +230,20 @@ struct EvidenceList: View {
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Label(origin.label, systemImage: origin.symbol)
-                            .font(.caption.weight(.semibold))
+                            .font(AppFont.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ForEach(items) { item in
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
-                                    Text(item.label).font(.footnote.weight(.medium))
+                                    Text(item.label).font(AppFont.footnote.weight(.medium))
                                     Text(item.role.label)
-                                        .font(.caption2)
+                                        .font(AppFont.caption2)
                                         .padding(.horizontal, 6).padding(.vertical, 1)
                                         .background(AnalysisResultsPalette.subtleSurface, in: Capsule())
                                 }
-                                Text(item.value).font(.footnote).foregroundStyle(.secondary)
+                                Text(item.value).font(AppFont.footnote).foregroundStyle(.secondary)
                                 if let source = item.source {
-                                    Text("Source: \(source.displayName)").font(.caption2).foregroundStyle(.tertiary)
+                                    Text("Source: \(source.displayName)").font(AppFont.caption2).foregroundStyle(.tertiary)
                                 }
                             }
                             .accessibilityElement(children: .combine)

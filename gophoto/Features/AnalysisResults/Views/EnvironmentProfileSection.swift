@@ -23,11 +23,11 @@ struct EnvironmentProfileSection: View {
     private var introCard: some View {
         ResultCard {
             VStack(alignment: .leading, spacing: 6) {
-                Label("Environment and composition", systemImage: "photo.on.rectangle.angled").font(.headline)
+                Label("Environment and composition", systemImage: "photo.on.rectangle.angled").font(AppFont.headline)
                 Text("Segmentation could be interpreted for \(profile.eligiblePhotoCount) of \(profile.totalPhotoCount) photos.")
-                    .font(.subheadline)
+                    .font(AppFont.subheadline)
                 Text("Composition tendencies can be used in any scene. Scene tendencies describe your reference photos and only apply when the same kind of environment is present.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(AppFont.footnote).foregroundStyle(.secondary)
             }
         }
     }
@@ -38,8 +38,8 @@ struct EnvironmentProfileSection: View {
         let t = profile.transferable
         return ResultCard {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Composition (any scene)", systemImage: "arrow.left.and.right.square").font(.headline)
-                Text(t.note).font(.footnote).foregroundStyle(.secondary)
+                Label("Composition (any scene)", systemImage: "arrow.left.and.right.square").font(AppFont.headline)
+                Text(t.note).font(AppFont.footnote).foregroundStyle(.secondary)
 
                 FindingSection(title: "Subject scale", systemImage: "person.crop.rectangle", finding: t.subjectScale,
                                coverage: nil, order: [.small, .moderate, .large], label: { $0.label },
@@ -63,7 +63,7 @@ struct EnvironmentProfileSection: View {
                 }
                 if t.borderlinePhotoCount > 0 {
                     Text("\(t.borderlinePhotoCount) photo(s) sat close to a band threshold; their labels carry less weight.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppFont.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -76,10 +76,10 @@ struct EnvironmentProfileSection: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(String(format: "%.1f× median", s.median)).monospacedDigit()
                 Text(s.count < 2 ? "1 photo" : String(format: "%.1f× to %.1f× (%d photos)", s.minimum, s.maximum, s.count))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppFont.caption).foregroundStyle(.secondary)
             }
         }
-        .font(.footnote)
+        .font(AppFont.footnote)
         .accessibilityElement(children: .combine)
     }
 
@@ -89,8 +89,8 @@ struct EnvironmentProfileSection: View {
         let s = profile.sceneDependent
         return ResultCard {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Scene-dependent tendencies", systemImage: "tree").font(.headline)
-                Text(s.note).font(.footnote).foregroundStyle(.secondary)
+                Label("Scene-dependent tendencies", systemImage: "tree").font(AppFont.headline)
+                Text(s.note).font(AppFont.footnote).foregroundStyle(.secondary)
 
                 FindingSection(title: "Kind of place", systemImage: "mappin.and.ellipse", finding: s.sceneCategory,
                                coverage: nil,
@@ -106,17 +106,17 @@ struct EnvironmentProfileSection: View {
                 if !s.groupTendencies.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Elements that appear").font(.subheadline.weight(.semibold))
+                        Text("Elements that appear").font(AppFont.subheadline.weight(.semibold))
                         ForEach(s.groupTendencies.prefix(6)) { tendencyRow($0) }
                         Text("Each rate counts only the photos that can speak to that element (up to \(profile.eligiblePhotoCount)). \"Dominant when present\" uses only the photos where it appears. Photos where the model's reading was set aside or too incomplete are left out, never counted as absent.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(AppFont.caption).foregroundStyle(.secondary)
                     }
                 }
 
                 if !s.placements.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Where recurring elements sit").font(.subheadline.weight(.semibold))
+                        Text("Where recurring elements sit").font(AppFont.subheadline.weight(.semibold))
                         ForEach(s.placements.prefix(5)) { placementRow($0) }
                     }
                 }
@@ -127,24 +127,24 @@ struct EnvironmentProfileSection: View {
     private func tendencyRow(_ t: ElementTendency) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(t.label).font(.subheadline.weight(.medium))
+                Text(t.label).font(AppFont.subheadline.weight(.medium))
                 Text(t.pattern.label)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2.weight(.semibold))
                     .foregroundStyle(t.pattern == .recurring ? GoPhotoDesign.success : GoPhotoDesign.secondaryText)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background((t.pattern == .recurring ? GoPhotoDesign.success : GoPhotoDesign.secondaryText).opacity(0.14), in: Capsule())
                 Spacer(minLength: 8)
-                Text("\(t.presentCount) of \(t.eligiblePhotoCount)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                Text("\(t.presentCount) of \(t.eligiblePhotoCount)").font(AppFont.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
             if t.presentCount > 0 {
-                Text(dominanceLine(t)).font(.caption).foregroundStyle(.secondary)
+                Text(dominanceLine(t)).font(AppFont.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 22, maximum: 22), spacing: 4)],
                       alignment: .leading, spacing: 4) {
                 ForEach(t.presentPhotoIDs, id: \.self) { PhotoThumb(image: thumbnail($0), size: 22) }
             }
-            Text(t.condition).font(.caption2).foregroundStyle(.tertiary)
+            Text(t.condition).font(AppFont.caption2).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
@@ -163,12 +163,12 @@ struct EnvironmentProfileSection: View {
         if let h, let v { zone = "\(h.key.label.lowercased()) · \(v.key.label.lowercased())" }
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(p.label).font(.subheadline.weight(.medium))
+                Text(p.label).font(AppFont.subheadline.weight(.medium))
                 Spacer(minLength: 8)
-                Text("\(p.sampleCount) photos").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                Text("\(p.sampleCount) photos").font(AppFont.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
-            Text("Most often \(zone) · \(p.consistency.label.lowercased())").font(.caption).foregroundStyle(.secondary)
-            Text(p.condition).font(.caption2).foregroundStyle(.tertiary)
+            Text("Most often \(zone) · \(p.consistency.label.lowercased())").font(AppFont.caption).foregroundStyle(.secondary)
+            Text(p.condition).font(AppFont.caption2).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
@@ -179,20 +179,20 @@ struct EnvironmentProfileSection: View {
     private var coverageCard: some View {
         ResultCard {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Coverage and limits", systemImage: "exclamationmark.circle").font(.headline)
+                Label("Coverage and limits", systemImage: "exclamationmark.circle").font(AppFont.headline)
                 ForEach(EnvironmentFacet.allCases) { facet in
                     if let c = profile.coverage[facet] {
                         HStack {
-                            Text(facet.title).font(.footnote)
+                            Text(facet.title).font(AppFont.footnote)
                             Spacer()
                             Text("\(c.determinedCount) of \(c.totalPhotos) photos")
-                                .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                                .font(AppFont.footnote.monospacedDigit()).foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)
                     }
                 }
                 ForEach(profile.limitations, id: \.self) { limitation in
-                    Text("• " + limitation).font(.footnote).foregroundStyle(.secondary)
+                    Text("• " + limitation).font(AppFont.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

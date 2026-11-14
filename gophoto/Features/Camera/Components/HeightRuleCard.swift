@@ -28,10 +28,10 @@ struct HeightRuleCard: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(title)
-                    .font(.headline)
+                    .font(AppFont.headline)
                     .foregroundStyle(.white)
                 Text("Hold the phone at this height, then keep it there.")
-                    .font(.caption)
+                    .font(AppFont.caption)
                     .foregroundStyle(.white.opacity(0.8))
                 Button("Done", action: onDone)
                     .buttonStyle(.borderedProminent)

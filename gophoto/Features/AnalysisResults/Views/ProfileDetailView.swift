@@ -43,9 +43,9 @@ struct ProfileDetailView: View {
                 ResultCard {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Based on \(profile.photosWithValidEvidenceCount) of \(profile.totalPhotoCount) photos")
-                            .font(.headline)
+                            .font(AppFont.headline)
                         Text("A pattern needs the same result in at least two photos. Photos without evidence for a characteristic are left out of it, never counted against it.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(AppFont.footnote).foregroundStyle(.secondary)
                     }
                 }
 
@@ -71,7 +71,7 @@ struct ProfileDetailView: View {
                             if let pitch = viewpoint.pitchDown, pitch.count >= 2 {
                                 Text(String(format: "Phone tilt across %ld photos: typically %.0f° %@ (estimated, typical phone lens).",
                                             pitch.count, abs(pitch.median), pitch.median >= 0 ? "down" : "up"))
-                                    .font(.footnote).foregroundStyle(.secondary)
+                                    .font(AppFont.footnote).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -95,9 +95,9 @@ struct ProfileDetailView: View {
                 if !profile.limitations.isEmpty {
                     ResultCard {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("Limitations", systemImage: "exclamationmark.circle").font(.headline)
+                            Label("Limitations", systemImage: "exclamationmark.circle").font(AppFont.headline)
                             ForEach(profile.limitations, id: \.self) { limitation in
-                                Text("• " + limitation).font(.footnote).foregroundStyle(.secondary)
+                                Text("• " + limitation).font(AppFont.footnote).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -133,12 +133,12 @@ struct ProfileDetailView: View {
                 if !dots.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Subject centres").font(.subheadline.weight(.semibold))
+                        Text("Subject centres").font(AppFont.subheadline.weight(.semibold))
                         PositionMap(dots: dots, typical: m.typicalCenter)
                         Text(m.typicalCenter == nil
                              ? "Subject centres do not agree closely enough to state a typical position."
                              : "The dashed circle marks the typical centre where photos agree.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(AppFont.caption).foregroundStyle(.secondary)
                     }
                     VStack(spacing: 6) {
                         SummaryRow(label: "Center X", summary: m.centerX, consistency: m.centerXConsistency)
@@ -170,7 +170,7 @@ struct ProfileDetailView: View {
                         SummaryRow(label: "Surroundings nearer", summary: d.fractionEnvironmentNearer)
                         SummaryRow(label: "Surroundings farther", summary: d.fractionEnvironmentFarther)
                     }
-                    Text("Relative depth within each photo, not distance.").font(.caption).foregroundStyle(.secondary)
+                    Text("Relative depth within each photo, not distance.").font(AppFont.caption).foregroundStyle(.secondary)
                 }
             }
         }

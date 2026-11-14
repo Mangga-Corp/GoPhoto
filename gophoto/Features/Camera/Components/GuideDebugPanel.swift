@@ -13,12 +13,12 @@ struct GuideDebugPanel: View {
             // The guide picker moved to the camera screen (ExperimentBar, appMode 2).
             HStack(spacing: 10) {
                 Text(viewModel.experiment.label)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption.weight(.semibold))
                     .foregroundStyle(.yellow)
                 if let url = viewModel.guideLog?.fileURL {
                     ShareLink(item: url) {
                         Label("Share log", systemImage: "square.and.arrow.up")
-                            .font(.caption2.weight(.semibold))
+                            .font(AppFont.caption2.weight(.semibold))
                     }
                     .tint(.yellow)
                 }
@@ -28,7 +28,7 @@ struct GuideDebugPanel: View {
             }
             if !viewModel.isPhased, !viewModel.guideMode.steps.isEmpty {
                 Toggle("Keep finished steps", isOn: $viewModel.latchSteps)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2.weight(.semibold))
                     .tint(.yellow)
                     .fixedSize()
             }
@@ -69,10 +69,10 @@ struct GuideDebugPanel: View {
                 Button("Analysis details", action: onShowDetails)
                 Button("Per shot size", action: onShowShots)
             }
-            .font(.caption2.weight(.semibold))
+            .font(AppFont.caption2.weight(.semibold))
             .padding(.top, 2)
         }
-        .font(.caption2.monospacedDigit())
+        .font(AppFont.caption2.monospacedDigit())
         .foregroundStyle(.white)
         .padding(8)
         .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))

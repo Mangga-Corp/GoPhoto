@@ -27,7 +27,7 @@ enum GuidanceAnimationStyle {
     static let guideColor = UIColor(red: 0.98, green: 0.78, blue: 0.46, alpha: 1)
     static let arrowColor = Color(red: 0.98, green: 0.78, blue: 0.46)
 
-    static let tiltView: TiltView = .angledRight45
+    static let tiltView: TiltView = .angledRight45   // yaw -45°: phone turned 45°, screen facing left
     static let heightYawDegrees: Double = -20
     static let tiltStepDegrees: Double = 5
 }
@@ -68,40 +68,13 @@ struct RacingChevronShape: Shape {
     }
 }
 
-/// Deretan 3 racing chevron bertingkat asli untuk height (tidak diganti)
+/// Height: a slim straight arrow (up = raise the phone, down = lower it).
 struct RacingArrowView: View {
     let direction: RacingArrowDirection
     var color: Color = GuidanceAnimationStyle.arrowColor
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let progress = (time.truncatingRemainder(dividingBy: 0.85)) / 0.85
-
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { index in
-                    let chevronOffset = Double(index) / 3.0
-                    let localPhase = (progress - chevronOffset + 1.0).truncatingRemainder(dividingBy: 1.0)
-                    let brightness = 0.35 + 0.65 * pow(sin(localPhase * .pi), 2)
-
-                    RacingChevronShape()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.opacity(min(brightness * 1.25, 1.0)),
-                                    color.opacity(brightness * 0.75)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: 14, height: 22)
-                        .shadow(color: Color.black.opacity(0.45), radius: 3, x: 0, y: 1)
-                        .scaleEffect(0.90 + 0.10 * brightness)
-                }
-            }
-            .rotationEffect(direction.rotation)
-        }
+        MinimalGuidanceArrow(pointsUp: direction == .up, curve: 0, color: color)
     }
 }
 
@@ -128,59 +101,99 @@ struct RacingChevronItem: View {
     }
 }
 
-/// Arrow melengkung diatas HP HANYA saat tilting dengan 3 racing chevron yang melengkung mengikuti arah tilt
-/// dan animasi bertahap seperti loading yang looping selama bimbingan muncul.
+/// Tilt: the same slim arrow with a gentle bow, to say "turn", not "move".
+/// Up = aim the phone higher, down = aim it lower. It only ever points up or down, so it can't be
+/// read as left / right. The caller puts it above the phone for up and below it for down.
 struct CurvedRacingArrowView: View {
     let direction: Direction
     var color: Color = GuidanceAnimationStyle.arrowColor
     var speedMultiplier: Double = 1.0
 
-    // Siklus animasi yang tidak terlalu cepat dan tidak terlalu pelan (~1.3 detik)
-    private let cycleDuration: Double = 1.30
+    var body: some View {
+        MinimalGuidanceArrow(pointsUp: direction == .up, curve: 0, color: color, speed: speedMultiplier)
+    }
+}
+
+/// A thin, elegant arrow that draws itself along its line, holds, and fades; repeats.
+/// `curve` bows the line sideways (points); 0 = straight.
+struct MinimalGuidanceArrow: View {
+    let pointsUp: Bool
+    var curve: CGFloat = 0
+    var color: Color = GuidanceAnimationStyle.arrowColor
+    var speed: Double = 1.0
+
+    private let cycle: Double = 1.35
+    private let size = CGSize(width: 40, height: 64)
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate * speedMultiplier
-            let progress = (time.truncatingRemainder(dividingBy: cycleDuration)) / cycleDuration
-
-            ZStack {
-                ForEach(0..<3, id: \.self) { index in
-                    // Animasi seperti loading: chevron menyala berurutan (0 -> 1 -> 2)
-                    let start = Double(index) * 0.22
-                    let localPhase = max(0.0, min(1.0, (progress - start) / 0.45))
-                    let brightness = 0.25 + 0.75 * sin(localPhase * .pi)
-
-                    let (offset, rotation) = chevronTransform(for: index, direction: direction)
-
-                    RacingChevronItem(brightness: brightness, color: color)
-                        .rotationEffect(rotation)
-                        .offset(offset)
-                }
+            let time = timeline.date.timeIntervalSinceReferenceDate * speed
+            let phase = time.truncatingRemainder(dividingBy: cycle) / cycle
+            Canvas { context, canvasSize in
+                draw(&context, in: canvasSize, phase: phase)
             }
-            .frame(width: 80, height: 44)
+            .frame(width: size.width, height: size.height)
         }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
-    /// Menghitung posisi dan rotasi masing-masing chevron agar melengkung ke kanan-bawah atau kiri-bawah (tidak ada yang ke atas)
-    private func chevronTransform(for index: Int, direction: Direction) -> (CGSize, Angle) {
-        switch direction {
-        case .down:
-            // Melengkung ke KANAN BAWAH (mengalir dari atas-kiri ke kanan-bawah)
-            switch index {
-            case 0: return (CGSize(width: 5, height: 0), .degrees(20))
-            case 1: return (CGSize(width: 25, height: 8), .degrees(45))
-            case 2: return (CGSize(width: 45, height: 18), .degrees(70))
-            default: return (.zero, .zero)
-            }
-        case .up:
-            // Melengkung ke KIRI BAWAH (mengalir dari atas-kanan ke kiri-bawah, tidak ada yang ke atas)
-            switch index {
-            case 0: return (CGSize(width: -5, height: 0), .degrees(160))
-            case 1: return (CGSize(width: -25, height: 8), .degrees(135))
-            case 2: return (CGSize(width: -45, height: 18), .degrees(110))
-            default: return (.zero, .zero)
+    /// Loading-style flow: a bright comet runs from tail to tip over a faint track, then the
+    /// arrowhead pulses as it arrives. Loops continuously.
+    private func draw(_ context: inout GraphicsContext, in canvasSize: CGSize, phase: Double) {
+        let margin: CGFloat = 6
+        let tail = CGPoint(x: canvasSize.width / 2, y: pointsUp ? canvasSize.height - margin : margin)
+        let tip = CGPoint(x: canvasSize.width / 2, y: pointsUp ? margin : canvasSize.height - margin)
+        let control = CGPoint(x: canvasSize.width / 2 + curve, y: (tail.y + tip.y) / 2)
+
+        func point(_ t: CGFloat) -> CGPoint {
+            let u = 1 - t
+            return CGPoint(x: u * u * tail.x + 2 * u * t * control.x + t * t * tip.x,
+                           y: u * u * tail.y + 2 * u * t * control.y + t * t * tip.y)
+        }
+        func path(from a: CGFloat, to b: CGFloat) -> Path {
+            var p = Path()
+            let steps = 28
+            p.move(to: point(a))
+            for i in 1...steps { p.addLine(to: point(a + (b - a) * CGFloat(i) / CGFloat(steps))) }
+            return p
+        }
+
+        let head = CGFloat(min(phase * 1.25, 1))
+        let trail = CGFloat(max(0, (phase - 0.4) * 1.25))
+        let arrival = max(0, min(1, (phase - 0.6) / 0.4))
+        let pulse = 0.45 + 0.55 * sin(arrival * .pi)
+
+        var layer = context
+        layer.addFilter(.shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1))
+
+        // Faint static track.
+        layer.stroke(path(from: 0, to: 1), with: .color(color.opacity(0.25)),
+                     style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
+
+        // Flowing comet: three segments, brighter toward the head.
+        if head > trail + 0.01 {
+            for i in 0..<3 {
+                let s0 = trail + (head - trail) * CGFloat(i) / 3
+                let s1 = trail + (head - trail) * CGFloat(i + 1) / 3
+                layer.stroke(path(from: s0, to: s1),
+                             with: .color(color.opacity(0.35 + 0.325 * Double(i + 1))),
+                             style: StrokeStyle(lineWidth: 3.2 + 0.6 * CGFloat(i), lineCap: .round))
             }
         }
+
+        // Filled chevron head at the tip, pulsing on arrival.
+        let dir: CGFloat = pointsUp ? -1 : 1
+        let end = tip
+        var chevron = Path()
+        chevron.move(to: CGPoint(x: end.x, y: end.y + dir * 3))
+        chevron.addLine(to: CGPoint(x: end.x - 9, y: end.y - dir * 8))
+        chevron.addLine(to: CGPoint(x: end.x, y: end.y - dir * 4))
+        chevron.addLine(to: CGPoint(x: end.x + 9, y: end.y - dir * 8))
+        chevron.closeSubpath()
+        layer.opacity = pulse
+        layer.addFilter(.shadow(color: color.opacity(0.7), radius: 4))
+        layer.fill(chevron, with: .color(color))
     }
 }
 
@@ -237,26 +250,6 @@ struct GuidanceMotionOverlay: View {
                         .position(x: gridLineX, y: centerY)
                         .transition(.opacity)
                 }
-
-                // 3. Dynamic Arrow:
-                // - Saat tilting: arrow berada DI ATASNYA dan MELENGKUNG mengikuti arah tilting (menempel lebih dekat)
-                // - Saat height: arrow asli sebelumnya (tidak diganti)
-                if isAnimationVisible, let motion {
-                    switch motion {
-                    case .tilt(let direction, _, _):
-                        CurvedRacingArrowView(direction: direction)
-                            .position(x: gridLineX, y: centerY - (height / 2) + 5)
-                            .transition(.opacity)
-
-                    case .height(let direction):
-                        let arrowDir: RacingArrowDirection = (direction == .up) ? .up : .down
-                        let pos = arrowPosition(for: arrowDir, phoneX: gridLineX, phoneY: centerY,
-                                                phoneWidth: width, phoneHeight: height)
-                        RacingArrowView(direction: arrowDir)
-                            .position(pos)
-                            .transition(.opacity)
-                    }
-                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -297,7 +290,7 @@ struct GuidanceMotionOverlay: View {
         phoneWidth: CGFloat,
         phoneHeight: CGFloat
     ) -> CGPoint {
-        let spacing: CGFloat = 26
+        let spacing: CGFloat = 34
         switch direction {
         case .up:
             // Panah naik diatas handphone

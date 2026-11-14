@@ -96,7 +96,7 @@ struct OnboardingFlowView: View {
         .onAppear {
             if style != nil { onAnalysisCompleted() }
         }
-        .alert("Couldn't start shooting", isPresented: Binding(get: { finishError != nil },
+        .alert("Couldn't open the camera", isPresented: Binding(get: { finishError != nil },
                                                               set: { if !$0 { finishError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -142,15 +142,15 @@ private struct AnalysisRetryScreen: View {
         VStack(spacing: 18) {
             Image(systemName: failure == .noUsableFraming ? "person.fill.questionmark"
                                                           : "exclamationmark.triangle")
-                .font(.system(size: 36))
+                .font(AppFont.system(size: 36))
                 .foregroundStyle(failure == .noUsableFraming ? GoPhotoDesign.secondaryText : GoPhotoDesign.warning)
             Text(failure == .noUsableFraming ? "We couldn't find a person in these photos."
-                                             : "We couldn't finish your photo analysis.")
+                                             : "We couldn't read your photos.")
                 .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
             Text(failure == .noUsableFraming ? "Choose photos that clearly show one person."
-                                             : "Your photos are saved. Try the analysis again.")
+                                             : "Your photos are safe. Please try again.")
                 .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -165,7 +165,7 @@ private struct AnalysisRetryScreen: View {
             #if DEBUG
             if DebugFixtures.storeName != nil {
                 Text("analysisRuns=\(PreferencesViewModel.shared.analysisRunCount)")
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(AppFont.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("debug.analysisRuns")
             }

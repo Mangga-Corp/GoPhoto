@@ -56,7 +56,7 @@ struct ExperimentBar: View {
 
             Button(action: onInfo) {
                 Image(systemName: "info.circle")
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
             }
@@ -66,8 +66,8 @@ struct ExperimentBar: View {
 
     private func chip(_ caption: String, _ value: String) -> some View {
         VStack(spacing: 1) {
-            Text(caption).font(.caption2).foregroundStyle(.white.opacity(0.7))
-            Text(value).font(.footnote.weight(.semibold)).foregroundStyle(.yellow)
+            Text(caption).font(AppFont.caption2).foregroundStyle(.white.opacity(0.7))
+            Text(value).font(AppFont.footnote.weight(.semibold)).foregroundStyle(.yellow)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 12)
@@ -87,17 +87,17 @@ struct ExperimentInfoSheet: View {
         NavigationStack {
             List {
                 Section("Now") {
-                    Text(selection.label).font(.headline)
+                    Text(selection.label).font(AppFont.headline)
                 }
                 Section("Guide") {
                     ForEach(ExperimentGuide.allCases) { guide in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(guide.title).font(.subheadline.weight(.semibold))
-                            Text(guide.summary).font(.footnote).foregroundStyle(.secondary)
+                            Text(guide.title).font(AppFont.subheadline.weight(.semibold))
+                            Text(guide.summary).font(AppFont.footnote).foregroundStyle(.secondary)
                             if guide.usesDepth {
                                 Text(depthSupport.available ? "Available on this iPhone · photos about 12 MP"
                                                             : "Not available: \(depthSupport.note)")
-                                    .font(.footnote.weight(.semibold))
+                                    .font(AppFont.footnote.weight(.semibold))
                                     .foregroundStyle(depthSupport.available ? Color.green : Color.orange)
                             }
                         }
@@ -107,8 +107,8 @@ struct ExperimentInfoSheet: View {
                 Section {
                     ForEach(FramingPolicy.allCases) { framing in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(framing.title).font(.subheadline.weight(.semibold))
-                            Text(framing.summary).font(.footnote).foregroundStyle(.secondary)
+                            Text(framing.title).font(AppFont.subheadline.weight(.semibold))
+                            Text(framing.summary).font(AppFont.footnote).foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 2)
                     }
@@ -125,7 +125,7 @@ struct ExperimentInfoSheet: View {
                 }
                 Section("Log") {
                     Text("Every instruction change and every shutter is logged with the guide and framing (debug panel → Share log).")
-                        .font(.footnote)
+                        .font(AppFont.footnote)
                 }
             }
             .navigationTitle("Guides")

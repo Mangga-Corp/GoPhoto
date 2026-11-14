@@ -62,7 +62,7 @@ final class CustomPreferenceFlowModel {
     func create() {
         guard let style, !isSaving else { return }
         guard !existingStyles.contains(style) else {
-            errorMessage = "This combination has already been created. Delete the existing preference first to create it again."
+            errorMessage = "You already made this one. Delete it first to make it again."
             return
         }
         isSaving = true

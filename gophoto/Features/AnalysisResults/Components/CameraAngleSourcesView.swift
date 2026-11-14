@@ -47,20 +47,20 @@ struct CameraAngleSourcesView: View {
                 if let decision = result.decision {
                     ForEach(decision.conflicts, id: \.self) { conflict in
                         Label(conflict, systemImage: "arrow.left.arrow.right")
-                            .font(.caption).foregroundStyle(GoPhotoDesign.warning).labelStyle(TopAlignedLabelStyle())
+                            .font(AppFont.caption).foregroundStyle(GoPhotoDesign.warning).labelStyle(TopAlignedLabelStyle())
                     }
                     ForEach(decision.notes, id: \.self) { note in
                         Label(note, systemImage: "info.circle")
-                            .font(.caption).foregroundStyle(.secondary).labelStyle(TopAlignedLabelStyle())
+                            .font(AppFont.caption).foregroundStyle(.secondary).labelStyle(TopAlignedLabelStyle())
                     }
                 }
                 Text("Camera angle is inferred from these cues. It is not a direct measurement, and no angle in degrees is claimed.")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                    .font(AppFont.caption2).foregroundStyle(.tertiary)
             }
             .padding(.top, 6)
         } label: {
             Text("How this was assessed (\(usable) of \(result.observations.count) sources usable)")
-                .font(.footnote.weight(.medium))
+                .font(AppFont.footnote.weight(.medium))
         }
     }
 
@@ -75,13 +75,13 @@ struct CameraAngleSourcesView: View {
             Image(systemName: symbol).foregroundStyle(color).frame(width: 18).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(o.provider.title).font(.footnote.weight(.semibold))
-                    Text(roleLabel(o, used: used)).font(.caption2.weight(.medium))
+                    Text(o.provider.title).font(AppFont.footnote.weight(.semibold))
+                    Text(roleLabel(o, used: used)).font(AppFont.caption2.weight(.medium))
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(AnalysisResultsPalette.subtleSurface, in: Capsule())
                 }
                 Text(o.validity.isValid ? o.summary : (o.validity.reason ?? o.summary))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppFont.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

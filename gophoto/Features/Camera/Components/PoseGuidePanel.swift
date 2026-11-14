@@ -70,7 +70,7 @@ struct PoseGuidePanel: View {
             }
             .background(PoseColors.scene, in: RoundedRectangle(cornerRadius: 10))
             Text(state.instruction)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption.weight(.semibold))
                 .foregroundStyle(state.isOK ? PoseColors.ok : .white)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
@@ -156,7 +156,7 @@ private enum PoseDraw {
     /// Text in screen points (not scaled with the drawing), at a view-box position.
     static func label(_ ctx: GraphicsContext, _ text: String, at p: CGPoint, scale: Double, color: Color,
                       anchor: UnitPoint = .leading) {
-        ctx.draw(Text(text).font(.system(size: 10, weight: .semibold)).foregroundStyle(color),
+        ctx.draw(Text(text).font(AppFont.system(size: 10, weight: .semibold)).foregroundStyle(color),
                  at: CGPoint(x: p.x * scale, y: p.y * scale), anchor: anchor)
     }
 }

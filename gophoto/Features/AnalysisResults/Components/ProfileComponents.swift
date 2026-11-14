@@ -30,7 +30,7 @@ struct CoverageSummary: View {
         VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: coverage.fraction)
                 .tint(coverage.determinedCount == 0 ? GoPhotoDesign.secondaryText : GoPhotoDesign.primary)
-            Text(text).font(.caption).foregroundStyle(.secondary)
+            Text(text).font(AppFont.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -58,11 +58,11 @@ struct FindingSection<Category: Hashable & Sendable>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Label(title, systemImage: systemImage).font(.headline)
+                Label(title, systemImage: systemImage).font(AppFont.headline)
                 patternBadge
             }
 
-            Text(finding.summary).font(.subheadline).foregroundStyle(.secondary)
+            Text(finding.summary).font(AppFont.subheadline).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             let present = order.filter { (finding.counts[$0] ?? 0) > 0 }
@@ -76,7 +76,7 @@ struct FindingSection<Category: Hashable & Sendable>: View {
             if !finding.excludedPhotoIDs.isEmpty {
                 Label("\(finding.excludedPhotoIDs.count) photo(s) had no valid evidence and are not counted for or against any category.",
                       systemImage: "minus.circle")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppFont.caption).foregroundStyle(.secondary)
                     .labelStyle(TopAlignedLabelStyle())
             }
             if showCoverage, let coverage { CoverageSummary(coverage: coverage) }
@@ -88,7 +88,7 @@ struct FindingSection<Category: Hashable & Sendable>: View {
             ? "\(finding.pattern.label) · \(finding.strength.label)" : finding.pattern.label
         let color: Color = finding.pattern == .recurring ? GoPhotoDesign.success : (finding.pattern == .mixed ? GoPhotoDesign.warning : GoPhotoDesign.secondaryText)
         return Text(text)
-            .font(.caption.weight(.semibold))
+            .font(AppFont.caption.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(color.opacity(0.14), in: Capsule())
@@ -103,11 +103,11 @@ struct FindingSection<Category: Hashable & Sendable>: View {
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label(category)).font(.subheadline.weight(isDominant ? .bold : .regular))
+                Text(label(category)).font(AppFont.subheadline.weight(isDominant ? .bold : .regular))
                 if isDominant { tag("Dominant", GoPhotoDesign.success) }
                 else if isIsolated { tag("Isolated", GoPhotoDesign.secondaryText) }
                 Spacer(minLength: 8)
-                Text("\(count) of \(finding.validObservationCount)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                Text("\(count) of \(finding.validObservationCount)").font(AppFont.footnote.monospacedDigit()).foregroundStyle(.secondary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -128,7 +128,7 @@ struct FindingSection<Category: Hashable & Sendable>: View {
     }
 
     private func tag(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.caption2.weight(.semibold)).foregroundStyle(color)
+        Text(text).font(AppFont.caption2.weight(.semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.14), in: Capsule())
     }
@@ -162,7 +162,7 @@ struct PositionMap: View {
                 ForEach(dots) { dot in
                     ZStack {
                         Circle().fill(GoPhotoDesign.primary)
-                        Text("\(dot.index)").font(.caption2.bold()).foregroundStyle(.white)
+                        Text("\(dot.index)").font(AppFont.caption2.bold()).foregroundStyle(.white)
                     }
                     .frame(width: 20, height: 20)
                     .position(x: dot.point.x * geo.size.width, y: dot.point.y * geo.size.height)
@@ -190,13 +190,13 @@ struct SummaryRow: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("\(format(summary.median)) median").monospacedDigit()
                     Text(rangeText(summary) + (consistency.map { " · \($0.label)" } ?? ""))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppFont.caption).foregroundStyle(.secondary)
                 }
             } else {
                 Text("No data").foregroundStyle(.tertiary)
             }
         }
-        .font(.footnote)
+        .font(AppFont.footnote)
         .accessibilityElement(children: .combine)
     }
 

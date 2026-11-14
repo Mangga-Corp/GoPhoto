@@ -45,7 +45,7 @@ struct PreferenceSelectionCard: View {
                     .lineLimit(card.isAvailable ? 1 : 2)
 
                 if card.isUpdating {
-                    Label("Updating analysis…", systemImage: "arrow.triangle.2.circlepath")
+                    Label("Updating your style…", systemImage: "arrow.triangle.2.circlepath")
                         .font(GoPhotoDesign.smallLabel)
                         .foregroundStyle(GoPhotoDesign.tagText)
                 } else if !card.chips.isEmpty {
@@ -73,7 +73,7 @@ struct PreferenceSelectionCard: View {
                 .accessibilityHidden(true)
         case .unavailable:
             Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 22))
+                .font(AppFont.system(size: 22))
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .frame(width: 30, height: 30)
                 .accessibilityHidden(true)
@@ -88,17 +88,17 @@ struct AddPreferenceCard: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .regular))
+                    .font(AppFont.system(size: 20, weight: .regular))
                     .foregroundStyle(GoPhotoDesign.primary)
                     .frame(width: 44, height: 44)
                     .background(GoPhotoDesign.surface, in: RoundedRectangle(cornerRadius: GoPhotoDesign.controlCornerRadius, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Add New Preference")
+                    Text("Add Style")
                         .font(GoPhotoDesign.cardTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     // The app analyses the photos with its bundled models; it does not train a model.
-                    Text("Add reference portraits to personalize your guidance")
+                    Text("Add reference photos to personalize your guide.")
                         .font(GoPhotoDesign.secondaryBody)
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -106,7 +106,7 @@ struct AddPreferenceCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(AppFont.system(size: 15, weight: .semibold))
                     .foregroundStyle(GoPhotoDesign.secondaryText)
             }
             .padding(16)
@@ -126,7 +126,7 @@ struct MarqueeText: View {
     @State private var startDate = Date()
 
     private var textWidth: CGFloat {
-        let uiFont = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .headline).pointSize, weight: .semibold)
+        let uiFont = UIFont.app(style: .headline, weight: .semibold)
         let size = (text as NSString).size(withAttributes: [.font: uiFont])
         return ceil(size.width)
     }

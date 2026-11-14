@@ -41,14 +41,14 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
     var text: String {
         switch self {
         case .tapPerson:  "Tap the person to photograph"
-        case .moveCloser: "Move closer"
-        case .moveBack:   "Move back"
+        case .moveCloser: "Walk closer"
+        case .moveBack:   "Step back"
         case .raisePhone: "Raise the phone"
         case .lowerPhone: "Lower the phone"
         case .tiltUp:     "Tilt up"
         case .tiltDown:   "Tilt down"
-        case .moveLeft:   "Move left"
-        case .moveRight:  "Move right"
+        case .moveLeft:   "Step left"
+        case .moveRight:  "Step right"
         case .pointBack:  "Point back at the person"
         case .holdIt:     "Hold it there"
         case .takePhoto:  "Take the photo now"

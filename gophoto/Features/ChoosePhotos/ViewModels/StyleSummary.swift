@@ -57,8 +57,8 @@ struct StyleSummary {
                 if first == .full {
                     traits.append(Trait(
                         symbol: "figure.stand",
-                        title: "Full-body framing",
-                        line: "Keep your entire look in the frame.",
+                        title: "Full-body shots",
+                        line: "Keep your whole look in the photo.",
                         evidence: "\(k) of \(n) photos"
                     ))
                 }
@@ -79,8 +79,8 @@ struct StyleSummary {
         }
         traits.append(Trait(
             symbol: "arrow.up.and.down.circle",
-            title: "Smart Angle",
-            line: "We'll find the right angle for every shot.",
+            title: "Easy Angles",
+            line: "We'll find the best angle for you.",
             evidence: nil
         ))
 
@@ -92,8 +92,8 @@ struct StyleSummary {
             if x >= 0.4 && x <= 0.6 {
                 traits.append(Trait(
                     symbol: "align.horizontal.center",
-                    title: "Centered Composition",
-                    line: "Stay naturally positioned at the center of the frame.",
+                    title: "Centered",
+                    line: "Stand naturally in the middle of the photo.",
                     evidence: nil
                 ))
             }

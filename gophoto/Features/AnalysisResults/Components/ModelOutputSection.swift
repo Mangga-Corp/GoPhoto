@@ -13,7 +13,7 @@ struct ModelOutputSection: View {
                 sources(evidence)
                 rawOutputs(evidence)
             } else {
-                Text("No model output exists for this photo.").font(.footnote).foregroundStyle(.secondary)
+                Text("No model output exists for this photo.").font(AppFont.footnote).foregroundStyle(.secondary)
             }
         }
     }
@@ -25,7 +25,7 @@ struct ModelOutputSection: View {
             line("Original", "\(p.originalPixelWidth) × \(p.originalPixelHeight) px")
             line("Analysed at", "\(p.preparedWidth) × \(p.preparedHeight) px (scale \(String(format: "%.2f", p.scale)))")
             Text("The photo is rotated upright once and never cropped, so every coordinate refers to the same image you see here.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(AppFont.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -37,12 +37,12 @@ struct ModelOutputSection: View {
                 HStack(alignment: .firstTextBaseline) {
                     Image(systemName: symbol(run.state)).foregroundStyle(color(run.state)).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(run.source.displayName).font(.footnote.weight(.medium))
-                        Text(run.detail).font(.caption).foregroundStyle(.secondary)
+                        Text(run.source.displayName).font(AppFont.footnote.weight(.medium))
+                        Text(run.detail).font(AppFont.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
-                    Text(label(run.state)).font(.caption).foregroundStyle(.secondary)
-                    Text("\(run.durationMilliseconds) ms").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                    Text(label(run.state)).font(AppFont.caption).foregroundStyle(.secondary)
+                    Text("\(run.durationMilliseconds) ms").font(AppFont.caption.monospacedDigit()).foregroundStyle(.tertiary)
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -82,20 +82,20 @@ struct ModelOutputSection: View {
 
             if let depth = e.depth.value {
                 line("Depth map", "\(depth.gridWidth) × \(depth.gridHeight), contrast \(String(format: "%.2f", depth.contrast))")
-                Text(DepthSummary.convention).font(.caption).foregroundStyle(.secondary)
+                Text(DepthSummary.convention).font(AppFont.caption).foregroundStyle(.secondary)
             } else { missing("Depth", e.depth) }
 
             if let lines = e.verticalLines.value {
                 let longest = lines.map(\.length).max() ?? 0
                 line("Vertical edge segments", "\(lines.count) found, longest \(String(format: "%.0f%%", longest * 100)) of the image height")
                 Text("Plain edge detection, not a model. Only segments on man-made structure are used.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppFont.caption).foregroundStyle(.secondary)
             } else { missing("Vertical edge analysis", e.verticalLines) }
 
             if let labels = e.sceneContext.value {
                 line("Scene classifier", labels.prefix(3).map { "\($0.label) \(String(format: "%.0f%%", $0.score * 100))" }.joined(separator: "; "))
                 Text("Generic image labels, shown for context only. They are not used for any conclusion above.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppFont.caption).foregroundStyle(.secondary)
             } else { missing("Scene classifier", e.sceneContext) }
         }
     }
@@ -104,15 +104,15 @@ struct ModelOutputSection: View {
 
     private func group<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: symbol).font(.subheadline.weight(.semibold))
+            Label(title, systemImage: symbol).font(AppFont.subheadline.weight(.semibold))
             content()
         }
     }
 
     private func line(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.footnote.weight(.medium))
-            Text(value).font(.footnote).foregroundStyle(.secondary)
+            Text(label).font(AppFont.footnote.weight(.medium))
+            Text(value).font(AppFont.footnote).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }

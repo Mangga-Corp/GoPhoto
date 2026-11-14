@@ -60,7 +60,7 @@ struct LookPickerView: View {
                         .stroke(isSelected ? GoPhotoDesign.primary : .clear, lineWidth: 2)
                 }
                 Text(title)
-                    .font(.caption2)
+                    .font(AppFont.caption2)
                     .foregroundStyle(isSelected ? GoPhotoDesign.primary : .secondary)
             }
         }

@@ -82,10 +82,10 @@ struct ResultsOverviewView: View {
                     ForEach(CharacteristicKind.allCases) { kind in
                         let c = profile.coverage[kind]
                         HStack {
-                            Label(kind.title, systemImage: kind.systemImage).font(.footnote)
+                            Label(kind.title, systemImage: kind.systemImage).font(AppFont.footnote)
                             Spacer()
                             Text("\(c?.determinedCount ?? 0) of \(profile.totalPhotoCount) photos")
-                                .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                                .font(AppFont.footnote.monospacedDigit()).foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)
                     }
@@ -96,8 +96,8 @@ struct ResultsOverviewView: View {
 
     private func stat(_ value: String, _ caption: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.title.bold().monospacedDigit())
-            Text(caption).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(AppFont.title.bold().monospacedDigit())
+            Text(caption).font(AppFont.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -118,10 +118,10 @@ struct ResultsOverviewView: View {
             ResultCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(filter == .all ? "Photo Preference Profile" : "Photo Preference Profile · \(filter.title)").font(.headline)
+                        Text(filter == .all ? "Photo Preference Profile" : "Photo Preference Profile · \(filter.title)").font(AppFont.headline)
                         Spacer()
                         if linked {
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.right").font(AppFont.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                         }
                     }
                     profileRow(.cameraAngle, finding: profile.cameraAngle.pattern, strength: profile.cameraAngle.strength,
@@ -135,7 +135,7 @@ struct ResultsOverviewView: View {
                     if let environment = profile.environment, !environment.isEmpty { environmentRow(environment) }
                     Text(linked ? "Tap for distributions, variation and the photos behind each finding."
                                 : "Only this framing's photos. Choose All for the full details screen.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppFont.caption).foregroundStyle(.secondary)
                 }
             }
     }
@@ -145,14 +145,14 @@ struct ResultsOverviewView: View {
         let scene = e.sceneDependent.sceneCategory
         let scale = e.transferable.subjectScale
         return VStack(alignment: .leading, spacing: 3) {
-            Label("Environment and composition", systemImage: "photo.on.rectangle.angled").font(.caption).foregroundStyle(.secondary)
+            Label("Environment and composition", systemImage: "photo.on.rectangle.angled").font(AppFont.caption).foregroundStyle(.secondary)
             if let dominant = scene.dominant {
-                Text(dominant.displayName).font(.body.weight(.semibold))
+                Text(dominant.displayName).font(AppFont.body.weight(.semibold))
             } else {
-                Text(scene.pattern.label).font(.body.weight(.semibold)).foregroundStyle(.secondary)
+                Text(scene.pattern.label).font(AppFont.body.weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(scale.dominant.map { "Subject: \($0.label.lowercased()) in most photos" } ?? scale.summary)
-                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                .font(AppFont.caption).foregroundStyle(.secondary).lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -171,17 +171,17 @@ struct ResultsOverviewView: View {
     private func profileRow(_ kind: CharacteristicKind, finding: PatternKind, strength: PatternStrength,
                             text: String?, fallback: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Label(kind.title, systemImage: kind.systemImage).font(.caption).foregroundStyle(.secondary)
+            Label(kind.title, systemImage: kind.systemImage).font(AppFont.caption).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let text, finding == .recurring {
-                    Text(text).font(.body.weight(.semibold))
-                    Text(strength.label).font(.caption).foregroundStyle(.secondary)
+                    Text(text).font(AppFont.body.weight(.semibold))
+                    Text(strength.label).font(AppFont.caption).foregroundStyle(.secondary)
                 } else {
-                    Text(finding.label).font(.body.weight(.semibold)).foregroundStyle(.secondary)
+                    Text(finding.label).font(AppFont.body.weight(.semibold)).foregroundStyle(.secondary)
                 }
             }
             if !(finding == .recurring) {
-                Text(fallback).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(fallback).font(AppFont.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -191,11 +191,11 @@ struct ResultsOverviewView: View {
     private func noEvidenceCard(_ profile: PreferenceProfile) -> some View {
         ResultCard {
             VStack(alignment: .leading, spacing: 8) {
-                Label("No profile could be built", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(GoPhotoDesign.warning)
+                Label("No profile could be built", systemImage: "exclamationmark.triangle").font(AppFont.headline).foregroundStyle(GoPhotoDesign.warning)
                 Text("None of the photos produced a measurable result, so no preferences are reported. This usually means the photos do not clearly show a person, or an analysis step could not run on this device.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(AppFont.subheadline).foregroundStyle(.secondary)
                 Text("Try photos in which a person is clearly visible and reasonably large in the frame.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(AppFont.subheadline).foregroundStyle(.secondary)
             }
         }
     }
@@ -208,19 +208,19 @@ struct ResultsOverviewView: View {
         let median = values.isEmpty ? nil : (values[(values.count - 1) / 2] + values[values.count / 2]) / 2
         return ResultCard {
             VStack(alignment: .leading, spacing: 6) {
-                Label("Background blur", systemImage: "camera.aperture").font(.headline)
+                Label("Background blur", systemImage: "camera.aperture").font(AppFont.headline)
                 if let median {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(String(format: "%.2f", median)).font(.title2.bold().monospacedDigit())
-                        Text(Self.blurLook(median)).font(.subheadline).foregroundStyle(.secondary)
+                        Text(String(format: "%.2f", median)).font(AppFont.title2.bold().monospacedDigit())
+                        Text(Self.blurLook(median)).font(AppFont.subheadline).foregroundStyle(.secondary)
                     }
                     Text("Median of \(values.count) of \(results.count) photos. Background sharpness ÷ person sharpness: about 1 = background as sharp as the person, about 0.2 = strong bokeh. Blur On matches this.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppFont.caption).foregroundStyle(.secondary)
                 } else {
                     Text(session.backgroundBlur.isEmpty
                          ? "Not measured in this run. Analyze the preset again to measure it."
                          : "No photo here could be measured (no clear person, or the person is blurry).")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(AppFont.footnote).foregroundStyle(.secondary)
                 }
             }
         }
@@ -240,14 +240,14 @@ struct ResultsOverviewView: View {
         if !problems.isEmpty || !notes.isEmpty {
             ResultCard {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Things to know", systemImage: "info.circle").font(.headline)
+                    Label("Things to know", systemImage: "info.circle").font(AppFont.headline)
                     ForEach(problems) { r in
                         Text("Photo \(r.selectionOrder + 1): \(r.status == .failed ? "could not be analyzed" : "some steps did not run"). Other photos are unaffected.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(AppFont.footnote).foregroundStyle(.secondary)
                     }
-                    ForEach(Array(notes), id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
+                    ForEach(Array(notes), id: \.self) { Text($0).font(AppFont.footnote).foregroundStyle(.secondary) }
                     if profile.limitations.count > notes.count {
-                        NavigationLink("See all limitations", value: ProfileRoute(filter: filter)).font(.footnote)
+                        NavigationLink("See all limitations", value: ProfileRoute(filter: filter)).font(AppFont.footnote)
                     }
                 }
             }
@@ -258,7 +258,7 @@ struct ResultsOverviewView: View {
 
     private func photosSection(_ results: [PhotoResult]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(filter == .all ? "Individual photos" : "\(filter.title) photos (\(results.count))").font(.headline)
+            Text(filter == .all ? "Individual photos" : "\(filter.title) photos (\(results.count))").font(AppFont.headline)
             ForEach(results) { result in
                 NavigationLink(value: PhotoDetailRoute(photoID: result.id)) {
                     PhotoResultRow(result: result, image: session.imageStore.image(for: result.id),
@@ -278,14 +278,14 @@ struct ResultsOverviewView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Button(action: onOpenCamera) {
                 Label("Open Camera Guidance", systemImage: "camera.viewfinder")
-                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+                    .font(AppFont.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
 
             Text(targets >= 2
                  ? "Camera guidance will use the subject position and size from \(targets) photos."
                  : "Fewer than 2 photos have a measured subject, so the camera will open without position guidance.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(AppFont.caption).foregroundStyle(.secondary)
         }
     }
 }
@@ -304,14 +304,14 @@ struct PhotoResultRow: View {
                 PhotoThumb(image: image, size: 64)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Photo \(result.selectionOrder + 1)").font(.subheadline.weight(.semibold))
+                        Text("Photo \(result.selectionOrder + 1)").font(AppFont.subheadline.weight(.semibold))
                         if result.status != .complete { statusTag }
                         Spacer()
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        Image(systemName: "chevron.right").font(AppFont.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                     }
                     if let blur {
                         Text(String(format: "Background blur %.2f · ", blur) + ResultsOverviewView.blurLook(blur))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(AppFont.caption).foregroundStyle(.secondary)
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
                               alignment: .leading, spacing: 6) {
@@ -325,7 +325,7 @@ struct PhotoResultRow: View {
 
     private var statusTag: some View {
         Text(result.status == .failed ? "Failed" : "Partial")
-            .font(.caption2.weight(.semibold))
+            .font(AppFont.caption2.weight(.semibold))
             .foregroundStyle(result.status == .failed ? GoPhotoDesign.error : GoPhotoDesign.warning)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background((result.status == .failed ? GoPhotoDesign.error : GoPhotoDesign.warning).opacity(0.14), in: Capsule())
@@ -334,9 +334,9 @@ struct PhotoResultRow: View {
     private func chip(_ kind: CharacteristicKind) -> some View {
         let assessment = result.assessment(for: kind)
         return VStack(alignment: .leading, spacing: 0) {
-            Text(kind.title).font(.caption2).foregroundStyle(.secondary)
+            Text(kind.title).font(AppFont.caption2).foregroundStyle(.secondary)
             Text(PhotoValueText.text(for: kind, in: result))
-                .font(.footnote.weight(.medium))
+                .font(AppFont.footnote.weight(.medium))
                 .foregroundStyle(assessment.isDetermined ? Color.primary : Color.secondary)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }

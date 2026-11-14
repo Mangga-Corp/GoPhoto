@@ -30,8 +30,7 @@ final class PillButton: UIButton {
         let weight: UIFont.Weight = prominent ? .semibold : .regular
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var attributes = $0
-            let base = UIFont.preferredFont(forTextStyle: .body)
-            attributes.font = UIFont.systemFont(ofSize: base.pointSize, weight: weight)
+            attributes.font = UIFont.app(style: .body, weight: weight)
             return attributes
         }
         if prominent {

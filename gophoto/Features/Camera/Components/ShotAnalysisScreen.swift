@@ -180,7 +180,7 @@ struct ShotAnalysisScreen: View {
         LabeledContent(title) {
             Text(value).monospacedDigit().multilineTextAlignment(.trailing)
         }
-        .font(.subheadline)
+        .font(AppFont.subheadline)
     }
 
     private static func cutRule(_ shot: PresetAnalysis.ShotSize) -> String {

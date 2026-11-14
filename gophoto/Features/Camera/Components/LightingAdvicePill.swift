@@ -15,7 +15,7 @@ struct LightingAdvicePill: View {
         } icon: {
             Image(systemName: symbol)
         }
-        .font(.footnote.weight(.semibold))
+        .font(AppFont.footnote.weight(.semibold))
         .foregroundStyle(.white)
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 12)

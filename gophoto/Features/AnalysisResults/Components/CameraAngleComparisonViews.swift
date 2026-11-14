@@ -9,14 +9,14 @@ struct CameraAngleComparisonCard: View {
         ResultCard {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Camera angle scan", systemImage: "camera.metering.center.weighted")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline.weight(.semibold))
                 let methods = CameraAngleMethod.allCases.filter { comparison.results[$0] != nil }
                 ForEach(methods) { method in
                     block(method)
                     if method != methods.last { Divider() }
                 }
                 if let difference = lightMinusHeavy {
-                    Text(difference).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    Text(difference).font(AppFont.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
         }
@@ -57,23 +57,23 @@ struct CameraAngleComparisonCard: View {
 
         return VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text(method.title).font(.footnote.weight(.semibold))
+                Text(method.title).font(AppFont.footnote.weight(.semibold))
                 if method == selected {
-                    Text("in use").font(.caption2.weight(.semibold))
+                    Text("in use").font(AppFont.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(GoPhotoDesign.primary.opacity(0.15), in: Capsule())
                 }
                 Spacer()
-                Text(result?.category.label ?? "—").font(.footnote.weight(.semibold))
+                Text(result?.category.label ?? "—").font(AppFont.footnote.weight(.semibold))
                     .foregroundStyle(result?.assessment.isDetermined == true ? Color.primary : Color.secondary)
             }
             if let error = d?.error {
-                Text(error).font(.caption).foregroundStyle(GoPhotoDesign.warning)
+                Text(error).font(AppFont.caption).foregroundStyle(GoPhotoDesign.warning)
             } else if !lines.isEmpty {
-                Text(lines.joined(separator: " · ")).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Text(lines.joined(separator: " · ")).font(AppFont.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             if let result, !result.assessment.isDetermined, d?.error == nil {
-                Text(result.assessment.explanation).font(.caption2).foregroundStyle(.tertiary).lineLimit(3)
+                Text(result.assessment.explanation).font(AppFont.caption2).foregroundStyle(.tertiary).lineLimit(3)
             }
         }
         .accessibilityElement(children: .combine)

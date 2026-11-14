@@ -179,7 +179,7 @@ struct EvidenceImageView: View {
                 let c = point(m.centroid)
                 context.fill(Path(ellipseIn: CGRect(x: c.x - 4, y: c.y - 4, width: 8, height: 8)), with: .color(color))
 
-                let label = context.resolve(Text(m.label).font(.caption2.bold()).foregroundStyle(Color.black))
+                let label = context.resolve(Text(m.label).font(AppFont.caption2.bold()).foregroundStyle(Color.black))
                 let measured = label.measure(in: CGSize(width: 240, height: 40))
                 var pill = CGRect(x: box.minX + 3, y: box.minY + 3, width: measured.width + 8, height: measured.height + 2)
                 while placed.contains(where: { $0.intersects(pill) }), pill.maxY < size.height { pill.origin.y += pill.height + 2 }
@@ -244,7 +244,7 @@ struct EvidenceLayerPicker: View {
                         if isOn { selection.remove(layer) } else { selection.insert(layer) }
                     } label: {
                         Label(layer.title, systemImage: layer.symbol)
-                            .font(.footnote.weight(.medium))
+                            .font(AppFont.footnote.weight(.medium))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                             .background(isOn ? GoPhotoDesign.primary : AnalysisResultsPalette.subtleSurface, in: Capsule())

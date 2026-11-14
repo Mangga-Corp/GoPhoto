@@ -304,7 +304,7 @@ struct EvidenceBadge: View {
 
     var body: some View {
         Label(label, systemImage: symbol)
-            .font(.caption.weight(.semibold))
+            .font(AppFont.caption.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)

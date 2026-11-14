@@ -287,7 +287,7 @@ struct DebugSessionStatus: View {
                 "ends=\(sessions.endCount)",
                 "lastUsed=\(preferences.lastSelectedPreference?.name ?? "none")",
             ].joined(separator: ";"))
-            .font(.system(size: 9, design: .monospaced))
+            .font(AppFont.system(size: 9, design: .monospaced))
             .foregroundStyle(.white.opacity(0.7))
             .padding(.bottom, 4)
             .accessibilityIdentifier("debug.sessionStatus")
@@ -302,7 +302,7 @@ struct DebugFixtureStatus: View {
         let preferences = PreferencesViewModel.shared
         let sessions = PhotoSessionStore.shared
         Text("lastUsed=\(preferences.lastSelectedPreference?.name ?? "none");starts=\(sessions.startCount);ends=\(sessions.endCount);writes=\(preferences.persistCount)")
-            .font(.system(size: 9, design: .monospaced))
+            .font(AppFont.system(size: 9, design: .monospaced))
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("debug.fixtureStatus")
             .allowsHitTesting(false)
