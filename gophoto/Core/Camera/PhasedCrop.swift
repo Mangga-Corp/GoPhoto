@@ -3,7 +3,8 @@
 //  gophoto
 //
 //  Phased · Auto crop: applies the crop shown in the preview to the saved photo (the original is
-//  saved too, as the app always does). Never below the quality floor, never upscaled: when the
+//  saved too, as the app always does). With an output shape (the camera's 9:16) the result is cut
+//  to exactly that shape inside the preview's visible band. Never below the quality floor, never upscaled: when the
 //  wanted crop is too small it is enlarged to the floor (person a little smaller than the
 //  reference), and when the photo itself is below the floor nothing is cropped. Each result says
 //  what was done (logged per shutter).
@@ -29,7 +30,13 @@ nonisolated enum PhasedCrop {
     /// - Parameters:
     ///   - crop: normalized, origin top-left, of the upright photo (same aspect as the photo).
     ///   - rollDegrees: rotate the image this much (counter-clockwise +) about the crop centre first.
-    static func apply(imageData: Data, crop: CGRect, rollDegrees: Double, floorMegapixels: Double) -> Result {
+    ///   - bounds: normalized part of the photo the crop must stay in (the preview's visible band).
+    ///   - outputShape: exact pixel proportions of the result (e.g. 9:16). Nil = the original
+    ///     behaviour: the crop's own shape, no crop below the floor or for the whole photo. With a
+    ///     shape the photo is always cut to it (inside `bounds`), never stretched or upscaled.
+    static func apply(imageData: Data, crop: CGRect, rollDegrees: Double, floorMegapixels: Double,
+                      bounds: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1),
+                      outputShape: (width: Int, height: Int)? = nil) -> Result {
         let context = CIContext()
         guard let image = CIImage(data: imageData, options: [.applyOrientationProperty: true]) else {
             return Result(data: nil, note: "could not read the photo", sourceSize: .zero, rollDegrees: 0)
@@ -38,24 +45,48 @@ nonisolated enum PhasedCrop {
         let w = extent.width, h = extent.height
         let source = CGSize(width: w, height: h)
         let floorPixels = floorMegapixels * 1_000_000
-        guard Double(w * h) > floorPixels else {
+        guard outputShape != nil || Double(w * h) > floorPixels else {
             return Result(data: nil, note: String(format: "photo %.1f MP is not above the %.0f MP floor: not cropped",
                                                   Double(w * h) / 1e6, floorMegapixels),
                           sourceSize: source, rollDegrees: 0)
         }
         // Normalized top-left → Core Image pixels (origin bottom-left).
-        var rect = CGRect(x: crop.minX * w, y: (1 - crop.maxY) * h, width: crop.width * w, height: crop.height * h)
+        func pixels(_ r: CGRect) -> CGRect {
+            CGRect(x: r.minX * w, y: (1 - r.maxY) * h, width: r.width * w, height: r.height * h)
+        }
+        let area = pixels(bounds).intersection(extent)
+        guard !area.isNull, area.width >= 1, area.height >= 1 else {
+            return Result(data: nil, note: "empty crop bounds", sourceSize: source, rollDegrees: 0)
+        }
+        var rect = pixels(crop)
         var note = ""
+        if let shape = outputShape {
+            rect = Self.reshaped(rect, ratio: CGFloat(shape.width) / CGFloat(shape.height), in: area)
+        }
         if Double(rect.width * rect.height) < floorPixels {
-            let s = sqrt(floorPixels / Double(rect.width * rect.height))
-            let grown = rect.insetBy(dx: -rect.width * CGFloat(s - 1) / 2, dy: -rect.height * CGFloat(s - 1) / 2)
-            rect = CGRect(x: min(max(grown.minX, 0), w - grown.width), y: min(max(grown.minY, 0), h - grown.height),
-                          width: min(grown.width, w), height: min(grown.height, h))
+            let s = CGFloat(sqrt(floorPixels / Double(rect.width * rect.height)))
+            var grown = rect.insetBy(dx: -rect.width * (s - 1) / 2, dy: -rect.height * (s - 1) / 2)
+            // Never past the allowed area: shrink back evenly, so the shape stays.
+            let fit = min(1, area.width / grown.width, area.height / grown.height)
+            if fit < 1 {
+                grown = CGRect(x: grown.midX - grown.width * fit / 2, y: grown.midY - grown.height * fit / 2,
+                               width: grown.width * fit, height: grown.height * fit)
+            }
+            rect = CGRect(x: min(max(grown.minX, area.minX), area.maxX - grown.width),
+                          y: min(max(grown.minY, area.minY), area.maxY - grown.height),
+                          width: grown.width, height: grown.height)
             note += "enlarged to the floor · "
         }
-        rect = rect.integral.intersection(extent)
-        if rect.width >= w - 1, rect.height >= h - 1, abs(rollDegrees) < 0.5 {
-            return Result(data: nil, note: "crop = whole photo: not cropped", sourceSize: source, rollDegrees: 0)
+        if let shape = outputShape {
+            rect = Self.exact(rect, shape: shape, in: area)
+            guard rect.width >= 1, rect.height >= 1 else {
+                return Result(data: nil, note: "crop too small for the shape", sourceSize: source, rollDegrees: 0)
+            }
+        } else {
+            rect = rect.integral.intersection(extent)
+            if rect.width >= w - 1, rect.height >= h - 1, abs(rollDegrees) < 0.5 {
+                return Result(data: nil, note: "crop = whole photo: not cropped", sourceSize: source, rollDegrees: 0)
+            }
         }
 
         var working = image
@@ -88,6 +119,32 @@ nonisolated enum PhasedCrop {
         note += String(format: "crop %.0f×%.0f (%.1f MP)", rect.width, rect.height, Double(rect.width * rect.height) / 1e6)
         return Result(data: data, note: note, sourceSize: source, outputSize: rect.size, applied: normalized,
                       rollDegrees: roll)
+    }
+
+    /// `rect` with width / height = `ratio` (same height and centre where it fits), inside `area`.
+    private static func reshaped(_ rect: CGRect, ratio: CGFloat, in area: CGRect) -> CGRect {
+        var height = rect.height
+        var width = height * ratio
+        if width > area.width { width = area.width; height = width / ratio }
+        if height > area.height { height = area.height; width = height * ratio }
+        let x = min(max(rect.midX - width / 2, area.minX), area.maxX - width)
+        let y = min(max(rect.midY - height / 2, area.minY), area.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// Whole pixels in exactly `shape`'s proportions (e.g. 9:16 → 1512×2688), at most `rect`'s
+    /// size, centred on it and inside `area`.
+    private static func exact(_ rect: CGRect, shape: (width: Int, height: Int), in area: CGRect) -> CGRect {
+        let inner = CGRect(x: area.minX.rounded(.up), y: area.minY.rounded(.up),
+                           width: (area.maxX.rounded(.down) - area.minX.rounded(.up)),
+                           height: (area.maxY.rounded(.down) - area.minY.rounded(.up)))
+        let unitsByHeight = Int(min(rect.height, inner.height)) / shape.height
+        let unitsByWidth = Int(min(rect.width, inner.width)) / shape.width
+        let units = max(0, min(unitsByHeight, unitsByWidth))
+        let width = CGFloat(units * shape.width), height = CGFloat(units * shape.height)
+        let x = min(max((rect.midX - width / 2).rounded(), inner.minX), inner.maxX - width)
+        let y = min(max((rect.midY - height / 2).rounded(), inner.minY), inner.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     /// The crop's corners, mapped back into the unrotated photo, stay inside it.

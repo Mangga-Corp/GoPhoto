@@ -206,6 +206,19 @@ nonisolated struct PhasedFrame: Sendable {
     var frameAspect: Double = 3.0 / 4.0
 }
 
+/// The shape and place of the Auto crop inside the camera frame (frame units, origin top-left).
+/// The full frame keeps the frame's own aspect (3:4); a narrower photo shape (9:16) is a band of
+/// the frame, and the crop stays inside it so the photo shows only what the preview shows.
+nonisolated struct PhasedCropShape: Sendable, Equatable {
+    /// Crop width / crop height, both in frame units (1 = the frame's own aspect). At most 1.
+    var widthFactor: Double
+    /// The horizontal part of the frame the crop has to stay in.
+    var minX: Double
+    var maxX: Double
+
+    static let fullFrame = PhasedCropShape(widthFactor: 1, minX: 0, maxX: 1)
+}
+
 /// What the engine decided this update.
 nonisolated struct PhasedOutput: Equatable, Sendable {
     var horizontalError: Double?
