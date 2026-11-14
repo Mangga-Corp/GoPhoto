@@ -31,7 +31,7 @@ final class AIPreferencesViewController: UIViewController {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 28, weight: .bold)
+        label.font = .app(size: 28, weight: .bold)
         label.textColor = Theme.text
         label.textAlignment = .left
         label.numberOfLines = 1
@@ -40,7 +40,7 @@ final class AIPreferencesViewController: UIViewController {
 
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 15, weight: .semibold)
+        label.font = .app(size: 15, weight: .semibold)
         label.textColor = Theme.text
         label.textAlignment = .left
         return label
@@ -48,7 +48,7 @@ final class AIPreferencesViewController: UIViewController {
 
     private let guidanceLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 13, weight: .regular)
+        label.font = .app(size: 13, weight: .regular)
         label.textColor = Theme.secondaryText
         label.text = "Clear, full-body photos work best."
         label.textAlignment = .left
@@ -66,8 +66,8 @@ final class AIPreferencesViewController: UIViewController {
         icon.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let label = UILabel()
-        label.text = "Your photos stay on this iPhone. They're analyzed on your device and never uploaded."
-        label.font = .systemFont(ofSize: 13, weight: .regular)
+        label.text = "Your photos stay on this iPhone. Nothing is uploaded."
+        label.font = .app(size: 13, weight: .regular)
         label.textColor = Theme.text
         label.numberOfLines = 0
 
@@ -367,17 +367,17 @@ final class AIPreferencesViewController: UIViewController {
     }
 
     /// Confirmation alert as depicted in Image 1 (iPhone 17 - Preferences C re-analyze):
-    /// Title: "Re-analyze the AI preferences"
-    /// Message: "By Delete those picture it will redefined the ai model, are you sure ?"
+    /// Title: "Update your style?"
+    /// Message: "Removing these photos will update your style. Continue?"
     /// Buttons: [Cancel] (red text) and [Yes]
     private func confirmDelete() {
         let alert = UIAlertController(
-            title: "Re-analyze the AI preferences",
-            message: "By Delete those picture it will redefined the ai model, are you sure ?",
+            title: "Update your style?",
+            message: "Removing these photos will update your style. Continue?",
             preferredStyle: .alert
         )
         let cancelAction = UIAlertAction(title: "Cancel", style: .destructive) { _ in }
-        let yesAction = UIAlertAction(title: "Yes", style: .default) { [weak self] _ in
+        let yesAction = UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
             guard let self else { return }
             self.viewModel.deleteChecked()
             if self.viewModel.mode == .editor { self.backTapped() }
@@ -457,7 +457,7 @@ private final class WideAddPhotosButton: UIControl {
     private let titleLabel: UILabel = {
         let lbl = UILabel()
         lbl.text = "Add photos"
-        lbl.font = .systemFont(ofSize: 15, weight: .semibold)
+        lbl.font = .app(size: 15, weight: .semibold)
         lbl.textColor = Theme.accent
         return lbl
     }()
@@ -510,14 +510,14 @@ private final class SectionHeaderView: UICollectionReusableView {
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.font = .systemFont(ofSize: 16, weight: .bold)
+        l.font = .app(size: 16, weight: .bold)
         l.textColor = Theme.text
         return l
     }()
 
     private let countLabel: UILabel = {
         let l = UILabel()
-        l.font = .systemFont(ofSize: 14, weight: .regular)
+        l.font = .app(size: 14, weight: .regular)
         l.textColor = Theme.secondaryText
         return l
     }()

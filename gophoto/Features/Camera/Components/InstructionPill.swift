@@ -8,6 +8,8 @@ import SwiftUI
 
 struct InstructionPill: View {
     let instruction: GuideInstruction
+    /// Camera layout: plain white text (the strip behind it is drawn by the camera).
+    var isPlain = false
 
     private var isReady: Bool { instruction == .holdStill }
 
@@ -17,11 +19,13 @@ struct InstructionPill: View {
         } icon: {
             Image(systemName: symbol)
         }
-        .font(.subheadline.weight(.semibold))
+        .font(AppFont.subheadline.weight(.semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(isReady ? Color.green.opacity(0.85) : Color.black.opacity(0.6), in: Capsule())
+        .background {
+            if !isPlain { Capsule().fill(isReady ? Color.green.opacity(0.85) : Color.black.opacity(0.6)) }
+        }
         .animation(.snappy, value: instruction)
         .accessibilityElement(children: .combine)
     }
@@ -30,12 +34,12 @@ struct InstructionPill: View {
     private var title: LocalizedStringKey {
         switch instruction {
         case .findPerson:  "Find the person"
-        case .moveCloser:  "Move closer"
-        case .moveFarther: "Move farther away"
-        case .moveLeft:    "Move left"
-        case .moveRight:   "Move right"
-        case .moveHigher:  "Move higher"
-        case .moveLower:   "Move lower"
+        case .moveCloser:  "Walk closer"
+        case .moveFarther: "Step back"
+        case .moveLeft:    "Step left"
+        case .moveRight:   "Step right"
+        case .moveHigher:  "Stand higher"
+        case .moveLower:   "Crouch lower"
         case .tiltUp:      "Tilt the phone up"
         case .tiltDown:    "Tilt the phone down"
         case .raisePhone:  "Raise your arms"

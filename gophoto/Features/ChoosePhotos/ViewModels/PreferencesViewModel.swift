@@ -62,7 +62,7 @@ final class PreferencesViewModel {
 
     var hasPreferences: Bool { !preferences.isEmpty }
     var canDelete: Bool { preferences.count > 1 }
-    let cannotDeleteMessage = "You can’t delete this preference. At least one preference is required as the reference for your photos."
+    let cannotDeleteMessage = "You need at least one preference, so this one has to stay."
 
     func preference(id: UUID) -> Preference? { preferences.first { $0.id == id } }
 
@@ -125,7 +125,7 @@ final class PreferencesViewModel {
         completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
     ) {
         guard !isSavingNewPreference else {
-            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving. Give it a moment.")))
             return
         }
         if let error = nameError(for: name) {
@@ -133,7 +133,7 @@ final class PreferencesViewModel {
             return
         }
         guard preference(id: id) == nil else {
-            completion(.failure(PreferenceNameError(message: "This preference has already been saved.")))
+            completion(.failure(PreferenceNameError(message: "This preference is already saved.")))
             return
         }
 
@@ -146,7 +146,7 @@ final class PreferencesViewModel {
         }
         guard validPhotos.count >= ChoosePhotosViewModel.minPhotos else {
             completion(.failure(PreferenceNameError(
-                message: "Select at least \(ChoosePhotosViewModel.minPhotos) valid photos before continuing."
+                message: "Choose at least \(ChoosePhotosViewModel.minPhotos) clear photos to continue."
             )))
             return
         }
@@ -180,7 +180,7 @@ final class PreferencesViewModel {
                 case .failure:
                     self.isSavingNewPreference = false
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the preference and its photos. Check available storage and try again."
+                        message: "Couldn't save. Check your storage and try again."
                     )))
                 }
             }
@@ -195,12 +195,12 @@ final class PreferencesViewModel {
         completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
     ) {
         guard !isSavingNewPreference else {
-            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving. Give it a moment.")))
             return
         }
         guard !preferences.contains(where: { $0.customStyle == style }) else {
             completion(.failure(PreferenceNameError(
-                message: "This combination has already been created. You can only have one of each combination."
+                message: "You already made this one. Each combination can be saved once."
             )))
             return
         }
@@ -218,7 +218,7 @@ final class PreferencesViewModel {
                     completion(.success(preference.id))
                 case .failure:
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the custom preference. Check available storage and try again."
+                        message: "Couldn't save. Check your storage and try again."
                     )))
                 }
             }
@@ -265,11 +265,11 @@ final class PreferencesViewModel {
         completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
     ) {
         guard !updatingPhotoIDs.contains(id) else {
-            completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving your photos. Give it a moment.")))
             return
         }
         guard let index = preferences.firstIndex(where: { $0.id == id }) else {
-            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            completion(.failure(PreferenceNameError(message: "We couldn't find this preference.")))
             return
         }
         guard !preferences[index].isCustom else {
@@ -280,7 +280,7 @@ final class PreferencesViewModel {
         let current = preferences[index]
         let updatedPhotos = mergedPhotos(current.photos, photos)
         guard updatedPhotos.count <= ChoosePhotosViewModel.maxPhotos else {
-            completion(.failure(PreferenceNameError(message: "A preference can contain up to \(ChoosePhotosViewModel.maxPhotos) photos.")))
+            completion(.failure(PreferenceNameError(message: "You can add up to \(ChoosePhotosViewModel.maxPhotos) photos.")))
             return
         }
         guard updatedPhotos.map(\.id) != current.photos.map(\.id) else {
@@ -300,7 +300,7 @@ final class PreferencesViewModel {
                 guard case .success = saveResult else {
                     self.updatingPhotoIDs.remove(id)
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the additional photos. Your existing preference is unchanged. Please try again."
+                        message: "Couldn't add the photos. Your preference is unchanged. Try again."
                     )))
                     return
                 }
@@ -313,7 +313,7 @@ final class PreferencesViewModel {
                               let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
                             self.restorePreferencesAfterPhotoUpdateFailure(id: id) {
                                 completion(.failure(PreferenceNameError(
-                                    message: "Couldn't verify the additional photos. Your existing preference is unchanged. Please try again."
+                                    message: "Couldn't check the new photos. Your preference is unchanged. Try again."
                                 )))
                             }
                             return
@@ -458,7 +458,7 @@ final class PreferencesViewModel {
         completion: @escaping (Result<Void, PreferenceNameError>) -> Void
     ) {
         guard let index = preferences.firstIndex(where: { $0.id == id }) else {
-            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            completion(.failure(PreferenceNameError(message: "We couldn't find this preference.")))
             return
         }
         guard !preferences[index].isCustom else {
@@ -479,7 +479,7 @@ final class PreferencesViewModel {
                 guard case .success = result,
                       let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't prepare the saved preference for analysis. Please try again."
+                        message: "Couldn't get your preference ready. Try again."
                     )))
                     return
                 }
@@ -491,7 +491,7 @@ final class PreferencesViewModel {
     }
 
     private static let customPhotosError = PreferenceNameError(
-        message: "Custom preferences are made from a placement and an angle, so they have no photos to edit."
+        message: "Custom preferences have no photos to edit."
     )
 
     private func cancelCurrentAnalysis(for id: UUID) {
@@ -710,7 +710,7 @@ final class PreferencesViewModel {
                 }
                 self.isSavingNewPreference = false
                 completion(.failure(PreferenceNameError(
-                    message: "Couldn't verify the saved photos. Please try saving the preference again."
+                    message: "Couldn't check your photos. Try saving again."
                 )))
             }
         }

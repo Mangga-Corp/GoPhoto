@@ -2,7 +2,7 @@
 //  PreferenceSelectionView.swift
 //  gophoto
 //
-//  "What would you like to shoot today?": pick the preference for the next session. A card tap
+//  "What shall we shoot today?": pick the preference for the next session. A card tap
 //  only changes the draft selection; Continue hands the preference ID on without starting a
 //  session or saving anything. Long-press a card to rename, edit its photos or delete it
 //  (custom preferences have no photos, so they offer no Edit Photos).
@@ -103,12 +103,12 @@ struct PreferenceSelectionView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Choose your style")
+            Text("What shall we shoot today?")
                 .font(GoPhotoDesign.pageTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
-            Text("What would you like to shoot today?")
+            Text("Pick a preference for your next shoot.")
                 .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -128,9 +128,9 @@ struct PreferenceSelectionView: View {
         Button(action: onAddNew) {
             HStack(spacing: 6) {
                 Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .bold))
-                Text("Add Preferences")
-                    .font(.system(.subheadline, weight: .semibold))
+                    .font(AppFont.system(size: 13, weight: .bold))
+                Text("Add Style")
+                    .font(AppFont.system(.subheadline, weight: .semibold))
             }
             .foregroundStyle(GoPhotoDesign.primary)
             .padding(.horizontal, 14)
@@ -139,7 +139,7 @@ struct PreferenceSelectionView: View {
             .fixedSize(horizontal: true, vertical: false)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add Preferences")
+        .accessibilityLabel("Add Style")
         .accessibilityHint("Opens the photo picker to create a preference")
         .accessibilityIdentifier("preferenceSelection.addNew")
     }
@@ -147,12 +147,12 @@ struct PreferenceSelectionView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 30))
+                .font(AppFont.system(size: 30))
                 .foregroundStyle(GoPhotoDesign.primary)
             Text("No preferences yet")
                 .font(GoPhotoDesign.cardTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
-            Text("Tap Add Preferences to add reference portraits and create your first photography preference.")
+            Text("Tap Add Style, then add reference photos to begin.")
                 .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -184,7 +184,7 @@ struct PreferenceSelectionView: View {
             .overlay(alignment: .topTrailing) {
                 Menu { managementActions(card) } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(AppFont.system(size: 15, weight: .semibold))
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                         .frame(width: 44, height: 40)
                         .contentShape(Rectangle())

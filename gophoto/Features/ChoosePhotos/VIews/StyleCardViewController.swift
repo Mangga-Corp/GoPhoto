@@ -37,13 +37,13 @@ final class StyleCardViewController: UIViewController {
         view.backgroundColor = background
 
         let kicker = UILabel.make("YOUR STYLE", style: .footnote)
-        kicker.font = .preferredFont(forTextStyle: .footnote).withWeight(.semibold)
+        kicker.font = .app(style: .footnote, weight: .semibold)
         kicker.textColor = accent
 
         var header: [UIView] = [kicker]
         if let name = summary.name {
             let label = UILabel.make(name, style: .largeTitle)
-            label.font = .preferredFont(forTextStyle: .largeTitle).withWeight(.bold)
+            label.font = .app(style: .largeTitle, weight: .bold)
             label.textColor = primaryText
             header.append(label)
         }
@@ -176,9 +176,3 @@ final class StyleCardViewController: UIViewController {
 
 }
 
-private extension UIFont {
-    func withWeight(_ weight: UIFont.Weight) -> UIFont {
-        let descriptor = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
-        return UIFont(descriptor: descriptor, size: 0)
-    }
-}

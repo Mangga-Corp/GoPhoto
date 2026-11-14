@@ -15,8 +15,8 @@ struct CameraAngleSelectionView: View {
         CustomStyleOptionPage(
             step: 2,
             stepCount: CustomPreferenceFlowModel.stepCount,
-            title: "Choose a Camera Angle",
-            message: "From where should the photo be taken? The camera will guide your phone's height and tilt.",
+            title: "Pick Your Camera Angle",
+            message: "How high or low should the phone be? We'll guide you there.",
             selection: $model.angle,
             isOptionAvailable: { angle in model.isAngleAvailable(angle) },
             primaryTitle: "Continue",
@@ -27,7 +27,7 @@ struct CameraAngleSelectionView: View {
             CameraAngleArtwork(angle: angle)
         }
         .navigationBarBackButtonHidden(model.isSaving)
-        .alert("Couldn't create the preference", isPresented: Binding(
+        .alert("Couldn't save your preference", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )) {

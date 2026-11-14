@@ -10,10 +10,10 @@ import UIKit
 import simd
 
 enum PhoneDimensions {
-    // Standard flagship iPhone Pro proportions (metres)
+    // iPhone 17 proportions (metres)
     static let width: Float = 0.0715        // 71.5 mm
-    static let height: Float = 0.1476       // 147.6 mm
-    static let depth: Float = 0.0082        // 8.2 mm
+    static let height: Float = 0.1496       // 149.6 mm
+    static let depth: Float = 0.0083        // 8.25 mm
     static let cornerRadius: Float = 0.0105 // 10.5 mm
     static let bevel: Float = 0.0014        // 1.4 mm contoured edges
 }
@@ -59,124 +59,35 @@ final class PhoneRig {
         }
     }
 
-    // MARK: - Clean Mockup Materials
+    // MARK: - Sketch materials
+    // "3D sketch" look: flat, unlit light-grey surfaces with dark outlines (like a line drawing
+    // of a phone), so lighting never changes how it looks. Tweak the greys here.
 
-    /// Smooth, matte clay body — like a premium device mockup render.
-    /// Very low metallic, medium roughness = soft diffuse clay feel.
-    private static func mockupClay(
-        _ color: UIColor,
-        roughness: Float = 0.55,
-        metallic: Float = 0.0
-    ) -> PhysicallyBasedMaterial {
-        var m = PhysicallyBasedMaterial()
-        m.baseColor = .init(tint: color)
-        m.metallic = .init(floatLiteral: metallic)
-        m.roughness = .init(floatLiteral: roughness)
-        return m
+    private static func flat(_ white: CGFloat) -> UnlitMaterial {
+        UnlitMaterial(color: UIColor(white: white, alpha: 1))
     }
 
-    private static func mockupPBR(
-        _ color: UIColor,
-        metallic: Float = 0.0,
-        roughness: Float = 0.5,
-        clearcoat: Float = 0,
-        clearcoatRoughness: Float = 0.1,
-        emissiveColor: UIColor? = nil,
-        emissiveIntensity: Float = 0,
-        texture: TextureResource? = nil
-    ) -> PhysicallyBasedMaterial {
-        var m = PhysicallyBasedMaterial()
-        if let texture {
-            m.baseColor = .init(tint: color, texture: .init(texture))
-        } else {
-            m.baseColor = .init(tint: color)
-        }
-        m.metallic = .init(floatLiteral: metallic)
-        m.roughness = .init(floatLiteral: roughness)
-        if clearcoat > 0 {
-            m.clearcoat = .init(floatLiteral: clearcoat)
-            m.clearcoatRoughness = .init(floatLiteral: clearcoatRoughness)
-        }
-        if let emissiveColor {
-            if let texture {
-                m.emissiveColor = .init(color: emissiveColor, texture: .init(texture))
-            } else {
-                m.emissiveColor = .init(color: emissiveColor)
-            }
-            m.emissiveIntensity = emissiveIntensity
-        }
+    /// Dark outline colour (also used for the screen edge, island and lenses).
+    private static let lineGrey: CGFloat = 0.20
+
+    private let frameClay = PhoneRig.flat(0.80)        // the visible side of the phone
+    private let bezelClay = PhoneRig.flat(0.93)        // front face around the screen
+    private let screenLineClay = PhoneRig.flat(PhoneRig.lineGrey)  // thin line round the screen
+    private let screenSurface = PhoneRig.flat(0.995)   // screen, almost white
+    private let backSurface = PhoneRig.flat(0.90)
+    private let plateauClay = PhoneRig.flat(0.84)
+    private let lensClay = PhoneRig.flat(PhoneRig.lineGrey)
+    private let lensRingClay = PhoneRig.flat(0.70)
+    private let islandClay = PhoneRig.flat(PhoneRig.lineGrey)
+    private let buttonClay = PhoneRig.flat(0.70)
+
+    /// Inverted-hull outline: the side wall, slightly bigger, drawn from the inside only,
+    /// so a thin dark line shows around the silhouette from any angle.
+    private let outlineMaterial: UnlitMaterial = {
+        var m = UnlitMaterial(color: UIColor(white: PhoneRig.lineGrey, alpha: 1))
+        m.faceCulling = .front
         return m
-    }
-
-    // ─── Mockup palette ───────────────────────────────────────────────
-
-    /// Soft silver-white clay frame — the signature mockup look
-    private let frameClay = PhoneRig.mockupClay(
-        UIColor(red: 0.82, green: 0.83, blue: 0.86, alpha: 1),
-        roughness: 0.52, metallic: 0.05
-    )
-
-    /// Front bezel — very dark matte, just barely visible edge
-    private let bezelClay = PhoneRig.mockupClay(
-        UIColor(red: 0.08, green: 0.09, blue: 0.10, alpha: 1),
-        roughness: 0.35
-    )
-
-    /// Screen surface — dark with subtle texture, gentle glow
-    private lazy var screenSurface: PhysicallyBasedMaterial = {
-        let texture = IPhoneTextureGenerator.getScreenTexture()
-        return PhoneRig.mockupPBR(
-            UIColor.white,
-            metallic: 0.0,
-            roughness: 0.15,
-            clearcoat: 0.3,
-            clearcoatRoughness: 0.08,
-            emissiveColor: UIColor(white: 1.0, alpha: 1),
-            emissiveIntensity: 0.20,
-            texture: texture
-        )
     }()
-
-    /// Back panel — soft satin clay, just slightly warmer than frame
-    private lazy var backSurface: PhysicallyBasedMaterial = {
-        let texture = IPhoneTextureGenerator.getBackTexture()
-        return PhoneRig.mockupPBR(
-            UIColor(red: 0.88, green: 0.89, blue: 0.91, alpha: 1),
-            metallic: 0.02,
-            roughness: 0.55,
-            texture: texture
-        )
-    }()
-
-    /// Camera plateau — slightly darker than back, still clay
-    private let plateauClay = PhoneRig.mockupClay(
-        UIColor(red: 0.74, green: 0.75, blue: 0.78, alpha: 1),
-        roughness: 0.45, metallic: 0.03
-    )
-
-    /// Camera lens — clean dark circle, not shiny
-    private let lensClay = PhoneRig.mockupClay(
-        UIColor(red: 0.12, green: 0.13, blue: 0.15, alpha: 1),
-        roughness: 0.30
-    )
-
-    /// Lens ring — subtle lighter ring around the lens
-    private let lensRingClay = PhoneRig.mockupClay(
-        UIColor(red: 0.68, green: 0.69, blue: 0.72, alpha: 1),
-        roughness: 0.40, metallic: 0.08
-    )
-
-    /// Dynamic Island pill — dark matte
-    private let islandClay = PhoneRig.mockupClay(
-        UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1),
-        roughness: 0.25
-    )
-
-    /// Side button clay — same as frame but slightly darker
-    private let buttonClay = PhoneRig.mockupClay(
-        UIColor(red: 0.72, green: 0.73, blue: 0.76, alpha: 1),
-        roughness: 0.48, metallic: 0.06
-    )
 
     // MARK: - Geometry Builder
 
@@ -197,6 +108,15 @@ final class PhoneRig {
                                                       cornerSegments: 20, bevelSteps: 6),
                             frameClay))
 
+        // 1b. Outline around the whole body
+        let outline = model("Outline",
+                            PhoneMeshFactory.sideWall(width: w, height: h, depth: d,
+                                                      cornerRadius: D.cornerRadius, bevel: D.bevel,
+                                                      cornerSegments: 20, bevelSteps: 6),
+                            outlineMaterial)
+        outline.scale = SIMD3<Float>(1.03, 1.02, 1.25)
+        body.addChild(outline)
+
         // 2. Front Display
         // Dark bezel border (very thin, just framing)
         body.addChild(model("FrontBezel",
@@ -205,7 +125,17 @@ final class PhoneRig {
                                                  cornerSegments: 20),
                             bezelClay))
 
-        // Screen with minimal UI texture
+        // Thin dark line round the screen
+        let lineMargin: Float = 0.0014
+        body.addChild(model("ScreenLine",
+                            PhoneMeshFactory.cap(width: w - 2 * D.bevel - lineMargin,
+                                                 height: h - 2 * D.bevel - lineMargin,
+                                                 cornerRadius: D.cornerRadius - D.bevel - lineMargin / 2,
+                                                 z: half + 0.00008, faceFront: true,
+                                                 cornerSegments: 20),
+                            screenLineClay))
+
+        // Screen (plain white)
         let screenMargin: Float = 0.0028
         body.addChild(model("Screen",
                             PhoneMeshFactory.cap(width: w - 2 * D.bevel - screenMargin,

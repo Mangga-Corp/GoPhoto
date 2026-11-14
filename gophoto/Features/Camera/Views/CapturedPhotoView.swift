@@ -55,7 +55,7 @@ struct CapturedPhotoView: View {
             VStack(spacing: 0) {
                 // Title
                 Text("Photo Captured")
-                    .font(.headline)
+                    .font(AppFont.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 20)
@@ -69,7 +69,7 @@ struct CapturedPhotoView: View {
                 // Save error, if the library write was refused.
                 if let saveError {
                     Text(saveError)
-                        .font(.caption)
+                        .font(AppFont.caption)
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
@@ -83,9 +83,9 @@ struct CapturedPhotoView: View {
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.title2)
+                                .font(AppFont.title2)
                             Text("Retake")
-                                .font(.caption)
+                                .font(AppFont.caption)
                         }
                         .foregroundStyle(.white)
                         .frame(width: 72, height: 56)
@@ -97,9 +97,9 @@ struct CapturedPhotoView: View {
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: "square.and.arrow.down")
-                                .font(.title2)
+                                .font(AppFont.title2)
                             Text("Save")
-                                .font(.caption)
+                                .font(AppFont.caption)
                         }
                         .foregroundStyle(.green)
                         .frame(width: 72, height: 56)
@@ -221,9 +221,9 @@ struct CapturedPhotoView: View {
         HStack(spacing: 6) {
             Image(systemName: isHoldingOriginal ? "eye.fill" : "eye")
             Text("Hold")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption.weight(.semibold))
         }
-        .font(.subheadline.weight(.semibold))
+        .font(AppFont.subheadline.weight(.semibold))
         .foregroundStyle(isHoldingOriginal ? Color.black : Color.white)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -264,7 +264,7 @@ struct CapturedPhotoView: View {
 
     private func badge(_ text: String) -> some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(AppFont.caption.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -278,7 +278,7 @@ struct CapturedPhotoView: View {
             ProgressView()
                 .tint(.white)
             Text("Enhancing…")
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 14)

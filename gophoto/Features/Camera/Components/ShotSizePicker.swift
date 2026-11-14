@@ -35,7 +35,6 @@ struct ShotSizePicker: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            postureCaption
             GeometryReader { geometry in
                 let margin = max(0, (geometry.size.width - Self.itemWidth) / 2)
                 ScrollViewReader { proxy in
@@ -79,30 +78,19 @@ struct ShotSizePicker: View {
             onSelect(shot)
         } label: {
             Text(shot.pickerTitle)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isSelected ? Color.black : Color.white.opacity(0.85))
+                .font(AppFont.subheadline.weight(.semibold))
+                .foregroundStyle(isSelected ? GoPhotoDesign.primaryText : Color.white.opacity(0.5))
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .frame(height: 32)
                 .background {
-                    if isSelected { Capsule().fill(Color.white).matchedGeometryEffect(id: "shotHighlight", in: highlight) }
+                    if isSelected { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(GoPhotoDesign.background).matchedGeometryEffect(id: "shotHighlight", in: highlight) }
                 }
                 .frame(width: Self.itemWidth)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    /// Why the row looks the way it does: a seated person only gets full body.
-    @ViewBuilder private var postureCaption: some View {
-        if let posture {
-            Label(posture == .sitting ? "Sitting · full body only" : "Standing",
-                  systemImage: posture == .sitting ? "chair.fill" : "figure.stand")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.7))
-                .transition(.opacity)
-        }
     }
 
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {

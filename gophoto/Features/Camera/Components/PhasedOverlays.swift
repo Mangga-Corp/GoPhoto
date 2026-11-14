@@ -9,17 +9,22 @@ import SwiftUI
 
 struct PhasedInstructionPill: View {
     let instruction: PhasedInstruction?
+    /// Camera layout: plain white text (the strip behind it is drawn by the camera).
+    var isPlain = false
 
     var body: some View {
         if let instruction {
             Label(instruction.text, systemImage: instruction.symbol)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(instruction == .takePhoto || instruction == .holdIt
-                            ? Color.green.opacity(0.85) : Color.black.opacity(0.6),
-                            in: Capsule())
+                .background {
+                    if !isPlain {
+                        Capsule().fill(instruction == .takePhoto || instruction == .holdIt
+                                       ? Color.green.opacity(0.85) : Color.black.opacity(0.6))
+                    }
+                }
                 .accessibilityElement(children: .combine)
                 .transition(.opacity)
         }

@@ -18,7 +18,7 @@ struct SelectionIndicator: View {
             if isSelected {
                 Circle().fill(GoPhotoDesign.primary)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(AppFont.system(size: 13, weight: .bold))
                     .foregroundStyle(GoPhotoDesign.onPrimary)
             } else {
                 Circle().fill(GoPhotoDesign.secondaryBackground)
@@ -171,7 +171,7 @@ struct PreferenceThumbnail: View {
                 Image(uiImage: thumbnail).resizable().scaledToFill()
             } else if image == nil {
                 Image(systemName: "person.crop.rectangle")
-                    .font(.system(size: 26, weight: .regular))
+                    .font(AppFont.system(size: 26, weight: .regular))
                     .foregroundStyle(GoPhotoDesign.secondaryText.opacity(0.7))
             }
         }

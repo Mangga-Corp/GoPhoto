@@ -89,7 +89,7 @@ struct PreferenceCardModel: Identifiable {
         switch error {
         case .analysisUnavailable: return "Not analyzed yet. Edit photos to try again."
         case .analysisFailed: return "Analysis failed. Edit photos to try again."
-        case .noShotVariant: return "Couldn't read the framing in these photos."
+        case .noShotVariant: return "Couldn't see a person in these photos."
         case .preferenceNotFound: return "This preference no longer exists."
         }
     }
@@ -98,7 +98,7 @@ struct PreferenceCardModel: Identifiable {
 
     /// A custom preference's two choices.
     static func chips(for style: CustomPreferenceStyle) -> [String] {
-        ["Placement: \(style.placement.shortTitle)", "Angle: \(style.angle.shortTitle)"]
+        ["Position: \(style.placement.shortTitle)", "Angle: \(style.angle.shortTitle)"]
     }
 
     /// Lighting, angle, framing, placement, in that order, each only when the analysis has it.
@@ -131,11 +131,11 @@ struct PreferenceCardModel: Identifiable {
             shots.filter { $0 == a }.count < shots.filter { $0 == b }.count
         }), !shots.isEmpty,
            Double(shots.filter { $0 == top }.count) / Double(shots.count) >= StyleSummary.clearShare {
-            chips.append("Framing: \(top.displayTitle)")
+            chips.append("Shot: \(top.displayTitle)")
         }
 
         if let box = analysis.subjectBox, analysis.subjectPhotoCount > 0 {
-            chips.append(box.midX < 0.4 || box.midX > 0.6 ? "Placement: Off-center" : "Placement: Center")
+            chips.append(box.midX < 0.4 || box.midX > 0.6 ? "Position: Off-center" : "Position: Center")
         }
         return chips
     }

@@ -62,10 +62,10 @@ struct LatestPhotoView: View {
             if let photo = currentPhoto {
                 VStack(spacing: 0) {
                     Text(Self.title(for: photo.createdAt))
-                        .font(.headline)
+                        .font(AppFont.headline)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     Text(photo.createdAt.formatted(date: .omitted, time: .shortened))
-                        .font(.caption)
+                        .font(AppFont.caption)
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                 }
             }
@@ -76,7 +76,7 @@ struct LatestPhotoView: View {
                 Spacer()
                 Button(action: openPhotosApp) {
                     Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(AppFont.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(GoPhotoDesign.primary, in: Circle())
@@ -123,7 +123,7 @@ struct LatestPhotoView: View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 40))
+                .font(AppFont.system(size: 40))
                 .foregroundStyle(GoPhotoDesign.secondaryText)
             Text("No photos yet")
                 .font(GoPhotoDesign.sectionTitle)
@@ -139,7 +139,7 @@ struct LatestPhotoView: View {
 
     private func circleIcon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 16, weight: .semibold))
+            .font(AppFont.system(size: 16, weight: .semibold))
             .foregroundStyle(GoPhotoDesign.primaryText)
             .frame(width: 44, height: 44)
             .background(.ultraThinMaterial, in: Circle())
