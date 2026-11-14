@@ -128,9 +128,8 @@ struct CameraView: View {
                     .reportOnboardingFrame(.preview, into: $onboardingFrames)
                     .position(x: layout.preview.midX, y: layout.preview.midY)
 
-                if layout.isImmersive {
-                    immersiveScrims(layout)
-                }
+                immersiveScrims(layout)
+                    .opacity(layout.isImmersive ? 1 : 0)
 
                 topBar
                     .frame(width: geo.size.width, height: Self.topBarHeight)
@@ -140,7 +139,7 @@ struct CameraView: View {
                     .frame(width: layout.controls.width, height: layout.controls.height)
                     .position(x: layout.controls.midX, y: layout.controls.midY)
             }
-            .animation(.snappy(duration: 0.3), value: viewModel.aspectRatio)
+            .animation(.smooth(duration: 0.42), value: viewModel.aspectRatio)
         }
         // Motion runs 30×/s and redraws the camera screen each time: stop it while the gallery
         // covers the camera, otherwise the gallery underneath it is rebuilt 30×/s too (lag).
@@ -193,17 +192,16 @@ struct CameraView: View {
     /// 9:16: soft dark gradients where the top bar and the controls lie over the image, so they
     /// stay readable. Visual only: the photo is the whole 9:16 image, as the grid shows.
     private func immersiveScrims(_ layout: CameraScreenLayout) -> some View {
-        ZStack(alignment: .topLeading) {
-            if layout.coveredTop > 0 {
-                LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(width: layout.preview.width, height: layout.coveredTop + 16)
-                    .position(x: layout.preview.midX, y: layout.preview.minY + (layout.coveredTop + 16) / 2)
-            }
-            if layout.coveredBottom > 0 {
-                LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
-                    .frame(width: layout.preview.width, height: layout.coveredBottom + 24)
-                    .position(x: layout.preview.midX, y: layout.preview.maxY - (layout.coveredBottom + 24) / 2)
-            }
+        // Always laid out (faded in and out by the caller) so switching ratio cross-fades them.
+        let top = max(layout.coveredTop, Self.topBarHeight)
+        let bottom = max(layout.coveredBottom, 100)
+        return ZStack(alignment: .topLeading) {
+            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(width: layout.preview.width, height: top + 16)
+                .position(x: layout.preview.midX, y: layout.preview.minY + (top + 16) / 2)
+            LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                .frame(width: layout.preview.width, height: bottom + 24)
+                .position(x: layout.preview.midX, y: layout.preview.maxY - (bottom + 24) / 2)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -216,7 +214,7 @@ struct CameraView: View {
     /// person dimming / tap and the horizon cover the whole image (the photo).
     private func cameraPreview(coveredTop: CGFloat, coveredBottom: CGFloat) -> some View {
         CameraPreviewView(session: viewModel.session,
-                          videoGravity: viewModel.aspectRatio.showsWholeFrame ? .resizeAspect : .resizeAspectFill)
+                          videoGravity: .resizeAspectFill)   // 3:4 box has the frame's own shape, so fill = exact; one gravity keeps the ratio change continuous
             .overlay { guideVisuals }
             .overlay { CameraGridOverlay(aspect: viewModel.aspectRatio.gridAspect, showsGrid: true) }
             .overlay { HorizonLevelView(state: viewModel.horizon) }
