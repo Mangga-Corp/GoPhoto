@@ -14,13 +14,13 @@ struct WelcomeOnboardingView: View {
                 VStack(spacing: 0) {
                     Spacer(minLength: 18)
 
-                    Text("Start with your best photos")
+                    Text("Start with your favorite photos")
                         .font(GoPhotoDesign.pageTitle)
                         .foregroundStyle(GoPhotoDesign.primaryText)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Add your favorite self-portraits as references for your AI guide.")
+                    Text("Add photos you love. We'll guide you to match them.")
                         .font(GoPhotoDesign.body)
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                         .multilineTextAlignment(.center)

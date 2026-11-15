@@ -54,13 +54,15 @@ final class PreferencesViewModel {
         // competing run before that flow can join it.
         for preference in preferences
         where preference.analysis?.isCurrent != true && preference.id != pendingOnboardingID {
-            reanalyze(id: preference.id)
+            // Nobody is there to confirm excluded photos at launch: invalid photos are left out
+            // of the analysis but stay in the preference.
+            reanalyze(id: preference.id, isInteractive: false)
         }
     }
 
     var hasPreferences: Bool { !preferences.isEmpty }
     var canDelete: Bool { preferences.count > 1 }
-    let cannotDeleteMessage = "You can’t delete this preference. At least one preference is required as the reference for your photos."
+    let cannotDeleteMessage = "You need at least one preference, so this one has to stay."
 
     func preference(id: UUID) -> Preference? { preferences.first { $0.id == id } }
 
@@ -123,7 +125,7 @@ final class PreferencesViewModel {
         completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
     ) {
         guard !isSavingNewPreference else {
-            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving. Give it a moment.")))
             return
         }
         if let error = nameError(for: name) {
@@ -131,7 +133,7 @@ final class PreferencesViewModel {
             return
         }
         guard preference(id: id) == nil else {
-            completion(.failure(PreferenceNameError(message: "This preference has already been saved.")))
+            completion(.failure(PreferenceNameError(message: "This preference is already saved.")))
             return
         }
 
@@ -144,7 +146,7 @@ final class PreferencesViewModel {
         }
         guard validPhotos.count >= ChoosePhotosViewModel.minPhotos else {
             completion(.failure(PreferenceNameError(
-                message: "Select at least \(ChoosePhotosViewModel.minPhotos) valid photos before continuing."
+                message: "Choose at least \(ChoosePhotosViewModel.minPhotos) clear photos to continue."
             )))
             return
         }
@@ -178,7 +180,7 @@ final class PreferencesViewModel {
                 case .failure:
                     self.isSavingNewPreference = false
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the preference and its photos. Check available storage and try again."
+                        message: "Couldn't save. Check your storage and try again."
                     )))
                 }
             }
@@ -193,12 +195,12 @@ final class PreferencesViewModel {
         completion: @escaping (Result<UUID, PreferenceNameError>) -> Void
     ) {
         guard !isSavingNewPreference else {
-            completion(.failure(PreferenceNameError(message: "Saving is already in progress. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving. Give it a moment.")))
             return
         }
         guard !preferences.contains(where: { $0.customStyle == style }) else {
             completion(.failure(PreferenceNameError(
-                message: "This combination has already been created. You can only have one of each combination."
+                message: "You already made this one. Each combination can be saved once."
             )))
             return
         }
@@ -216,7 +218,7 @@ final class PreferencesViewModel {
                     completion(.success(preference.id))
                 case .failure:
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the custom preference. Check available storage and try again."
+                        message: "Couldn't save. Check your storage and try again."
                     )))
                 }
             }
@@ -263,11 +265,11 @@ final class PreferencesViewModel {
         completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
     ) {
         guard !updatingPhotoIDs.contains(id) else {
-            completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
+            completion(.failure(PreferenceNameError(message: "Still saving your photos. Give it a moment.")))
             return
         }
         guard let index = preferences.firstIndex(where: { $0.id == id }) else {
-            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            completion(.failure(PreferenceNameError(message: "We couldn't find this preference.")))
             return
         }
         guard !preferences[index].isCustom else {
@@ -278,7 +280,7 @@ final class PreferencesViewModel {
         let current = preferences[index]
         let updatedPhotos = mergedPhotos(current.photos, photos)
         guard updatedPhotos.count <= ChoosePhotosViewModel.maxPhotos else {
-            completion(.failure(PreferenceNameError(message: "A preference can contain up to \(ChoosePhotosViewModel.maxPhotos) photos.")))
+            completion(.failure(PreferenceNameError(message: "You can add up to \(ChoosePhotosViewModel.maxPhotos) photos.")))
             return
         }
         guard updatedPhotos.map(\.id) != current.photos.map(\.id) else {
@@ -298,7 +300,7 @@ final class PreferencesViewModel {
                 guard case .success = saveResult else {
                     self.updatingPhotoIDs.remove(id)
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't save the additional photos. Your existing preference is unchanged. Please try again."
+                        message: "Couldn't add the photos. Your preference is unchanged. Try again."
                     )))
                     return
                 }
@@ -311,7 +313,117 @@ final class PreferencesViewModel {
                               let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
                             self.restorePreferencesAfterPhotoUpdateFailure(id: id) {
                                 completion(.failure(PreferenceNameError(
-                                    message: "Couldn't verify the additional photos. Your existing preference is unchanged. Please try again."
+                                    message: "Couldn't check the new photos. Your preference is unchanged. Try again."
+                                )))
+                            }
+                            return
+                        }
+                        self.preferences[currentIndex] = persisted
+                        self.updatingPhotoIDs.remove(id)
+                        self.persistCount += 1
+                        completion(.success(persisted))
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Some Photos Were Excluded" → Continue. The invalid photos were already removed (and
+    /// saved) by the run that showed the notice; this only starts the analysis of the photos
+    /// left, reusing that run's person check (no second check, no second cleanup). Once per
+    /// notice: it is cleared here, and a stale one (photos changed since) is refused. Screens join
+    /// the analysis through `runningAnalysis(for:)`.
+    func confirmExclusions(
+        for id: UUID,
+        completion: @escaping (Result<Void, PreferenceNameError>) -> Void
+    ) {
+        guard let notice = exclusionNotice(for: id),
+              let current = preference(id: id),
+              Set(notice.sourcePhotos.map(\.id)) == Set(current.photos.map(\.id)) else {
+            completion(.failure(PreferenceNameError(
+                message: "Your photos changed since they were checked. Analyze them again to check them."
+            )))
+            return
+        }
+        awaitingExclusionConfirmation.remove(id)
+        reanalyze(id: id, reusing: notice)
+        completion(.success(()))
+    }
+
+    /// Removes one photo from a saved preference (Photo Session Setup: a photo the person check
+    /// could not confirm, which the user chose to replace). Only Poto's own copy is removed,
+    /// never the Photos library; the preference keeps its ID and name.
+    func removePhotoPersisted(
+        _ photoID: UUID,
+        from id: UUID,
+        completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
+    ) {
+        guard !updatingPhotoIDs.contains(id) else {
+            completion(.failure(PreferenceNameError(message: "Photos are already being saved. Please wait.")))
+            return
+        }
+        guard let preference = preference(id: id) else {
+            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+        guard !preference.isCustom else {
+            completion(.failure(Self.customPhotosError))
+            return
+        }
+        guard preference.photos.contains(where: { $0.id == photoID }) else {
+            completion(.success(preference))
+            return
+        }
+        persistPhotoRemoval([photoID], from: id,
+                            failureMessage: "Couldn't remove the photo. Your photos are unchanged. Please try again.",
+                            completion: completion)
+    }
+
+    /// Writes the preference without `removedIDs` and reads it back; the in-memory preference
+    /// changes only once that succeeded. Its analysis and person check are reset (the photos
+    /// changed). Callers have checked the preference exists, is not custom and is not saving.
+    /// `cancelsAnalysis`: false only for the cleanup done by the running validation itself
+    /// (it must not cancel its own run).
+    private func persistPhotoRemoval(
+        _ removedIDs: Set<UUID>,
+        from id: UUID,
+        failureMessage: String,
+        cancelsAnalysis: Bool = true,
+        completion: @escaping (Result<Preference, PreferenceNameError>) -> Void
+    ) {
+        guard let index = preferences.firstIndex(where: { $0.id == id }) else {
+            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            return
+        }
+        let current = preferences[index]
+        guard !removedIDs.isEmpty else {
+            completion(.success(current))
+            return
+        }
+        let remainingPhotos = current.photos.filter { !removedIDs.contains($0.id) }
+
+        if cancelsAnalysis { cancelCurrentAnalysis(for: id) }
+        var updatedPreferences = preferences
+        updatedPreferences[index].photos = remainingPhotos
+        updatedPreferences[index].analysis = nil
+        updatingPhotoIDs.insert(id)
+
+        storage.save(updatedPreferences, selectedID: lastSelectedID) { [weak self] saveResult in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard case .success = saveResult else {
+                    self.updatingPhotoIDs.remove(id)
+                    completion(.failure(PreferenceNameError(message: failureMessage)))
+                    return
+                }
+                self.storage.loadPreference(id: id) { loadResult in
+                    DispatchQueue.main.async {
+                        guard case .success(let persisted) = loadResult,
+                              persisted.photos.map(\.id) == remainingPhotos.map(\.id),
+                              let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
+                            self.restorePreferencesAfterPhotoUpdateFailure(id: id) {
+                                completion(.failure(PreferenceNameError(
+                                    message: "Couldn't verify the updated photos. Please try again."
                                 )))
                             }
                             return
@@ -346,7 +458,7 @@ final class PreferencesViewModel {
         completion: @escaping (Result<Void, PreferenceNameError>) -> Void
     ) {
         guard let index = preferences.firstIndex(where: { $0.id == id }) else {
-            completion(.failure(PreferenceNameError(message: "The saved preference could not be found.")))
+            completion(.failure(PreferenceNameError(message: "We couldn't find this preference.")))
             return
         }
         guard !preferences[index].isCustom else {
@@ -367,7 +479,7 @@ final class PreferencesViewModel {
                 guard case .success = result,
                       let currentIndex = self.preferences.firstIndex(where: { $0.id == id }) else {
                     completion(.failure(PreferenceNameError(
-                        message: "Couldn't prepare the saved preference for analysis. Please try again."
+                        message: "Couldn't get your preference ready. Try again."
                     )))
                     return
                 }
@@ -379,7 +491,7 @@ final class PreferencesViewModel {
     }
 
     private static let customPhotosError = PreferenceNameError(
-        message: "Custom preferences are made from a placement and an angle, so they have no photos to edit."
+        message: "Custom preferences have no photos to edit."
     )
 
     private func cancelCurrentAnalysis(for id: UUID) {
@@ -387,6 +499,9 @@ final class PreferencesViewModel {
         analysisTasks[id] = nil
         sessions[id] = nil
         analyzingIDs.remove(id)
+        // The photos are about to change: the old person check no longer applies.
+        subjectValidations[id] = nil
+        awaitingExclusionConfirmation.remove(id)
     }
 
     private func restorePreferencesAfterPhotoUpdateFailure(id: UUID, completion: @escaping () -> Void) {
@@ -413,6 +528,32 @@ final class PreferencesViewModel {
     private var analyzingIDs: Set<UUID> = []
     /// The newest analysis task per preset, so a screen can wait for one already running.
     @ObservationIgnored private var analysisTasks: [UUID: Task<Void, Never>] = [:]
+    /// The latest person check of each preset's photos (in memory only: every run checks the
+    /// whole photo collection again). Observed: Photo Session Setup marks photos without a
+    /// person, Preference Selection explains why a preset was not analysed.
+    private var subjectValidations: [UUID: HumanSubjectValidationResult] = [:]
+
+    /// The latest person check of this preset, when it stopped the analysis (too few photos
+    /// show a person), or nil.
+    func validationFailure(for id: UUID) -> HumanSubjectValidationResult? {
+        guard let result = subjectValidations[id], !result.hasEnoughValidPhotos else { return nil }
+        return result
+    }
+
+    /// The latest person check of this preset, passed or not.
+    func subjectValidation(for id: UUID) -> HumanSubjectValidationResult? { subjectValidations[id] }
+
+    /// Presets whose run removed invalid photos and stopped to tell the user before analysing
+    /// (enough valid photos left). Observed; in memory only.
+    private var awaitingExclusionConfirmation: Set<UUID> = []
+
+    /// "Some Photos Were Excluded": invalid photos were removed (already saved), enough valid
+    /// photos are left; nothing is analysed until `confirmExclusions(for:)`. Nil otherwise.
+    func exclusionNotice(for id: UUID) -> HumanSubjectValidationResult? {
+        guard awaitingExclusionConfirmation.contains(id), let result = subjectValidations[id],
+              result.hasEnoughValidPhotos, result.removedCount > 0 else { return nil }
+        return result
+    }
 
     /// The analysis of this preset that is still running (e.g. started by an edit), or nil.
     func runningAnalysis(for id: UUID) -> Task<Void, Never>? {
@@ -425,8 +566,22 @@ final class PreferencesViewModel {
     /// Analyses a preset's photos and saves the result with the preset.
     /// Only the newest request per preset is saved. Await `value` to know when it is done.
     /// Custom preferences are never analysed: their targets come from their style.
+    ///
+    /// Order of a run: 1. check every saved photo (exactly one foreground person); 2. with
+    /// `isInteractive` (a screen is showing the run), remove the confirmed invalid photos (no
+    /// person, several in the foreground) from the preference right away, saved and read back
+    /// before anything else (uncertain and failed photos stay); 3. fewer than 3 valid photos:
+    /// stop (`validationFailure(for:)`); 4. photos were removed: stop to tell the user
+    /// (`exclusionNotice(for:)`, Continue = `confirmExclusions(for:)`); 5. analyse the valid
+    /// photos only. A cleanup that fails to save stops the run: nothing is analysed on a
+    /// collection that differs between memory and disk. Without `isInteractive` (launch) nothing
+    /// is removed: the valid photos are analysed and the others stay.
+    ///
+    /// `reusing`: the person check of the run that just showed the notice; reused when the saved
+    /// photos are still exactly its photos (no second check).
     @discardableResult
-    func reanalyze(id: UUID) -> Task<Void, Never>? {
+    func reanalyze(id: UUID, isInteractive: Bool = true,
+                   reusing previousCheck: HumanSubjectValidationResult? = nil) -> Task<Void, Never>? {
         guard let existing = preference(id: id), !existing.isCustom, !existing.photos.isEmpty else { return nil }
         let token = (analysisTokens[id] ?? 0) + 1
         analysisTokens[id] = token
@@ -449,19 +604,67 @@ final class PreferencesViewModel {
                 self.analyzingIDs.remove(id)
                 return
             }
-            let photos = persistedPreference.photos
+
+            // 1. The person check (or the one the notice was made from, when nothing changed).
+            var validation: HumanSubjectValidationResult
+            if let previousCheck,
+               previousCheck.sourcePhotos.map(\.id) == persistedPreference.photos.map(\.id) {
+                validation = previousCheck
+            } else {
+                validation = await HumanSubjectValidator.validate(persistedPreference.photos)
+            }
+            guard self.analysisTokens[id] == token else { return }
+            if validation.hasProcessingFailures {
+                self.logger.error("Preference \(id): \(validation.processingFailureCount) photos could not be checked for a person")
+            }
+
+            // 2. Confirmed invalid photos leave the preference now (saved before going on).
+            var removedNow = false
+            if isInteractive, !validation.invalidPhotos.isEmpty {
+                guard let cleaned = await self.removeInvalidPhotos(of: id, checkedBy: validation) else {
+                    // Not saved: memory and disk still agree (old collection); stop here.
+                    guard self.analysisTokens[id] == token else { return }
+                    self.subjectValidations[id] = validation
+                    self.analyzingIDs.remove(id)
+                    return
+                }
+                guard self.analysisTokens[id] == token else { return }
+                validation = cleaned
+                removedNow = true
+            }
+            self.subjectValidations[id] = validation
+
+            // 3. Not enough valid photos.
+            guard validation.hasEnoughValidPhotos else {
+                self.logger.notice("Preference \(id) not analysed: \(validation.validCount) of \(validation.totalInspected) photos show exactly one foreground person (\(validation.removedCount) removed)")
+                self.awaitingExclusionConfirmation.remove(id)
+                self.analyzingIDs.remove(id)
+                return
+            }
+            // 4. Photos were just removed: tell the user before analysing.
+            if removedNow {
+                self.logger.notice("Preference \(id): \(validation.removedCount) invalid photos removed; waiting for Continue")
+                self.awaitingExclusionConfirmation.insert(id)
+                self.analyzingIDs.remove(id)
+                return
+            }
+            self.awaitingExclusionConfirmation.remove(id)
+            // 5. Only the valid photos.
+            let photos = validation.validatedPhotos
+
             self.analysisRunCount += 1
             #if DEBUG
             // UI tests only (`-GoPhotoFakeAnalysis <mode>`): a stand-in result instead of Vision.
-            let analysis: PresetAnalysis?
+            var analysis: PresetAnalysis?
             if let fake = await DebugFixtures.fakeAnalysis(for: photos) {
                 analysis = fake
             } else {
                 analysis = await session.analyze(photos)
             }
             #else
-            let analysis = await session.analyze(photos)
+            var analysis = await session.analyze(photos)
             #endif
+            analysis?.analyzedPhotoIDs = photos.map(\.id.uuidString)
             guard self.analysisTokens[id] == token else { return }
             if let analysis, !(await self.setAnalysisPersisted(analysis, for: id)) {
                 self.logger.error("Could not persist analysis for preference \(id)")
@@ -471,6 +674,29 @@ final class PreferencesViewModel {
         analysisChain = task
         analysisTasks[id] = task
         return task
+    }
+
+    /// Removes `validation`'s confirmed invalid photos from the saved preference without
+    /// cancelling the running validation, and returns the check of the photos left (with the
+    /// removed counts), or nil when the collection could not be saved (or changed meanwhile).
+    private func removeInvalidPhotos(of id: UUID,
+                                     checkedBy validation: HumanSubjectValidationResult) async -> HumanSubjectValidationResult? {
+        guard !updatingPhotoIDs.contains(id), let current = preference(id: id),
+              current.photos.map(\.id) == validation.sourcePhotos.map(\.id) else {
+            logger.error("Preference \(id): invalid photos not removed (photos changed or being saved)")
+            return nil
+        }
+        let removed = Set(validation.invalidPhotos.map(\.id))
+        let result: Result<Preference, PreferenceNameError> = await withCheckedContinuation { continuation in
+            persistPhotoRemoval(removed, from: id,
+                                failureMessage: "Couldn't remove the photos that didn't meet the requirements.",
+                                cancelsAnalysis: false) { continuation.resume(returning: $0) }
+        }
+        guard case .success(let saved) = result else {
+            logger.error("Preference \(id): removing invalid photos could not be saved")
+            return nil
+        }
+        return validation.afterRemovingInvalidPhotos(remaining: saved.photos)
     }
 
     private func rollbackFailedPreferenceSave(
@@ -484,7 +710,7 @@ final class PreferencesViewModel {
                 }
                 self.isSavingNewPreference = false
                 completion(.failure(PreferenceNameError(
-                    message: "Couldn't verify the saved photos. Please try saving the preference again."
+                    message: "Couldn't check your photos. Try saving again."
                 )))
             }
         }
@@ -526,6 +752,8 @@ final class PreferencesViewModel {
     func delete(id: UUID, allowingLast: Bool = false) -> Bool {
         guard allowingLast || canDelete,
               let index = preferences.firstIndex(where: { $0.id == id }) else { return false }
+        // Its analysis (running or queued), session and person check go with it.
+        cancelCurrentAnalysis(for: id)
         preferences.remove(at: index)
         if lastSelectedID == id { lastSelectedID = nil }
         persist()

@@ -40,7 +40,7 @@ struct GalleryShortcutButton: View {
                 } else {
                     // No photo yet, or no Photos access yet
                     Image(systemName: "photo.on.rectangle")
-                        .font(.title3)
+                        .font(AppFont.title3)
                         .foregroundStyle(.white)
                 }
             }

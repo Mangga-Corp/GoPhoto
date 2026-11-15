@@ -14,6 +14,11 @@ struct PhotoSessionSetupView: View {
     @State private var isShowingNameModal = false
     @State private var collectionName = ""
     @State private var hasAutoOpenedPicker = false
+    /// The saved preference's last run found too few photos of exactly one person (or could not check
+    /// some): nothing was analysed.
+    @State private var subjectWarning: HumanSubjectValidationResult?
+    /// A photo the person check left out, tapped to see why (and to check again or replace it).
+    @State private var inspectedPhoto: InspectedPhoto?
     @Environment(\.dismiss) private var dismiss
 
     private let preferences: PreferencesViewModel
@@ -21,6 +26,10 @@ struct PhotoSessionSetupView: View {
     let onStartAnalyzing: (UUID) -> Void
     /// A custom preference (placement + angle) was saved; the opener shows the preference list.
     let onCustomPreferenceCreated: (UUID) -> Void
+    /// Cancel on the "Not Enough Photos with People" warning: the opener deletes the saved
+    /// preference being created and leaves this flow for Choose Preference. Nil: Cancel only
+    /// closes the warning.
+    let onDiscardPreference: ((UUID) -> Void)?
     private let showsBackButton: Bool
 
     init(
@@ -29,6 +38,7 @@ struct PhotoSessionSetupView: View {
         onCreatePreference: @escaping ([PhotoItem], String, @escaping (Result<UUID, PreferenceNameError>) -> Void) -> Void,
         onStartAnalyzing: @escaping (UUID) -> Void,
         onCustomPreferenceCreated: @escaping (UUID) -> Void,
+        onDiscardPreference: ((UUID) -> Void)? = nil,
         showsBackButton: Bool = false
     ) {
         let persistedPreference = savedPreference.flatMap { preferences.preference(id: $0.id) }
@@ -40,10 +50,58 @@ struct PhotoSessionSetupView: View {
         self.onCreatePreference = onCreatePreference
         self.onStartAnalyzing = onStartAnalyzing
         self.onCustomPreferenceCreated = onCustomPreferenceCreated
+        self.onDiscardPreference = onDiscardPreference
         self.showsBackButton = showsBackButton
     }
 
+    // Split in two so the compiler type-checks each half in reasonable time.
     var body: some View {
+        withSubjectAlerts(screen)
+    }
+
+    /// The person-check alerts: "Not Enough Photos with People" and a tapped flagged photo.
+    private func withSubjectAlerts<Content: View>(_ content: Content) -> some View {
+        content
+        .alert(
+            HumanSubjectValidationResult.warningTitle,
+            isPresented: Binding(get: { subjectWarning != nil },
+                                 set: { if !$0 { subjectWarning = nil } }),
+            presenting: subjectWarning
+        ) { _ in
+            // The confirmed invalid photos were already removed (and saved) by the check: the
+            // grid behind shows what is left. Continue stays here to add photos; photos that
+            // could not be checked are tapped one by one (Check Again / Remove Photo).
+            Button("Continue") { subjectWarning = nil }
+            Button("Cancel", role: .cancel) {
+                subjectWarning = nil
+                discardPreference()
+            }
+        } message: { warning in
+            Text(warning.warningMessage)
+        }
+        .alert(
+            inspectedPhoto?.title ?? "",
+            isPresented: Binding(get: { inspectedPhoto != nil },
+                                 set: { if !$0 { inspectedPhoto = nil } }),
+            presenting: inspectedPhoto
+        ) { inspected in
+            if inspected.canCheckAgain {
+                Button("Check Again") {
+                    inspectedPhoto = nil
+                    startAnalyzingSavedPreference()
+                }
+            }
+            Button("Remove Photo", role: .destructive) {
+                inspectedPhoto = nil
+                removePhoto(inspected.photoID)
+            }
+            Button("Keep", role: .cancel) { inspectedPhoto = nil }
+        } message: { inspected in
+            Text(inspected.message)
+        }
+    }
+
+    private var screen: some View {
         GeometryReader { geometry in
             let thumbnailWidth = min(
                 180,
@@ -80,7 +138,8 @@ struct PhotoSessionSetupView: View {
         }
         .appPatternBackground()
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomActions
+            // While the name card is open, only the card is shown (no bottom button).
+            if !isShowingNameModal { bottomActions }
         }
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
@@ -89,17 +148,19 @@ struct PhotoSessionSetupView: View {
             // Back button in the navigation bar, like the Custom Preference steps
             // (Choose a Subject Placement). Asks first if there are unsaved photos.
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: goBack) {
-                    Image(systemName: "chevron.left")
+                if !isShowingNameModal {   // hidden while the name card is open
+                    Button(action: goBack) {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel("Back")
                 }
-                .accessibilityLabel("Back")
             }
         }
         .alert("Leave without saving?", isPresented: $isConfirmingLeave) {
             Button("Leave", role: .destructive) { dismiss() }
             Button("Stay", role: .cancel) { }
         } message: {
-            Text("You have unfinished changes. If you leave now, your selected photos won't be saved.")
+            Text("If you leave now, your selected photos won't be saved.")
         }
         .navigationDestination(isPresented: isShowingCustomPreference) {
             if let customPreferenceFlow {
@@ -108,6 +169,7 @@ struct PhotoSessionSetupView: View {
         }
         .onAppear {
             reloadSavedPreference()
+            showSubjectWarningIfNeeded()
         }
         .preferredColorScheme(.light)
         .tint(GoPhotoDesign.primary)
@@ -128,9 +190,9 @@ struct PhotoSessionSetupView: View {
         } message: {
             Text(updateError ?? "")
         }
-        .alert("Re-analyze the AI preferences", isPresented: $isConfirmingDeletePhotos) {
+        .alert("Update your style?", isPresented: $isConfirmingDeletePhotos) {
             Button("Cancel", role: .destructive) { }
-            Button("Yes") {
+            Button("Continue") {
                 withAnimation {
                     selection.removePhotos(withIDs: selectedPhotoIDs)
                     selectedPhotoIDs.removeAll()
@@ -138,7 +200,7 @@ struct PhotoSessionSetupView: View {
                 }
             }
         } message: {
-            Text("By Delete those picture it will redefined the ai model, are you sure ?")
+            Text("Removing these photos will update your style. Continue?")
         }
     }
 
@@ -149,11 +211,11 @@ struct PhotoSessionSetupView: View {
             HStack(alignment: .center) {
                 // Title and Subtitle
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("AI Preferences")
-                        .font(.system(size: 22, weight: .bold))
+                    Text("Reference Photos")
+                        .font(AppFont.system(size: 22, weight: .bold))
                         .foregroundStyle(GoPhotoDesign.primaryText)
                     Text("\(selection.photos.count)/20")
-                        .font(.system(size: 14, weight: .regular))
+                        .font(AppFont.system(size: 14, weight: .regular))
                         .foregroundStyle(GoPhotoDesign.secondaryText)
                 }
 
@@ -167,10 +229,10 @@ struct PhotoSessionSetupView: View {
                     }
                 } label: {
                     Text(isSelecting ? "Cancel" : "Select")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(AppFont.system(size: 17, weight: .medium))
                         .foregroundStyle(GoPhotoDesign.primaryText)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 26)
+                        .padding(.vertical, 14)
                         .background(Color.white, in: Capsule())
                         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                 }
@@ -184,7 +246,7 @@ struct PhotoSessionSetupView: View {
     private var headerEmpty: some View {
         VStack(spacing: 12) {
             VStack(spacing: 8) {
-                Text("Photo Session Setup")
+                Text("New Preference")
                     .font(GoPhotoDesign.pageTitle)
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .multilineTextAlignment(.center)
@@ -197,13 +259,13 @@ struct PhotoSessionSetupView: View {
 
     private var privacyNote: some View {
         HStack(spacing: 10) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 18, weight: .semibold))
+            Image(systemName: "shield.lefthalf.filled")
+                .font(AppFont.system(size: 18, weight: .semibold))
                 .foregroundStyle(GoPhotoDesign.primary)
 
             Text("Your photos stay on this iPhone. They're analyzed on your device and never uploaded.")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(GoPhotoDesign.primaryText)
+                .font(AppFont.system(size: 15, weight: .regular))
+                .foregroundStyle(GoPhotoDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
@@ -222,7 +284,7 @@ struct PhotoSessionSetupView: View {
                 .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
 
-            Text("Add at least \(ChoosePhotosViewModel.minPhotos) of your favorite photos to get started.")
+            Text("Add at least \(ChoosePhotosViewModel.minPhotos) photos you love to begin.")
                 .font(GoPhotoDesign.body)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -249,7 +311,7 @@ struct PhotoSessionSetupView: View {
     }
 
     private func addPhotoTile(width: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         return Button(action: openPicker) {
             shape
                 .fill(GoPhotoDesign.primarySubtle)
@@ -259,10 +321,10 @@ struct PhotoSessionSetupView: View {
                 .overlay {
                     VStack(spacing: 6) {
                         Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .medium))
+                            .font(AppFont.system(size: 24, weight: .medium))
                             .foregroundStyle(GoPhotoDesign.primary)
                         Text("Add photos")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(AppFont.system(size: 12, weight: .medium))
                             .foregroundStyle(GoPhotoDesign.primary)
                     }
                 }
@@ -283,13 +345,18 @@ struct PhotoSessionSetupView: View {
                 } else {
                     selectedPhotoIDs.insert(photo.id)
                 }
+            } else if let status = subjectStatus(of: photo), !status.isValid {
+                inspectedPhoto = InspectedPhoto(photoID: photo.id, status: status)
             }
         } label: {
             Image(uiImage: photo.image)
                 .resizable()
                 .scaledToFill()
                 .frame(width: width, height: width * 4 / 3)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(alignment: .bottomLeading) {
+                    subjectBadge(for: photo)
+                }
                 .overlay(alignment: .topTrailing) {
                     if isSelecting {
                         ZStack {
@@ -298,7 +365,7 @@ struct PhotoSessionSetupView: View {
                                 .frame(width: 24, height: 24)
                             if isChecked {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(AppFont.system(size: 12, weight: .bold))
                                     .foregroundStyle(.white)
                             } else {
                                 Circle()
@@ -326,7 +393,7 @@ struct PhotoSessionSetupView: View {
                         Image(systemName: "trash")
                         Text("Delete \(selectedPhotoIDs.count) Photos")
                     }
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(AppFont.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
@@ -338,22 +405,26 @@ struct PhotoSessionSetupView: View {
             } else if !selection.photos.isEmpty {
                 // "Analyze X photos" Floating purple button as in Image 2
                 Button {
-                    isShowingNameModal = true
+                    if selection.hasSavedPreference {
+                        startAnalyzingSavedPreference()
+                    } else {
+                        isShowingNameModal = true
+                    }
                 } label: {
-                    Text("Analyze \(selection.photos.count) photos")
-                        .font(.system(size: 16, weight: .semibold))
+                    Text("Analyze \(selection.photos.count) photo\(selection.photos.count == 1 ? "" : "s")")
+                        .font(AppFont.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(
-                            selection.photos.count >= ChoosePhotosViewModel.minPhotos
+                            canAnalyze
                                 ? GoPhotoDesign.primary
                                 : GoPhotoDesign.primary.opacity(0.5),
                             in: Capsule()
                         )
                         .shadow(color: GoPhotoDesign.primary.opacity(0.3), radius: 8, x: 0, y: 4)
                 }
-                .disabled(selection.photos.count < ChoosePhotosViewModel.minPhotos)
+                .disabled(!canAnalyze)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
             } else {
@@ -361,9 +432,13 @@ struct PhotoSessionSetupView: View {
                     .padding(.horizontal, GoPhotoDesign.sessionMargin)
                     .padding(.bottom, 8)
 
-                Button("Create a Custom Preference", action: openCustomPreference)
-                    .buttonStyle(.goPhotoText)
-                    .padding(.bottom, 12)
+                // A saved preference left without photos (all removed as having no person)
+                // gets photos added to it, not a second, custom preference.
+                if !selection.hasSavedPreference {
+                    Button("Create Custom Preference", action: openCustomPreference)
+                        .buttonStyle(.goPhotoText)
+                        .padding(.bottom, 12)
+                }
             }
         }
         .padding(.top, 10)
@@ -385,20 +460,20 @@ struct PhotoSessionSetupView: View {
 
             // Card
             VStack(alignment: .leading, spacing: 14) {
-                Text("What this collection going to be\n?")
-                    .font(.system(size: 17, weight: .bold))
+                Text("What's this collection for?")
+                    .font(AppFont.system(size: 17, weight: .bold))
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .lineLimit(2)
 
-                Text("“purpose is to know if you are going to take picture based on vacation (beach/OOTD/big statue/city/night life)”")
-                    .font(.system(size: 13, weight: .regular))
+                Text("“For example: beach trip, outfit of the day, city, or night out.”")
+                    .font(AppFont.system(size: 13, weight: .regular))
                     .foregroundStyle(GoPhotoDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Input box
                 HStack {
                     TextField("....", text: $collectionName)
-                        .font(.system(size: 15))
+                        .font(AppFont.system(size: 15))
                         .autocorrectionDisabled()
 
                     if !collectionName.isEmpty {
@@ -420,7 +495,7 @@ struct PhotoSessionSetupView: View {
                         isShowingNameModal = false
                     } label: {
                         Text("Cancel")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(AppFont.system(size: 16, weight: .semibold))
                             .foregroundStyle(GoPhotoDesign.primaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -433,8 +508,8 @@ struct PhotoSessionSetupView: View {
                         isShowingNameModal = false
                         saveAndAnalyze(name: trimmed)
                     } label: {
-                        Text("Save")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text("Continue")
+                            .font(AppFont.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -475,6 +550,84 @@ struct PhotoSessionSetupView: View {
             case .failure(let error):
                 updateError = error.message
             }
+        }
+    }
+
+    /// Enough photos to analyse; for a saved preference, also loaded, not saving and not
+    /// already being analysed (one run per preference at a time).
+    private var canAnalyze: Bool {
+        guard selection.photos.count >= ChoosePhotosViewModel.minPhotos else { return false }
+        guard let id = selection.preferenceID else { return true }
+        return selection.canStartAnalyzing && !preferences.isAnalyzing(id)
+    }
+
+    /// A saved preference (back here after "Not Enough Photos") is analysed again as it is:
+    /// no name, and no new preference.
+    private func startAnalyzingSavedPreference() {
+        guard let id = selection.preferenceID, canAnalyze else { return }
+        onStartAnalyzing(id)
+    }
+
+    /// Cancel on the warning: the preference being created is deleted (with its saved photo
+    /// copies; never the Photos library) by the opener, which returns to Choose Preference.
+    private func discardPreference() {
+        guard let id = selection.preferenceID, let onDiscardPreference,
+              !selection.isSavingPhotos else { return }
+        onDiscardPreference(id)
+    }
+
+    private func showSubjectWarningIfNeeded() {
+        guard let id = selection.preferenceID,
+              let failure = preferences.validationFailure(for: id) else { return }
+        subjectWarning = failure
+    }
+
+    /// Marks a saved preference's photos left out of the analysis by the last person check:
+    /// no person or more than one found, or the photo could not be checked. Nothing for valid
+    /// (exactly one person) or unchecked photos.
+    /// The last person check of this photo (saved preference only).
+    private func subjectStatus(of photo: PhotoItem) -> HumanSubjectStatus? {
+        guard let id = selection.preferenceID else { return nil }
+        return preferences.subjectValidation(for: id)?.status(of: photo.id)
+    }
+
+    /// Remove Photo on a flagged photo: it leaves the saved preference (never the Photos
+    /// library); the grid shows the rest, ready for a replacement.
+    private func removePhoto(_ photoID: UUID) {
+        guard let id = selection.preferenceID, !selection.isSavingPhotos else { return }
+        selection.isSavingPhotos = true
+        preferences.removePhotoPersisted(photoID, from: id) { result in
+            selection.isSavingPhotos = false
+            switch result {
+            case .success(let preference):
+                withAnimation { selection.reloadSavedPreference(preference) }
+            case .failure(let error):
+                updateError = error.message
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func subjectBadge(for photo: PhotoItem) -> some View {
+        if let status = subjectStatus(of: photo), !status.isValid {
+            // Amber: not decided (could not check, or unsure who the main person is); red: rejected.
+            let couldNotCheck = status.isProcessingFailure || status.isUncertain
+            Image(systemName: couldNotCheck ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, couldNotCheck ? GoPhotoDesign.warning : GoPhotoDesign.error)
+                .padding(6)
+                .accessibilityLabel(Self.badgeLabel(for: status))
+        }
+    }
+
+    private static func badgeLabel(for status: HumanSubjectStatus) -> String {
+        switch status {
+        case .multipleForegroundSubjects: return "More than one person in this photo"
+        case .noPersonDetected: return "No person found in this photo"
+        case .uncertainForegroundGrouping: return "Couldn't tell who the main person is in this photo"
+        case .imageLoadFailed, .visionFailed, .depthFailed: return "This photo couldn't be checked"
+        case .validSingleForegroundSubject: return ""
         }
     }
 
@@ -599,6 +752,40 @@ final class PhotoSessionSetupSelection {
                 guard assetIdentifiers.insert(sourceAssetIdentifier).inserted else { continue }
             }
             photos.append(photo)
+        }
+    }
+}
+
+/// A photo left out by the person check, with why and what can be done (Photo Session Setup).
+private struct InspectedPhoto {
+    let photoID: UUID
+    let status: HumanSubjectStatus
+
+    /// Uncertain or failed checks may pass on another try; confirmed results will not.
+    var canCheckAgain: Bool { status.isUncertain || status.isProcessingFailure }
+
+    var title: String {
+        switch status {
+        case .uncertainForegroundGrouping: "Main Person Unclear"
+        case .multipleForegroundSubjects: "More Than One Person"
+        case .noPersonDetected: "No Person Found"
+        case .imageLoadFailed, .visionFailed, .depthFailed: "Photo Couldn't Be Checked"
+        case .validSingleForegroundSubject: ""
+        }
+    }
+
+    var message: String {
+        switch status {
+        case .uncertainForegroundGrouping:
+            "This photo has more than one person, and we couldn't confidently tell whether only one of them is in the foreground. It won't be used for your style. Check it again, or replace it with a photo featuring only yourself."
+        case .multipleForegroundSubjects:
+            "This photo has more than one person in the foreground. Please use photos featuring only yourself."
+        case .noPersonDetected:
+            "We couldn't find a person in this photo. Please use photos that clearly show you."
+        case .imageLoadFailed, .visionFailed, .depthFailed:
+            "Something went wrong while checking this photo. Check it again, or replace it."
+        case .validSingleForegroundSubject:
+            ""
         }
     }
 }

@@ -44,8 +44,8 @@ nonisolated enum PhasedInstruction: String, Sendable, Equatable, CaseIterable, C
     var text: String {
         switch self {
         case .tapPerson:  "Tap the person to photograph"
-        case .moveCloser: "Move closer"
-        case .moveBack:   "Move back"
+        case .moveCloser: "Walk closer"
+        case .moveBack:   "Step back"
         case .raisePhone: "Raise the phone"
         case .lowerPhone: "Lower the phone"
         case .tiltUp:     "Tilt up"
@@ -204,6 +204,19 @@ nonisolated struct PhasedFrame: Sendable {
     var depth: DepthSample?
     /// Width / height of the frame (3:4 live; the video's own aspect in Replay).
     var frameAspect: Double = 3.0 / 4.0
+}
+
+/// The shape and place of the Auto crop inside the camera frame (frame units, origin top-left).
+/// The full frame keeps the frame's own aspect (3:4); a narrower photo shape (9:16) is a band of
+/// the frame, and the crop stays inside it so the photo shows only what the preview shows.
+nonisolated struct PhasedCropShape: Sendable, Equatable {
+    /// Crop width / crop height, both in frame units (1 = the frame's own aspect). At most 1.
+    var widthFactor: Double
+    /// The horizontal part of the frame the crop has to stay in.
+    var minX: Double
+    var maxX: Double
+
+    static let fullFrame = PhasedCropShape(widthFactor: 1, minX: 0, maxX: 1)
 }
 
 /// What the engine decided this update.

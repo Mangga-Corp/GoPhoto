@@ -11,7 +11,7 @@ extension UILabel {
     static func make(_ text: String, style: UIFont.TextStyle) -> UILabel {
         let l = UILabel()
         l.text = text
-        l.font = .preferredFont(forTextStyle: style)
+        l.font = .app(style: style)
         l.adjustsFontForContentSizeCategory = true
         l.textColor = Theme.text
         l.textAlignment = .center

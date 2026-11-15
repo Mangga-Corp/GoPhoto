@@ -19,10 +19,17 @@ struct OnboardingFlowView: View {
     let styleButtonTitle: String
     /// "Choose Other Photos" on the no-person screen; nil hides the button.
     let onChooseOtherPhotos: (() -> Void)?
+    /// Fewer than `HumanSubjectValidator.minimumValidPhotos` photos show a person, so nothing
+    /// was analysed: the opener returns to Photo Session Setup with this same preference, which
+    /// shows the warning (`PhotoSessionSetupView`). Nil: the no-person retry screen instead.
+    let onNeedsMorePhotos: (() -> Void)?
     @State private var style: StyleSummary?
     @State private var failure: AnalysisFailure?
     @State private var analysisRetry = 0
     @State private var finishError: String?
+    /// "Some Photos Were Excluded": enough valid photos, some invalid; analysis waits for Continue.
+    @State private var exclusionNotice: HumanSubjectValidationResult?
+    @State private var isConfirmingExclusions = false
 
     private static let log = Logger(subsystem: "co.mango.gophoto", category: "analysis")
 
@@ -39,16 +46,18 @@ struct OnboardingFlowView: View {
         styleButtonTitle: String = "Open Camera",
         onAnalysisCompleted: @escaping () -> Void,
         onChooseOtherPhotos: (() -> Void)? = nil,
+        onNeedsMorePhotos: (() -> Void)? = nil,
         onFinish: @escaping () -> String?
     ) {
         self.preferenceID = preferenceID
         self.onAnalysisCompleted = onAnalysisCompleted
         self.styleButtonTitle = styleButtonTitle
         self.onChooseOtherPhotos = onChooseOtherPhotos
+        self.onNeedsMorePhotos = onNeedsMorePhotos
         self.onFinish = onFinish
         let preference = PreferencesViewModel.shared.preference(id: preferenceID)
         let usable = preference?.analysis.map { $0.isCurrent && $0.usability == .usable } ?? false
-        let summary = usable ? StyleSummary(analysis: preference?.analysis, photos: preference?.photos ?? []) : nil
+        let summary = usable ? StyleSummary(analysis: preference?.analysis, photos: preference?.analyzedPhotos ?? []) : nil
         _style = State(initialValue: (startsAtStyleCard || usable) ? summary : nil)
         let currentAnalysis = preference?.analysis.flatMap { $0.isCurrent ? $0 : nil }
         let recoveredFailure: AnalysisFailure?
@@ -96,7 +105,17 @@ struct OnboardingFlowView: View {
         .onAppear {
             if style != nil { onAnalysisCompleted() }
         }
-        .alert("Couldn't start shooting", isPresented: Binding(get: { finishError != nil },
+        .alert(
+            HumanSubjectValidationResult.exclusionTitle,
+            isPresented: Binding(get: { exclusionNotice != nil },
+                                 set: { if !$0 { exclusionNotice = nil } }),
+            presenting: exclusionNotice
+        ) { _ in
+            Button("Continue", action: confirmExclusions)
+        } message: { notice in
+            Text(notice.exclusionMessage)
+        }
+        .alert("Couldn't open the camera", isPresented: Binding(get: { finishError != nil },
                                                               set: { if !$0 { finishError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -105,6 +124,22 @@ struct OnboardingFlowView: View {
     }
 
     private func analysisFinished() {
+        // Enough valid photos, some invalid: the user is told before they are removed and the
+        // analysis runs (the analysing screen stays underneath).
+        if let notice = PreferencesViewModel.shared.exclusionNotice(for: preferenceID) {
+            exclusionNotice = notice
+            return
+        }
+        // Stopped before the analysis: too few photos show a person.
+        if PreferencesViewModel.shared.validationFailure(for: preferenceID) != nil {
+            Self.log.notice("Analysis of \(preferenceID) needs more photos of exactly one person")
+            if let onNeedsMorePhotos {
+                onNeedsMorePhotos()
+            } else {
+                withAnimation(.easeInOut(duration: 0.4)) { failure = .noUsableFraming }
+            }
+            return
+        }
         let preference = PreferencesViewModel.shared.preference(id: preferenceID)
         guard let analysis = preference?.analysis, analysis.isCurrent else {
             Self.log.error("Analysis of \(preferenceID) produced no current result")
@@ -113,7 +148,7 @@ struct OnboardingFlowView: View {
         }
         switch analysis.usability {
         case .usable:
-            guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.photos) else {
+            guard let preference, let summary = StyleSummary(analysis: analysis, photos: preference.analyzedPhotos) else {
                 withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
                 return
             }
@@ -125,6 +160,27 @@ struct OnboardingFlowView: View {
         case .noUsableFraming:
             Self.log.notice("Analysis of \(preferenceID) found no readable framing")
             withAnimation(.easeInOut(duration: 0.4)) { failure = .noUsableFraming }
+        }
+    }
+
+    /// Continue on "Some Photos Were Excluded": the invalid photos are already removed (saved);
+    /// the view model starts the analysis on the rest and a new analysing screen joins that run.
+    private func confirmExclusions() {
+        exclusionNotice = nil
+        guard !isConfirmingExclusions else { return }
+        isConfirmingExclusions = true
+        PreferencesViewModel.shared.confirmExclusions(for: preferenceID) { result in
+            isConfirmingExclusions = false
+            switch result {
+            case .success:
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    failure = nil
+                    analysisRetry += 1
+                }
+            case .failure(let error):
+                Self.log.error("Could not remove excluded photos of \(preferenceID): \(error.message, privacy: .public)")
+                withAnimation(.easeInOut(duration: 0.4)) { failure = .analysisFailed }
+            }
         }
     }
 
@@ -142,15 +198,15 @@ private struct AnalysisRetryScreen: View {
         VStack(spacing: 18) {
             Image(systemName: failure == .noUsableFraming ? "person.fill.questionmark"
                                                           : "exclamationmark.triangle")
-                .font(.system(size: 36))
+                .font(AppFont.system(size: 36))
                 .foregroundStyle(failure == .noUsableFraming ? GoPhotoDesign.secondaryText : GoPhotoDesign.warning)
             Text(failure == .noUsableFraming ? "We couldn't find a person in these photos."
-                                             : "We couldn't finish your photo analysis.")
+                                             : "We couldn't read your photos.")
                 .font(GoPhotoDesign.sectionTitle)
                 .foregroundStyle(GoPhotoDesign.primaryText)
                 .multilineTextAlignment(.center)
             Text(failure == .noUsableFraming ? "Choose photos that clearly show one person."
-                                             : "Your photos are saved. Try the analysis again.")
+                                             : "Your photos are safe. Please try again.")
                 .font(GoPhotoDesign.secondaryBody)
                 .foregroundStyle(GoPhotoDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -165,7 +221,7 @@ private struct AnalysisRetryScreen: View {
             #if DEBUG
             if DebugFixtures.storeName != nil {
                 Text("analysisRuns=\(PreferencesViewModel.shared.analysisRunCount)")
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(AppFont.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("debug.analysisRuns")
             }

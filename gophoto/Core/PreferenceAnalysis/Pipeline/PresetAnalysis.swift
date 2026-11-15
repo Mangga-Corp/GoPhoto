@@ -10,6 +10,10 @@ nonisolated struct PresetAnalysis: Codable, Sendable, Equatable {
     var version: Int = PresetAnalysis.currentVersion
     var analyzedAt: Date
     var photoCount: Int
+    /// The reference photos this analysis was made from (`PhotoItem.id.uuidString`): photos
+    /// without a person are left out before the analysis. Nil in analyses saved before the
+    /// person check (they used every photo) and in custom preferences.
+    var analyzedPhotoIDs: [String]?
     /// Median box of the main person (normalised 0...1, origin top-left), the same basis as
     /// `PersonDetector` (full body). Nil when no photo had one usable person.
     var subjectBox: CGRect?

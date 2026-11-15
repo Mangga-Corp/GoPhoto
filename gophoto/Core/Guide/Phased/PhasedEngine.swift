@@ -32,6 +32,9 @@ nonisolated struct PhasedEngine: Sendable {
     let zoomPlan: ZoomPlan
     /// Smallest linear crop scale allowed (Auto crop quality floor).
     let cropMinScale: Double
+    /// Auto crop: the photo's shape (3:4 = the full frame, 9:16 = a centred band). Changes with
+    /// the camera's ratio picker, without restarting the guide.
+    var cropShape: PhasedCropShape = .fullFrame
     let band: SizeBand
     private(set) var target: PhasedTarget?
     private(set) var targetProblem: String?
@@ -728,7 +731,7 @@ nonisolated struct PhasedEngine: Sendable {
         switch policy {
         case .autoCrop:
             guard let refSpan = target.span, refSpan > 0 else { return nil }
-            let c = min(1, max(cropMinScale, (bottom - top) / refSpan))
+            let c = min(1, max(PhasedMeasure.shapeMinScale(cropMinScale, shape: cropShape), (bottom - top) / refSpan))
             let headroom = (target.top ?? m.top) * c
             return (bottom + m.bottom) - (top - headroom) - 1 - params.cropSlack
         case .noCrop:
@@ -870,6 +873,7 @@ nonisolated struct PhasedEngine: Sendable {
               let mid = midX.median(now: now, window: w, minCount: n) else { return nil }
         let span = PhasedMeasure.Span(value: bottom - top, top: top, bottom: bottom, quality: .measured,
                                       cutTop: false, cutBottom: false, source: "")
-        return PhasedMeasure.crop(span: span, subjectMidX: mid, target: target, minScale: cropMinScale)
+        return PhasedMeasure.crop(span: span, subjectMidX: mid, target: target, minScale: cropMinScale,
+                                  shape: cropShape)
     }
 }

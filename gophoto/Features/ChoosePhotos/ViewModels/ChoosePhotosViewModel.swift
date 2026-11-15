@@ -153,6 +153,14 @@ final class ChoosePhotosViewModel {
 
     func differs(from picked: [PhotoItem]) -> Bool { picked.map(\.id) != items.map(\.id) }
 
+    /// Shows photos the owner has already saved (e.g. after photos without a person were
+    /// removed): the grid updates, and `onPhotosChange` is not called (nothing new to store).
+    func syncSavedItems(_ saved: [PhotoItem]) {
+        items = Array(saved.prefix(Self.maxPhotos))
+        checked = checked.intersection(Set(items.map(\.id)))
+        onItemsChange?()
+    }
+
     func replaceItems(_ picked: [PhotoItem]) {
         items = Array(picked.prefix(Self.maxPhotos))
         onItemsChange?()

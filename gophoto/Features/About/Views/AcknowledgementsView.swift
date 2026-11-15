@@ -33,16 +33,16 @@ struct AcknowledgementsView: View {
                                 .frame(width: 96, height: 96)
                                 .accessibilityHidden(true)
                             Text("Sunlitt")
-                                .font(.title3.weight(.semibold))
+                                .font(AppFont.title3.weight(.semibold))
                         }
                         .frame(maxWidth: .infinity)
                     }
                     Text("The sun's position is computed on your phone with SunKit by Sunlitt, licensed under the Apache License 2.0.")
-                        .font(.footnote)
+                        .font(AppFont.footnote)
                     NavigationLink("SunKit license") {
                         ScrollView {
                             Text(Self.licenseText)
-                                .font(.caption.monospaced())
+                                .font(AppFont.caption.monospaced())
                                 .padding()
                         }
                         .navigationTitle("SunKit license")

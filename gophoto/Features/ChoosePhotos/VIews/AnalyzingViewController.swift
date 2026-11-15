@@ -251,7 +251,7 @@ final class AnalyzingViewController: UIViewController {
     private let titleLabel: UILabel = {
         let l = UILabel()
         l.text = "Finding your style"
-        l.font = .systemFont(ofSize: 32, weight: .bold)
+        l.font = .app(size: 32, weight: .bold)
         l.textColor = UIColor(GoPhotoDesign.primaryText)
         l.textAlignment = .center
         l.numberOfLines = 0
@@ -272,7 +272,7 @@ final class AnalyzingViewController: UIViewController {
     // Reading label: "Reading photo 3 of 9"
     private let readingLabel: UILabel = {
         let l = UILabel()
-        l.font = .systemFont(ofSize: 16, weight: .semibold)
+        l.font = .app(size: 16, weight: .semibold)
         l.textColor = UIColor(GoPhotoDesign.primaryText)
         l.textAlignment = .center
         return l
@@ -292,7 +292,7 @@ final class AnalyzingViewController: UIViewController {
     // Checking description label ("Checking your angles")
     private let checkingLabel: UILabel = {
         let l = UILabel()
-        l.font = .systemFont(ofSize: 15, weight: .regular)
+        l.font = .app(size: 15, weight: .regular)
         l.textColor = UIColor(GoPhotoDesign.secondaryText)
         l.textAlignment = .center
         return l
@@ -301,7 +301,7 @@ final class AnalyzingViewController: UIViewController {
     // Estimated time label ("This usually takes about 15 seconds")
     private let estimateLabel: UILabel = {
         let l = UILabel()
-        l.font = .systemFont(ofSize: 13, weight: .regular)
+        l.font = .app(size: 13, weight: .regular)
         l.textColor = UIColor(GoPhotoDesign.secondaryText)
         l.textAlignment = .center
         return l
@@ -311,7 +311,7 @@ final class AnalyzingViewController: UIViewController {
     private let cancelButton: UIButton = {
         let b = UIButton(type: .system)
         b.setTitle("Cancel", for: .normal)
-        b.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        b.titleLabel?.font = .app(size: 17, weight: .semibold)
         b.setTitleColor(UIColor(GoPhotoDesign.primary), for: .normal)
         return b
     }()

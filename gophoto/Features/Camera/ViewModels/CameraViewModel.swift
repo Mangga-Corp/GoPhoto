@@ -97,6 +97,9 @@ final class CameraViewModel {
 
     /// The Phased engine's decision this update (crop window, readiness, bars).
     private(set) var phased = PhasedOutput()
+    /// The photo shape the preview shows and the shutter saves (3:4 by default). Kept for this
+    /// camera session only: a new session (a new camera screen) starts at 3:4 again.
+    private(set) var aspectRatio: CameraAspectRatio = .threeFour
     /// The one instruction shown: choosing / finding the subject first, then the engine's.
     private(set) var phasedInstruction: PhasedInstruction?
     /// Selection UI: dims everything but people (nil = no dimming).
@@ -336,6 +339,7 @@ final class CameraViewModel {
         // The crop at the shutter: the final crop when ready; before that the crop valid right now
         // (shaky hands still get a framed photo). Nothing measurable yet = the full photo.
         let wanted = shutterCrop()
+        let aspectAtShot = aspectRatio
         let photo: CapturedPhoto
         do {
             photo = try await camera.capturePhoto(onShutter: { [weak self] in
@@ -357,23 +361,45 @@ final class CameraViewModel {
             var savedCrop = false
             if let wanted {
                 savedCrop = await self.savePhasedCrop(of: capturedData, crop: wanted.rect, roll: wanted.roll,
-                                                      floor: wanted.floor, presetID: presetAtShot)
+                                                      floor: wanted.floor, aspect: aspectAtShot,
+                                                      presetID: presetAtShot)
             }
             if !savedCrop { await self.saveFull(capturedData, presetID: presetAtShot) }
         }
     }
 
     private func shutterCrop() -> (rect: CGRect, roll: Double, floor: Double)? {
-        guard let window = phased.cropWindow ?? phased.captureCrop else { return nil }
-        return (window, phased.cropWindow != nil ? phased.cropRoll : phased.captureRoll,
-                PhasedParameters.standard.cropFloorMegapixels)
+        let floor = PhasedParameters.standard.cropFloorMegapixels
+        guard let window = phased.cropWindow ?? phased.captureCrop else {
+            // Nothing measurable yet: 3:4 saves the whole photo; a narrower ratio still saves
+            // exactly what the preview shows (its band of the frame).
+            if aspectRatio.showsWholeFrame { return nil }
+            return (rect: aspectRatio.visibleRect, roll: 0, floor: floor)
+        }
+        return (window, phased.cropWindow != nil ? phased.cropRoll : phased.captureRoll, floor)
+    }
+
+    /// The ratio picker: the preview, the guide's crop and the next photo follow at once (the
+    /// camera session keeps running; the guide keeps its progress).
+    func selectAspectRatio(_ ratio: CameraAspectRatio) {
+        guard ratio != aspectRatio else { return }
+        aspectRatio = ratio
+        guard var engine = phasedEngine else { return }
+        engine.cropShape = ratio.cropShape
+        phasedEngine = engine
+        updatePhased()   // the shutter crop follows the new shape before the next frame
     }
 
     /// Saves the Auto crop as THE photo. False = not saved (no crop made or the save failed).
     private func savePhasedCrop(of data: Data, crop: CGRect, roll: Double, floor: Double,
-                                presetID presetAtShot: UUID?) async -> Bool {
+                                aspect: CameraAspectRatio, presetID presetAtShot: UUID?) async -> Bool {
+        // 3:4: the original crop (the frame's own shape). Narrower: exactly that shape, inside
+        // the band the preview showed.
+        let bounds = aspect.visibleRect
+        let shape: (width: Int, height: Int)? = aspect.showsWholeFrame ? nil : aspect.units
         let result = await Task.detached(priority: .userInitiated) {
-            PhasedCrop.apply(imageData: data, crop: crop, rollDegrees: roll, floorMegapixels: floor)
+            PhasedCrop.apply(imageData: data, crop: crop, rollDegrees: roll, floorMegapixels: floor,
+                             bounds: bounds, outputShape: shape)
         }.value
         guard let cropped = result.data else { return false }
         let thumbnail = Self.makeThumbnail(of: cropped)
@@ -427,7 +453,9 @@ extension CameraViewModel {
         let params = PhasedParameters.standard
         let minScale = PhasedMeasure.cropMinScale(sourceMP: photoMegapixels, floorMP: params.cropFloorMegapixels)
         phasedEngineSourceMP = photoMegapixels
-        return PhasedEngine(params: params, policy: .autoCrop, zoomPlan: .fixedOne, cropMinScale: minScale)
+        var engine = PhasedEngine(params: params, policy: .autoCrop, zoomPlan: .fixedOne, cropMinScale: minScale)
+        engine.cropShape = aspectRatio.cropShape
+        return engine
     }
 
     /// Called for every detection.

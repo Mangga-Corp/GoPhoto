@@ -24,9 +24,9 @@ extension SessionShotSize {
 
     var detail: String {
         switch self {
-        case .half: "Head to waist framing"
-        case .threeQuarter: "Head to mid-thigh frame"
-        case .full: "Head to feet composition"
+        case .half: "Head to waist"
+        case .threeQuarter: "Head to mid-thigh"
+        case .full: "Head to toe"
         }
     }
 

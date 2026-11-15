@@ -37,10 +37,10 @@ struct TiltGalleryContent: View {
             .pickerStyle(.segmented)
             Toggle("Playing", isOn: $isPlaying)
             HStack {
-                Text("Input").font(.footnote).frame(width: 50, alignment: .leading)
+                Text("Input").font(AppFont.footnote).frame(width: 50, alignment: .leading)
                 Slider(value: $degrees, in: 0...60)
                 Text("\(Int(degrees))° → \(shownDegrees)°")
-                    .font(.footnote.monospacedDigit())
+                    .font(AppFont.footnote.monospacedDigit())
                     .frame(width: 84, alignment: .trailing)
             }
         }

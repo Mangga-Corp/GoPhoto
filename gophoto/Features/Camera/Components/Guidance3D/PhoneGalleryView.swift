@@ -39,7 +39,7 @@ struct GalleryStage<Content: View>: View {
             .background(backdrop.style, in: RoundedRectangle(cornerRadius: 20))
             .overlay(alignment: .topLeading) {
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption.weight(.semibold))
                     .foregroundStyle(backdrop.textColor.opacity(0.8))
                     .padding(10)
             }
@@ -111,9 +111,9 @@ private struct PosesGalleryContent: View {
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
         HStack {
-            Text(title).font(.footnote).frame(width: 60, alignment: .leading)
+            Text(title).font(AppFont.footnote).frame(width: 60, alignment: .leading)
             Slider(value: value, in: range)
-            Text("\(Int(value.wrappedValue))°").font(.footnote.monospacedDigit()).frame(width: 44, alignment: .trailing)
+            Text("\(Int(value.wrappedValue))°").font(AppFont.footnote.monospacedDigit()).frame(width: 44, alignment: .trailing)
         }
     }
 }

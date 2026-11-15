@@ -302,7 +302,7 @@ struct GalleryView: View {
                     if let onDismiss {
                         Button(action: onDismiss) {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(AppFont.system(size: 15, weight: .bold))
                                 .foregroundStyle(Color(GoPhotoDesign.primaryText))
                                 .frame(width: 38, height: 38)
                                 .background(.ultraThinMaterial, in: Circle())
@@ -316,17 +316,17 @@ struct GalleryView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Gallery")
-                            .font(.system(size: 34, weight: .bold))
+                            .font(AppFont.system(size: 34, weight: .bold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
 
                         // Subtitle: nama filter aktif & jumlah foto yang dihasilkan
                         HStack(spacing: 5) {
                             Image(systemName: subtitleIcon)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(AppFont.system(size: 12, weight: .semibold))
                             Text(statusSubtitle)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(AppFont.system(size: 13, weight: .semibold))
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(AppFont.system(size: 10, weight: .bold))
                         }
                         .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                     }
@@ -349,7 +349,7 @@ struct GalleryView: View {
                         }
                     } label: {
                         Text(isSelecting ? "Done" : "Select")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppFont.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
                             .padding(.horizontal, 16)
                             .frame(height: 38)
@@ -376,7 +376,7 @@ struct GalleryView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     // Judul "Search" di paling atas
                     Text("Search")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(AppFont.system(size: 34, weight: .bold))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                         .padding(.horizontal, 16)
                         .padding(.top, headerTopPadding)
@@ -386,7 +386,7 @@ struct GalleryView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
                                 Text("Recents")
-                                    .font(.system(size: 22, weight: .bold))
+                                    .font(AppFont.system(size: 22, weight: .bold))
                                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
 
                                 Spacer()
@@ -400,7 +400,7 @@ struct GalleryView: View {
                                             }
                                         } label: {
                                             Text("Clear")
-                                                .font(.system(size: 14, weight: .semibold))
+                                                .font(AppFont.system(size: 14, weight: .semibold))
                                                 .foregroundStyle(GoPhotoDesign.primary)
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 6)
@@ -411,7 +411,7 @@ struct GalleryView: View {
                                         }
 
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 11, weight: .bold))
+                                            .font(AppFont.system(size: 11, weight: .bold))
                                             .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                                             .frame(width: 28, height: 28)
                                             .background(.ultraThinMaterial, in: Circle())
@@ -472,7 +472,7 @@ struct GalleryView: View {
                                         isSearchFieldFocused = false
                                     } label: {
                                         Text(query)
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(AppFont.system(size: 15, weight: .medium))
                                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
@@ -492,17 +492,17 @@ struct GalleryView: View {
                         // Hasil pencarian saat user mengetik
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Results for “\(searchText)”")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(AppFont.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                                 .padding(.horizontal, 16)
 
                             if searchResults.isEmpty {
                                 VStack(spacing: 10) {
                                     Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 36))
+                                        .font(AppFont.system(size: 36))
                                         .foregroundStyle(Color(GoPhotoDesign.disabledText))
                                     Text("No matching photos found")
-                                        .font(.system(size: 15))
+                                        .font(AppFont.system(size: 15))
                                         .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                                 }
                                 .frame(maxWidth: .infinity)
@@ -543,7 +543,7 @@ struct GalleryView: View {
                 }
             } label: {
                 Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: 19))
+                    .font(AppFont.system(size: 19))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 52, height: 52)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -558,11 +558,11 @@ struct GalleryView: View {
             // Bar input search di tengah
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17))
+                    .font(AppFont.system(size: 17))
                     .foregroundStyle(Color(GoPhotoDesign.secondaryText))
 
                 TextField("Search your library...", text: $searchText)
-                    .font(.system(size: 16))
+                    .font(AppFont.system(size: 16))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .focused($isSearchFieldFocused)
                     .submitLabel(.search)
@@ -575,13 +575,13 @@ struct GalleryView: View {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
+                            .font(AppFont.system(size: 16))
                             .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                     }
                     .buttonStyle(.plain)
                 } else {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 16))
+                        .font(AppFont.system(size: 16))
                         .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                 }
             }
@@ -602,7 +602,7 @@ struct GalleryView: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(AppFont.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 52, height: 52)
                     .background(.ultraThinMaterial, in: Circle())
@@ -633,7 +633,7 @@ struct GalleryView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
                     Image(systemName: "photo.stack")
-                        .font(.system(size: 34))
+                        .font(AppFont.system(size: 34))
                         .foregroundStyle(Color(GoPhotoDesign.disabledText))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -647,7 +647,7 @@ struct GalleryView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(AppFont.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .padding(10)
@@ -761,7 +761,7 @@ struct GalleryView: View {
                     .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
 
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(AppFont.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
             }
         }
@@ -781,9 +781,9 @@ struct GalleryView: View {
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: "photo.stack.fill")
-                            .font(.system(size: 20))
+                            .font(AppFont.system(size: 20))
                         Text("Library")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(AppFont.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(currentTab == .library ? GoPhotoDesign.primary : Color(GoPhotoDesign.secondaryText))
                 }
@@ -800,12 +800,12 @@ struct GalleryView: View {
                     VStack(spacing: 3) {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "rectangle.stack.fill")
-                                .font(.system(size: 20))
+                                .font(AppFont.system(size: 20))
                                 .foregroundStyle(currentTab == .collections ? GoPhotoDesign.primary : Color(GoPhotoDesign.secondaryText))
 
                             // Badge merah "1"
                             Text("1")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(AppFont.system(size: 10, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 15, height: 15)
                                 .background(Color.red, in: Circle())
@@ -813,7 +813,7 @@ struct GalleryView: View {
                         }
 
                         Text("Collections")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(AppFont.system(size: 11, weight: .medium))
                             .foregroundStyle(currentTab == .collections ? GoPhotoDesign.primary : Color(GoPhotoDesign.secondaryText))
                     }
                 }
@@ -836,7 +836,7 @@ struct GalleryView: View {
                 }
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(AppFont.system(size: 21, weight: .semibold))
                     .foregroundStyle(Color(GoPhotoDesign.primaryText))
                     .frame(width: 60, height: 60)
                     .background(.ultraThinMaterial, in: Circle())
@@ -860,7 +860,7 @@ struct GalleryView: View {
                 Button {
                 } label: {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(AppFont.system(size: 20, weight: .medium))
                         .foregroundStyle(Color(GoPhotoDesign.disabledText))
                 }
                 .disabled(true)
@@ -871,7 +871,7 @@ struct GalleryView: View {
                     preview: { _ in SharePreview("Photo", image: Image(systemName: "photo")) }
                 ) {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(AppFont.system(size: 20, weight: .medium))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                 }
                 .buttonStyle(.plain)
@@ -882,7 +882,7 @@ struct GalleryView: View {
                 toggleFavoriteSelected()
             } label: {
                 Image(systemName: isAllSelectedFavorite ? "heart.fill" : "heart")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(AppFont.system(size: 20, weight: .medium))
                     .foregroundStyle(
                         selectedIDs.isEmpty
                             ? Color(GoPhotoDesign.disabledText)
@@ -900,7 +900,7 @@ struct GalleryView: View {
                 }
             } label: {
                 Image(systemName: "trash")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(AppFont.system(size: 20, weight: .medium))
                     .foregroundStyle(selectedIDs.isEmpty ? Color(GoPhotoDesign.error).opacity(0.35) : Color(GoPhotoDesign.error))
             }
             .disabled(selectedIDs.isEmpty)
@@ -927,7 +927,7 @@ struct GalleryView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Text("Albums & Styles")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(AppFont.system(size: 20, weight: .bold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
 
                         Spacer()
@@ -938,7 +938,7 @@ struct GalleryView: View {
                             }
                         } label: {
                             Image(systemName: isCollectionsCollapsed ? "chevron.down" : "chevron.up")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(AppFont.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                         }
                     }
@@ -1030,19 +1030,19 @@ struct GalleryView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 32))
+                        .font(AppFont.system(size: 32))
                         .foregroundStyle(Color(GoPhotoDesign.disabledText))
                 }
             }
             .frame(width: width, height: height)
 
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(AppFont.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color(GoPhotoDesign.primaryText))
                 .lineLimit(1)
 
             Text("\(count) Photos")
-                .font(.system(size: 12))
+                .font(AppFont.system(size: 12))
                 .foregroundStyle(Color(GoPhotoDesign.secondaryText))
         }
         .frame(width: width)
@@ -1077,7 +1077,7 @@ struct GalleryView: View {
                     // Love warna ungu jika foto difavoritkan
                     if isFavorited {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(AppFont.system(size: 13, weight: .bold))
                             .foregroundStyle(GoPhotoDesign.primary)
                             .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
@@ -1089,7 +1089,7 @@ struct GalleryView: View {
                     ZStack {
                         if isSelected {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 19))
+                                .font(AppFont.system(size: 19))
                                 .foregroundStyle(GoPhotoDesign.primary, .white)
                         } else {
                             Circle()
@@ -1112,7 +1112,7 @@ struct GalleryView: View {
                     // Love warna ungu di kanan bawah saat browsing normal
                     if isFavorited {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(AppFont.system(size: 13, weight: .bold))
                             .foregroundStyle(GoPhotoDesign.primary)
                             .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                             .padding(5)
@@ -1146,12 +1146,12 @@ struct GalleryView: View {
             VStack(spacing: 6) {
                 if let title {
                     Text(title)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(AppFont.system(size: 17, weight: .semibold))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                 }
 
                 Text(message)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(AppFont.system(size: 15, weight: .regular))
                     .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                     .multilineTextAlignment(.center)
             }
@@ -1175,12 +1175,12 @@ struct GalleryView: View {
             VStack(spacing: 16) {
                 VStack(spacing: 6) {
                     Text("Allow “Vacato” to delete\n\(selectedIDs.count) \(selectedIDs.count == 1 ? "photo" : "photos")?")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(AppFont.system(size: 18, weight: .bold))
                         .foregroundStyle(Color(GoPhotoDesign.primaryText))
                         .multilineTextAlignment(.center)
 
                     Text("These photos will also be deleted from an album.")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(AppFont.system(size: 13, weight: .regular))
                         .foregroundStyle(Color(GoPhotoDesign.secondaryText))
                         .multilineTextAlignment(.center)
                 }
@@ -1209,7 +1209,7 @@ struct GalleryView: View {
                         }
                     } label: {
                         Text("Don’t Allow")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppFont.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color(GoPhotoDesign.primaryText))
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -1226,7 +1226,7 @@ struct GalleryView: View {
                         }
                     } label: {
                         Text("Delete")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppFont.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -1345,7 +1345,7 @@ private struct PlaceholderCard: View {
                 ZStack {
                     Color(GoPhotoDesign.secondaryBackground)
                     Image(systemName: "photo")
-                        .font(.largeTitle)
+                        .font(AppFont.largeTitle)
                         .foregroundStyle(Color(GoPhotoDesign.disabledText))
                 }
             }

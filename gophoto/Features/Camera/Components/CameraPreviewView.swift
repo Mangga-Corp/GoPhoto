@@ -15,11 +15,14 @@ import UIKit
 
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    /// `.resizeAspect` for 3:4 (the frame's own shape: it fills the box exactly); `.resizeAspectFill`
+    /// for a narrower box (9:16), which then shows the frame's centred band, no bars, no distortion.
+    var videoGravity: AVLayerVideoGravity = .resizeAspect
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspect
+        view.previewLayer.videoGravity = videoGravity
 
         if let connection = view.previewLayer.connection,
            connection.isVideoRotationAngleSupported(90) {
@@ -28,7 +31,14 @@ struct CameraPreviewView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    /// A ratio change only changes the layer's gravity: the session keeps running.
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        guard uiView.previewLayer.videoGravity != videoGravity else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        uiView.previewLayer.videoGravity = videoGravity
+        CATransaction.commit()
+    }
 
     // A UIView whose backing layer IS the camera preview layer
     final class PreviewView: UIView {

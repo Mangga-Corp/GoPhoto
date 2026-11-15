@@ -2,7 +2,7 @@
 //  ShotSizeSelectionView.swift
 //  gophoto
 //
-//  "Choose Your Shot Size": the requested framing for the session being configured. Starts at
+//  "Choose Your Shot": the requested framing for the session being configured. Starts at
 //  3/4 Body every time. Start Shooting hands a validated `PhotoSessionConfiguration` on; it does
 //  not start the session (Phase 4) and nothing here is saved.
 //
@@ -26,14 +26,14 @@ struct ShotSizeSelectionView: View {
                 eyebrow
                     .padding(.top, 8)
 
-                Text("Choose Your Shot Size")
-                    .font(.system(size: 32, weight: .bold))
+                Text("Choose Your Shot")
+                    .font(AppFont.system(size: 32, weight: .bold))
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top, 12)
-                Text("How would you like your subject framed?")
-                    .font(.system(size: 17))
+                Text("How much of you should show?")
+                    .font(AppFont.system(size: 17))
                     .foregroundStyle(GoPhotoDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
@@ -70,7 +70,7 @@ struct ShotSizeSelectionView: View {
             .accessibilityIdentifier("shotSize.startShooting")
         }
         .toolbar(.hidden, for: .navigationBar)
-        .alert("Couldn't start shooting", isPresented: Binding(get: { startError != nil },
+        .alert("Couldn't open the camera", isPresented: Binding(get: { startError != nil },
                                                               set: { if !$0 { startError = nil } }),
                presenting: startError) { error in
             Button("OK", role: .cancel) {
@@ -98,7 +98,7 @@ struct ShotSizeSelectionView: View {
         HStack {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(AppFont.system(size: 20, weight: .semibold))
                     .foregroundStyle(GoPhotoDesign.primaryText)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -115,7 +115,7 @@ struct ShotSizeSelectionView: View {
 
     private var eyebrow: some View {
         Label {
-            Text("Set Your Framing")
+            Text("Pick Your Shot")
                 .font(GoPhotoDesign.smallLabel)
         } icon: {
             Image(systemName: "viewfinder")
@@ -143,7 +143,7 @@ private struct ShotSizeCard: View {
                         .fixedSize()
                     if shot.isRecommended {
                         Text("Recommended")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(AppFont.system(size: 11, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                             .foregroundStyle(GoPhotoDesign.onPrimary)
